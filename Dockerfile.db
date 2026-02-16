@@ -1,0 +1,5 @@
+FROM pgvector/pgvector:pg16
+
+# Copiar el dump SQL al directorio de inicialización de Postgres
+# Postgres ejecutará automáticamente cualquier .sql en esta carpeta al iniciar por primera vez
+COPY talosflow_dump.sql /docker-entrypoint-initdb.d/init.sql

@@ -4,12 +4,18 @@ services:
   zen-crm:
     image: ghcr.io/joel110311/zen_crm:latest
     environment:
-      # Each CRM deployment gets its own dedicated database
-      - DATABASE_URL=postgresql://zencrm:CHANGE_ME_SECURE_PASSWORD@zen-crm-db:5432/zencrm
-      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
-      - YCLOUD_API_KEY=${YCLOUD_API_KEY:-}
-      - YCLOUD_WHATSAPP_PHONE_ID=${YCLOUD_WHATSAPP_PHONE_ID:-}
-      - META_VERIFY_TOKEN=${META_VERIFY_TOKEN:-}
+      # Connection to the dedicated pgvector container
+      - DATABASE_URL=postgresql://zencrm:950b719a13e682e057b42c7b11dd2213@zen-crm-db:5432/zencrm
+
+      # App Secrets
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - YCLOUD_API_KEY=b5df62fc3757e5f7ab51166591c6645c
+      - YCLOUD_WHATSAPP_PHONE_ID=+524771075025
+      - META_VERIFY_TOKEN=crmb51166591c6645c
+
+      # Next.js & Host Settings
+      - PORT=3000
+      - HOSTNAME=0.0.0.0
     networks:
       - SociosNet
     depends_on:
@@ -20,18 +26,21 @@ services:
         condition: on-failure
       labels:
         - "traefik.enable=true"
-        - "traefik.http.routers.zen-crm.rule=Host(`crm.logicapp.net`) || Host(`apicrm.logicapp.net`)"
+        - "traefik.http.routers.zen-crm.rule=Host(`crm.logicapp.net`)"
         - "traefik.http.routers.zen-crm.entrypoints=websecure"
         - "traefik.http.routers.zen-crm.tls.certresolver=letsencryptresolver"
         - "traefik.http.services.zen-crm.loadbalancer.server.port=3000"
         - "traefik.docker.network=SociosNet"
 
-  # Dedicated pgvector Database (one per CRM tenant)
+  # Dedicated pgvector Database with Pre-loaded Data
   zen-crm-db:
-    image: pgvector/pgvector:pg16
+    build:
+      context: .
+      dockerfile: Dockerfile.db
+    image: ghcr.io/joel110311/zen_crm_db:latest
     environment:
       - POSTGRES_USER=zencrm
-      - POSTGRES_PASSWORD=CHANGE_ME_SECURE_PASSWORD
+      - POSTGRES_PASSWORD=950b719a13e682e057b42c7b11dd2213
       - POSTGRES_DB=zencrm
     volumes:
       - zen_crm_db_data:/var/lib/postgresql/data
