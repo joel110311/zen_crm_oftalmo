@@ -38,9 +38,20 @@ export async function sendWhatsAppMessage(to: string, text: string) {
     // According to YCloud docs: "phone number in E.164 format".
     // Example: +5219999999999
 
-    // Ensure we have the + prefix for E.164
-    const formattedTo = to.startsWith("+") ? to : `+${to.replace(/\D/g, "")}`;
-    const formattedFrom = phoneId.startsWith("+") ? phoneId : `+${phoneId.replace(/\D/g, "")}`;
+    // Format phone number: YCloud requires E.164.
+    // Clean all non-digits first
+    let cleanTo = to.replace(/\D/g, "");
+    let cleanFrom = phoneId.replace(/\D/g, "");
+
+    // Smart fix for Mexico (10 digits -> +52)
+    // If it's exactly 10 digits, assume it's a local MX number missing country code
+    if (cleanTo.length === 10) {
+        cleanTo = `52${cleanTo}`;
+    }
+
+    // Ensure + prefix
+    const formattedTo = `+${cleanTo}`;
+    const formattedFrom = `+${cleanFrom}`;
 
     const payload = {
         from: formattedFrom,
