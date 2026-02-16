@@ -53,7 +53,9 @@ model Conversation {
   isFavorite Boolean   @default(false)
   isGroup    Boolean   @default(false)
   createdAt  DateTime  @default(now())
+
   updatedAt  DateTime  @updatedAt
+  sessionExpiresAt DateTime? // Tracks the 24h WhatsApp Business API window
   
   messages   Message[]
 }

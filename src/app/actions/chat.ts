@@ -195,10 +195,13 @@ export async function processInboundMessage(
             },
         });
 
-        // Update conversation timestamp
+        // Update conversation timestamp and reset 24h window
         await prisma.conversation.update({
             where: { id: conversation.id },
-            data: { updatedAt: new Date() },
+            data: {
+                updatedAt: new Date(),
+                sessionExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000)
+            },
         });
 
         // ── Auto-create Deal for contacts without a deal ──

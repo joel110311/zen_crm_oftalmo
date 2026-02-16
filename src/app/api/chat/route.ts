@@ -42,6 +42,7 @@ export async function GET(request: NextRequest) {
                 isMuted: conv.isMuted,
                 isFavorite: conv.isFavorite,
                 isGroup: conv.isGroup,
+                sessionExpiresAt: conv.sessionExpiresAt,
             }));
 
             return NextResponse.json(result);

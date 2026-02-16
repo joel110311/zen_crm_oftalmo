@@ -250,10 +250,15 @@ export async function POST(request: NextRequest) {
             });
         }
 
-        // Update conversation timestamp
+        // Update conversation timestamp and 24h window if template
+        const updateData: any = { updatedAt: new Date() };
+        if (type === "template") {
+            updateData.sessionExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+        }
+
         await prisma.conversation.update({
             where: { id: conversationId },
-            data: { updatedAt: new Date() },
+            data: updateData,
         });
 
         return NextResponse.json({ success: true, message });

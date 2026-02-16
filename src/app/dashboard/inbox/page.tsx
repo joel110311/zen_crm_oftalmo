@@ -49,6 +49,7 @@ type Conversation = {
     isFavorite: boolean;
     isGroup: boolean;
     lastMessageType: string;
+    sessionExpiresAt?: string | null;
 };
 
 // ──────────── Helpers ────────────
@@ -292,6 +293,60 @@ function ConfirmModal({ title, description, onConfirm, onCancel, variant = "defa
                     </Button>
                 </div>
             </div>
+        </div>
+    );
+}
+
+// ──────────── Window Timer Component ────────────
+function WindowTimer({ expiresAt }: { expiresAt: string | null | undefined }) {
+    const [timeLeft, setTimeLeft] = useState<string>("");
+    const [isOpen, setIsOpen] = useState(false);
+
+    useEffect(() => {
+        if (!expiresAt) {
+            setIsOpen(false);
+            return;
+        }
+
+        const updateTimer = () => {
+            const now = new Date();
+            const expiry = new Date(expiresAt);
+            const diff = expiry.getTime() - now.getTime();
+
+            if (diff > 0) {
+                setIsOpen(true);
+                const hours = Math.floor(diff / (1000 * 60 * 60));
+                const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+                setTimeLeft(`${hours}h ${minutes}m`);
+            } else {
+                setIsOpen(false);
+                setTimeLeft("");
+            }
+        };
+
+        updateTimer();
+        const interval = setInterval(updateTimer, 60000); // Update every minute
+        return () => clearInterval(interval);
+    }, [expiresAt]);
+
+    if (!expiresAt) return null; // Don't show if never active
+
+    return (
+        <div className={cn(
+            "mx-4 mb-2 px-3 py-1.5 rounded-md text-xs font-medium flex items-center justify-center gap-2 transition-colors",
+            isOpen ? "bg-emerald-100 text-emerald-800 border border-emerald-200" : "bg-rose-100 text-rose-800 border border-rose-200"
+        )}>
+            {isOpen ? (
+                <>
+                    <Clock className="h-3 w-3" />
+                    <span>Ventana abierta ({timeLeft})</span>
+                </>
+            ) : (
+                <>
+                    <BellOff className="h-3 w-3" />
+                    <span>Ventana de 24h cerrada (Responderá con Plantilla)</span>
+                </>
+            )}
         </div>
     );
 }
@@ -1037,6 +1092,9 @@ export default function InboxPage() {
                                     </div>
                                 </div>
                             )}
+
+                            {/* Window Timer */}
+                            <WindowTimer expiresAt={selectedChat.sessionExpiresAt} />
 
                             {/* Input Area */}
                             <div className="p-4 border-t bg-card shrink-0">
