@@ -25,14 +25,23 @@ export default function CalendarPage() {
 
     const fetchAppointments = async () => {
         const data = await getAppointments();
-        setAppointments(data);
 
-        // Calculate stats
+        // Auto-compute status: if scheduled and time passed, mark as completed
         const now = new Date();
-        const todayCount = data.filter(a => isToday(new Date(a.startTime))).length;
-        const weekCount = data.filter(a => isSameWeek(new Date(a.startTime), now)).length;
-        const pendingCount = data.filter(a => a.status === 'scheduled').length;
-        const completedCount = data.filter(a => a.status === 'completed').length;
+        const processedData = data.map(apt => {
+            if (apt.status === 'scheduled' && new Date(apt.endTime) < now) {
+                return { ...apt, status: 'completed' };
+            }
+            return apt;
+        });
+
+        setAppointments(processedData);
+
+        // Calculate stats using processedData
+        const todayCount = processedData.filter(a => isToday(new Date(a.startTime))).length;
+        const weekCount = processedData.filter(a => isSameWeek(new Date(a.startTime), now)).length;
+        const pendingCount = processedData.filter(a => a.status === 'scheduled').length;
+        const completedCount = processedData.filter(a => a.status === 'completed').length;
 
         setStats({ today: todayCount, week: weekCount, pending: pendingCount, completed: completedCount });
     };

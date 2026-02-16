@@ -5,7 +5,7 @@ import {
     Search, MoreVertical, Phone, Video, Paperclip, Send, Mic, X,
     FileText, Download, Square, Star, BellOff, Bell, Archive, Trash2,
     Info, Users, MessageSquare, ChevronRight, ChevronDown, Mail, Tag, Clock,
-    Eraser
+    Eraser, Image as ImageIcon
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -309,6 +309,7 @@ export default function InboxPage() {
     const audioChunksRef = useRef<Blob[]>([]);
     const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const imageInputRef = useRef<HTMLInputElement>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const messagesContainerRef = useRef<HTMLDivElement>(null);
 
@@ -1049,11 +1050,19 @@ export default function InboxPage() {
                                             accept="image/*,audio/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip,.rar"
                                             onChange={handleFileSelect}
                                         />
+                                        <input ref={imageInputRef} type="file" className="hidden"
+                                            accept="image/*"
+                                            onChange={handleFileSelect}
+                                        />
                                         <Button variant="ghost" size="icon" className="h-10 w-10"
-                                            onClick={() => fileInputRef.current?.click()} disabled={isUploading}>
+                                            onClick={() => fileInputRef.current?.click()} disabled={isUploading} title="Adjuntar archivo">
                                             {isUploading
                                                 ? <div className="h-5 w-5 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent" />
                                                 : <Paperclip className="h-5 w-5 text-muted-foreground" />}
+                                        </Button>
+                                        <Button variant="ghost" size="icon" className="h-10 w-10"
+                                            onClick={() => imageInputRef.current?.click()} disabled={isUploading} title="Enviar imagen">
+                                            <ImageIcon className="h-5 w-5 text-muted-foreground" />
                                         </Button>
                                         <div className="flex-1 bg-muted/30 rounded-xl border focus-within:ring-1 ring-primary p-2">
                                             <Input
