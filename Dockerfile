@@ -34,6 +34,10 @@ ENV HOSTNAME="0.0.0.0"
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
+# Start: Fix required for Prisma on Alpine
+RUN apk add --no-cache openssl
+# End: Fix required for Prisma on Alpine
+
 # Copy public assets
 COPY --from=builder /app/public ./public
 
@@ -44,6 +48,7 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 # Copy Prisma schema (needed at runtime for migrations)
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/prisma.config.ts ./
+COPY --from=builder /app/prisma.config.js ./
 # Copy generated Prisma client
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
