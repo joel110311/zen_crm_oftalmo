@@ -33,7 +33,12 @@ export async function sendWhatsAppMessage(to: string, text: string) {
         throw new Error("YCloud Phone Number ID is not configured. Please set it in Settings.");
     }
 
-    // Format phone number with + prefix
+    // Format phone number: YCloud requires digits only, usually without + for some regions,
+    // but the standard is E.164. Let's try sending just digits if it fails, or stick to standard.
+    // According to YCloud docs: "phone number in E.164 format".
+    // Example: +5219999999999
+
+    // Ensure we have the + prefix for E.164
     const formattedTo = to.startsWith("+") ? to : `+${to.replace(/\D/g, "")}`;
     const formattedFrom = phoneId.startsWith("+") ? phoneId : `+${phoneId.replace(/\D/g, "")}`;
 
@@ -44,9 +49,10 @@ export async function sendWhatsAppMessage(to: string, text: string) {
         text: {
             body: text,
         },
+        externalId: `msg_${Date.now()}_${Math.random().toString(36).substring(7)}` // Track message
     };
 
-    console.log("[YCloud] Sending message:", JSON.stringify(payload, null, 2));
+    console.log("[YCloud] Sending payload:", JSON.stringify(payload, null, 2));
 
     try {
         const response = await fetch(YCLOUD_API_URL, {
@@ -61,11 +67,11 @@ export async function sendWhatsAppMessage(to: string, text: string) {
         const data = await response.json();
 
         if (!response.ok) {
-            console.error("[YCloud] API Error:", data);
-            throw new Error(data.message || `YCloud API error: ${response.status}`);
+            console.error("[YCloud] API FATAL ERROR:", JSON.stringify(data, null, 2));
+            throw new Error(data.message || `YCloud error (${response.status}): ${JSON.stringify(data)}`);
         }
 
-        console.log("[YCloud] Message sent successfully:", data);
+        console.log("[YCloud] Success Response:", JSON.stringify(data, null, 2));
 
         return {
             success: true,
