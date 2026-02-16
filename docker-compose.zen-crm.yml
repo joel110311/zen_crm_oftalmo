@@ -18,6 +18,8 @@ services:
       - HOSTNAME=0.0.0.0
     networks:
       - SociosNet
+    volumes:
+      - zen_crm_uploads:/app/public/uploads
     depends_on:
       - zen-crm-db
     deploy:
@@ -57,6 +59,7 @@ services:
 
 volumes:
   zen_crm_db_data:
+  zen_crm_uploads:
 
 
 networks:
