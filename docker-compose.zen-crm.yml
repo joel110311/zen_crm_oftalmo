@@ -1,0 +1,31 @@
+version: '3.8'
+services:
+  # Zen CRM - Next.js Full Stack
+  zen-crm:
+    image: ghcr.io/joel110311/zen_crm:latest
+    environment:
+      # Connects to your existing shared PostgreSQL on SociosNet
+      # You must create the database first: CREATE DATABASE zencrm;
+      - DATABASE_URL=postgresql://postgres:950b719a13e682e057b42c7b11dd5516@postgres:5432/zencrm
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - YCLOUD_API_KEY=${YCLOUD_API_KEY:-}
+      - YCLOUD_WHATSAPP_PHONE_ID=${YCLOUD_WHATSAPP_PHONE_ID:-}
+      - META_VERIFY_TOKEN=${META_VERIFY_TOKEN:-}
+    networks:
+      - SociosNet
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+      labels:
+        - "traefik.enable=true"
+        # Both domains point to the same container
+        - "traefik.http.routers.zen-crm.rule=Host(`crm.logicapp.net`) || Host(`apicrm.logicapp.net`)"
+        - "traefik.http.routers.zen-crm.entrypoints=websecure"
+        - "traefik.http.routers.zen-crm.tls.certresolver=letsencryptresolver"
+        - "traefik.http.services.zen-crm.loadbalancer.server.port=3000"
+        - "traefik.docker.network=SociosNet"
+
+networks:
+  SociosNet:
+    external: true

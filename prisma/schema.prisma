@@ -1,0 +1,187 @@
+generator client {
+  provider = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  extensions = [vector]
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  password  String
+  role      Role     @default(USER)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  appointments Appointment[]
+}
+
+enum Role {
+  USER
+  ADMIN
+  AGENT
+}
+
+model Contact {
+  id          String   @id @default(cuid())
+  phone       String   @unique
+  name        String?
+  lastName    String?
+  email       String?
+  company     String?
+  role        String?
+  tags        String[]
+  status      String   @default("lead") // lead, qualified, customer
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  conversations Conversation[]
+  appointments  Appointment[]
+  deals         Deal[]
+}
+
+model Conversation {
+  id         String    @id @default(cuid())
+  contactId  String
+  contact    Contact   @relation(fields: [contactId], references: [id])
+  status     String    @default("active") // active, closed, archived
+  isMuted    Boolean   @default(false)
+  isFavorite Boolean   @default(false)
+  isGroup    Boolean   @default(false)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  
+  messages   Message[]
+}
+
+model Message {
+  id             String       @id @default(cuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
+  content        String
+  type           String       @default("text") // text, image, document, audio, video
+  direction      String       // inbound, outbound
+  status         String       @default("sent") // sent, delivered, read, failed
+  mediaUrl       String?      // URL to media file
+  mediaType      String?      // MIME type (image/jpeg, audio/ogg, etc.)
+  mediaFileName  String?      // Original filename for documents
+  createdAt      DateTime     @default(now())
+}
+
+model Appointment {
+  id        String   @id @default(cuid())
+  title     String
+  startTime DateTime
+  endTime   DateTime
+  status    String   @default("scheduled") // scheduled, completed, cancelled
+  notes     String?
+  
+  contactId String?
+  contact   Contact? @relation(fields: [contactId], references: [id])
+  
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Document {
+  id        String   @id @default(cuid())
+  title     String
+  content   String   // Text content for RAG
+  embedding Unsupported("vector(1536)")? // Using pgvector if available, otherwise handle in code
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Template {
+  id        String   @id @default(cuid())
+  name      String
+  content   String
+  category  String?
+  language  String   @default("es")
+  status    String   @default("approved")
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model PipelineStage {
+  id           String            @id @default(cuid())
+  name         String
+  color        String            @default("#64748B")
+  order        Int
+  isIncoming   Boolean           @default(false)
+  isClosedWon  Boolean           @default(false)
+  isClosedLost Boolean           @default(false)
+  deals        Deal[]
+  automations  StageAutomation[]
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+}
+
+model Deal {
+  id         String        @id @default(cuid())
+  title      String
+  value      Float         @default(0)
+  stageId    String
+  stage      PipelineStage @relation(fields: [stageId], references: [id])
+  source     String        @default("whatsapp") // whatsapp, manual, web
+  notes      String?
+  priority   String        @default("medium") // low, medium, high
+  contactId  String?
+  contact    Contact?      @relation(fields: [contactId], references: [id])
+  assignedTo String?
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+  dealTags   DealTag[]
+}
+
+model Tag {
+  id          String            @id @default(cuid())
+  name        String            @unique
+  color       String            @default("#64748B")
+  createdAt   DateTime          @default(now())
+  dealTags    DealTag[]
+  automations StageAutomation[]
+}
+
+model StageAutomation {
+  id        String        @id @default(cuid())
+  stageId   String
+  stage     PipelineStage @relation(fields: [stageId], references: [id], onDelete: Cascade)
+  trigger   String        @default("on_enter")
+  action    String        // "add_tag" | "remove_tag"
+  tagId     String
+  tag       Tag           @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  applyAll  Boolean       @default(false)
+  createdAt DateTime      @default(now())
+}
+
+model DealTag {
+  id     String @id @default(cuid())
+  dealId String
+  deal   Deal   @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  tagId  String
+  tag    Tag    @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  
+  @@unique([dealId, tagId])
+}
+
+model SystemSettings {
+  id              String   @id @default(cuid())
+  openaiApiKey    String?
+  geminiApiKey    String?
+  ycloudApiKey    String?
+  ycloudPhoneId   String?
+  isBotEnabled    Boolean  @default(false)
+  n8nWebhookUrl   String?
+  updatedAt       DateTime @updatedAt
+}
+
