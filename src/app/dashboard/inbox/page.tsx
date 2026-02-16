@@ -421,6 +421,7 @@ export default function InboxPage() {
                     isFavorite: conv.isFavorite || false,
                     isGroup: conv.isGroup || false,
                     lastMessageType: conv.lastMessageType || "text",
+                    sessionExpiresAt: conv.sessionExpiresAt,
                 }));
                 setConversations(transformed);
 
