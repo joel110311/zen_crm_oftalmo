@@ -86,8 +86,12 @@ async function uploadToCatbox(filePath: string): Promise<string | null> {
 // For audio: converts to OGG/Opus + uploads to catbox
 // For other media: uploads directly to catbox
 async function resolveMediaUrl(mediaUrl: string, mediaType?: string): Promise<string | null> {
-    // If already a full external URL (not localhost), return as-is
-    if (mediaUrl.startsWith("https://") && !mediaUrl.includes("localhost")) {
+    // If already a full external URL (not localhost or our own domain), return as-is
+    // We treat crm.logicapp.net as "local" because Docker networking might prevent YCloud from determining it,
+    // or static files might not be served correctly by Next.js standalone.
+    // By falling through, we upload the local file to Catbox to guarantee a public URL.
+    const isLocal = mediaUrl.includes("localhost") || mediaUrl.includes("crm.logicapp.net");
+    if (mediaUrl.startsWith("https://") && !isLocal) {
         logMsg(`[RESOLVE] Already external URL: ${mediaUrl}`);
         return mediaUrl;
     }
