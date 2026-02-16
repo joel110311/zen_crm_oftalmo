@@ -1,6 +1,10 @@
 import { Sidebar } from "@/components/layout/sidebar";
 import { Header } from "@/components/layout/header";
 
+// Force all dashboard pages to be server-rendered at request time (not during build)
+// This is required for Docker builds where no database is available
+export const dynamic = 'force-dynamic';
+
 export default function DashboardLayout({
     children,
 }: {
