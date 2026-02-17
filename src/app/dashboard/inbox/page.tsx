@@ -359,7 +359,7 @@ export default function InboxPage() {
     const [inputText, setInputText] = useState("");
     const [isUploading, setIsUploading] = useState(false);
     const [pendingFile, setPendingFile] = useState<{
-        url: string; fileName: string; mimeType: string; mediaCategory: string;
+        url: string; fileName: string; mimeType: string; mediaCategory: string; previewUrl?: string;
     } | null>(null);
     const [showContactInfo, setShowContactInfo] = useState(false);
     const [activeTab, setActiveTab] = useState<"all" | "favorites" | "groups">("all");
@@ -741,7 +741,7 @@ export default function InboxPage() {
             const response = await fetch("/api/upload", { method: "POST", body: formData });
             const result = await response.json();
             if (result.success) {
-                if (result.mediaCategory === "image") setPendingFile(result);
+                if (result.mediaCategory === "image") setPendingFile({ ...result, previewUrl: URL.createObjectURL(file) });
                 else await sendMediaMessage(result.url, result.mediaCategory, result.fileName, result.mimeType);
             }
         } catch (error) {
@@ -1077,7 +1077,7 @@ export default function InboxPage() {
                                 <div className="px-4 pt-3 border-t bg-card">
                                     <div className="flex items-center gap-3 p-2 rounded-lg bg-muted/50 max-w-3xl mx-auto">
                                         {pendingFile.mediaCategory === "image" ? (
-                                            <img src={pendingFile.url} alt="Preview" className="h-16 w-16 object-cover rounded-md" />
+                                            <img src={pendingFile.previewUrl || pendingFile.url} alt="Preview" className="h-16 w-16 object-cover rounded-md" />
                                         ) : (
                                             <div className="h-16 w-16 flex items-center justify-center bg-primary/10 rounded-md">
                                                 <FileText className="h-8 w-8 text-primary" />
