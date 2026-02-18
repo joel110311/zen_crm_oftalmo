@@ -199,8 +199,6 @@ export async function POST(request: NextRequest) {
             try {
                 let result;
 
-                let finalMediaUrl = mediaUrl;
-
                 if (type === "text") {
                     console.log("[API] Sending text via YCloud to:", conversation.contact.phone);
                     result = await sendWhatsAppMessage(conversation.contact.phone, content);
@@ -212,7 +210,6 @@ export async function POST(request: NextRequest) {
                         throw new Error("Unable to resolve public media URL (ngrok not running?)");
                     }
 
-                    finalMediaUrl = publicMediaUrl;
                     console.log("[API] Sending", type, "via YCloud. Public URL:", publicMediaUrl);
 
                     result = await sendWhatsAppMedia(
@@ -230,10 +227,7 @@ export async function POST(request: NextRequest) {
 
                 await prisma.message.update({
                     where: { id: message.id },
-                    data: {
-                        status: result.success ? "sent" : "failed",
-                        mediaUrl: (result.success && finalMediaUrl !== mediaUrl) ? finalMediaUrl : undefined
-                    },
+                    data: { status: result.success ? "sent" : "failed" },
                 });
             } catch (whatsappError: any) {
                 console.error("[API] WhatsApp send error:", whatsappError);
