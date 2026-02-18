@@ -13,6 +13,10 @@ services:
       - YCLOUD_WHATSAPP_PHONE_ID=+524771075025
       - META_VERIFY_TOKEN=crmb51166591c6645c
 
+      # Authentication
+      - AUTH_SECRET=zencrm_secret_key_prod_2026_950b719a
+      - AUTH_URL=https://crm.logicapp.net
+
       # Next.js & Host Settings
       - PORT=3000
       - HOSTNAME=0.0.0.0
