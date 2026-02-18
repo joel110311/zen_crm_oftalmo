@@ -25,11 +25,9 @@ export function PipelineColumn({ stage, deals, onDealClick }: PipelineColumnProp
     return (
         <div
             ref={setNodeRef}
-            className={`flex flex-col h-full transition-all duration-200 rounded-xl border ${isOver ? "border-dashed ring-2 ring-primary/20 bg-accent/50" : "border-border bg-card/50"
+            className={`flex flex-col h-full transition-all duration-200 rounded-xl border w-[260px] min-w-[260px] md:w-[280px] md:min-w-[280px] 2xl:w-[320px] 2xl:min-w-[320px] ${isOver ? "border-dashed ring-2 ring-primary/20 bg-accent/50" : "border-border bg-card/50"
                 }`}
             style={{
-                width: "300px",
-                minWidth: "300px",
                 borderColor: isOver ? stage.color : undefined,
             }}
         >

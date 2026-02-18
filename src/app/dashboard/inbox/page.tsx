@@ -848,7 +848,7 @@ export default function InboxPage() {
 
             <div className="flex h-[calc(100vh-8rem)] bg-card border rounded-lg overflow-hidden shadow-sm">
                 {/* ──── Sidebar ──── */}
-                <div className="w-80 border-r flex flex-col bg-muted/10">
+                <div className={cn("w-full md:w-80 2xl:w-96 border-r flex flex-col bg-muted/10", selectedChat ? "hidden md:flex" : "flex")}>
                     <div className="p-4 border-b space-y-3">
                         <div className="flex items-center justify-between">
                             <h2 className="font-semibold text-lg">Chats</h2>
@@ -945,11 +945,15 @@ export default function InboxPage() {
                 </div>
 
                 {/* ──── Main Chat ──── */}
-                <div className="flex-1 flex flex-col bg-background">
+                <div className={cn("flex-1 flex flex-col bg-background", selectedChat ? "flex" : "hidden md:flex")}>
                     {selectedChat ? (
                         <>
                             {/* Header */}
-                            <div className="h-16 border-b flex items-center justify-between px-6 bg-card">
+                            <div className="h-16 border-b flex items-center justify-between px-3 md:px-6 bg-card">
+                                {/* Back button on mobile */}
+                                <button className="md:hidden mr-1 p-1.5 rounded-md hover:bg-muted flex-shrink-0" onClick={() => setSelectedChat(null)}>
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6" /></svg>
+                                </button>
                                 <button className="flex items-center gap-3 hover:opacity-80 transition" onClick={() => setShowContactInfo(true)}>
                                     <Avatar className="h-9 w-9">
                                         <AvatarFallback>{selectedChat.contact?.name?.charAt(0) || "?"}</AvatarFallback>
@@ -1032,7 +1036,7 @@ export default function InboxPage() {
                                             <div
                                                 key={msg.id}
                                                 className={cn(
-                                                    "flex gap-2 max-w-[80%]",
+                                                    "flex gap-2 max-w-[85%] sm:max-w-[80%] 2xl:max-w-[70%]",
                                                     msg.direction === "outbound" ? "self-end flex-row-reverse" : "self-start"
                                                 )}
                                             >

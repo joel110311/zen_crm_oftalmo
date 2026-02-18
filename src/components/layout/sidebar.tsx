@@ -82,10 +82,10 @@ export function Sidebar({ className }: SidebarProps) {
                 </Sheet>
             </div>
 
-            <div className={cn("hidden border-r bg-card md:block w-64 flex-col", className)}>
-                <div className="flex h-16 items-center px-6 border-b">
-                    <Link href="/dashboard" className="flex items-center gap-3 font-bold text-xl text-primary">
-                        <ZenLogo className="h-12 w-12" />
+            <div className={cn("hidden border-r bg-card md:block w-64 2xl:w-72 flex-col", className)}>
+                <div className="flex h-16 items-center px-4 2xl:px-6 border-b">
+                    <Link href="/dashboard" className="flex items-center gap-2.5 font-bold text-lg 2xl:text-xl text-primary">
+                        <ZenLogo className="h-10 w-10 2xl:h-12 2xl:w-12" />
                         <span>Zen CRM</span>
                     </Link>
                 </div>

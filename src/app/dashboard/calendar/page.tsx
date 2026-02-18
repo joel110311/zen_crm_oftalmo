@@ -112,11 +112,11 @@ export default function CalendarPage() {
 
     return (
 
-        <div className="flex flex-col h-[calc(100vh-1rem)] gap-2 p-2 bg-background">
+        <div className="flex flex-col h-[calc(100vh-1rem)] gap-2 p-1 md:p-2 bg-background">
             {/* Header */}
             <div className="flex items-center justify-between shrink-0">
                 <div>
-                    <h1 className="text-3xl font-bold tracking-tight text-foreground">Gestión de Citas</h1>
+                    <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">Gestión de Citas</h1>
                     <p className="text-muted-foreground text-sm">Gestiona las citas agendadas con tus clientes.</p>
                 </div>
                 <Button onClick={handleNew} size="sm" className="shadow-sm">

@@ -47,20 +47,20 @@ export function ContactsTable({ contacts }: ContactsPageProps) {
     return (
         <div className="flex flex-col h-full bg-card rounded-lg border border-border shadow-sm">
             {/* Header / Toolbar */}
-            <div className="flex items-center justify-between p-4 border-b border-border">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 border-b border-border gap-3">
                 <div className="flex items-center gap-2">
                     <h1 className="text-xl font-bold text-foreground">Contactos</h1>
                     <span className="bg-muted text-muted-foreground px-2 py-0.5 rounded-full text-xs font-medium">
                         {contacts.length}
                     </span>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
                     {/* Search */}
                     <div className="relative">
                         <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                         <Input
                             placeholder="Buscar..."
-                            className="pl-9 h-9 w-[250px] bg-background border-input focus:bg-background transition-colors"
+                            className="pl-9 h-9 w-full sm:w-[250px] bg-background border-input focus:bg-background transition-colors"
                             defaultValue={searchParams.get("query")?.toString()}
                             onChange={(e) => handleSearch(e.target.value)}
                         />
@@ -83,10 +83,10 @@ export function ContactsTable({ contacts }: ContactsPageProps) {
                                 <Checkbox />
                             </TableHead>
                             <TableHead className="text-muted-foreground">Nombre</TableHead>
-                            <TableHead className="text-muted-foreground">Compañía</TableHead>
+                            <TableHead className="text-muted-foreground hidden md:table-cell">Compañía</TableHead>
                             <TableHead className="text-muted-foreground">Teléfono</TableHead>
-                            <TableHead className="text-muted-foreground">Email</TableHead>
-                            <TableHead className="text-muted-foreground">Etiquetas</TableHead>
+                            <TableHead className="text-muted-foreground hidden lg:table-cell">Email</TableHead>
+                            <TableHead className="text-muted-foreground hidden lg:table-cell">Etiquetas</TableHead>
                             <TableHead className="text-right text-muted-foreground">Creado</TableHead>
                             <TableHead className="w-[50px]"></TableHead>
                         </TableRow>
@@ -118,16 +118,16 @@ export function ContactsTable({ contacts }: ContactsPageProps) {
                                             </div>
                                         </Link>
                                     </TableCell>
-                                    <TableCell className="text-muted-foreground">
+                                    <TableCell className="text-muted-foreground hidden md:table-cell">
                                         {contact.company || "-"}
                                     </TableCell>
                                     <TableCell className="text-muted-foreground font-mono text-xs">
                                         {contact.phone}
                                     </TableCell>
-                                    <TableCell className="text-muted-foreground text-sm">
+                                    <TableCell className="text-muted-foreground text-sm hidden lg:table-cell">
                                         {contact.email || "-"}
                                     </TableCell>
-                                    <TableCell>
+                                    <TableCell className="hidden lg:table-cell">
                                         <ContactTableTags contactId={contact.id} tags={contact.tags || []} />
                                     </TableCell>
                                     <TableCell className="text-right text-muted-foreground text-xs whitespace-nowrap">

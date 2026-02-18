@@ -17,7 +17,7 @@ import { SearchCommand } from "@/components/header/search-command";
 
 export function Header() {
     return (
-        <header className="flex h-16 items-center gap-4 border-b bg-card px-6 sticky top-0 z-10">
+        <header className="flex h-16 items-center gap-4 border-b bg-card px-4 md:px-6 2xl:px-8 sticky top-0 z-10">
             <div className="flex flex-1 items-center gap-4">
                 <div className="ml-auto flex-1 sm:flex-initial hidden md:block">
                     <SearchCommand />

@@ -87,9 +87,9 @@ export default function SettingsPage() {
     };
 
     return (
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-6 max-w-5xl">
             <div>
-                <h1 className="text-3xl font-bold tracking-tight">Configuración</h1>
+                <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Configuración</h1>
                 <p className="text-muted-foreground">Administra tus claves de API, integraciones y apariencia.</p>
             </div>
 

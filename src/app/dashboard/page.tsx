@@ -63,7 +63,7 @@ export default async function DashboardPage() {
     return (
         <div className="flex flex-col gap-6">
             <div>
-                <h1 className="text-3xl font-bold tracking-tight text-foreground">
+                <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">
                     Dashboard
                 </h1>
                 <p className="text-sm mt-1 text-muted-foreground">
@@ -72,7 +72,7 @@ export default async function DashboardPage() {
             </div>
 
             {/* KPI Cards */}
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
                 <Card className="border-border bg-card">
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium text-muted-foreground">Contactos totales</CardTitle>
@@ -120,9 +120,9 @@ export default async function DashboardPage() {
             </div>
 
             {/* Pipeline breakdown + Recent Activity */}
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
+            <div className="grid gap-4 grid-cols-1 lg:grid-cols-7">
                 {/* Pipeline stages breakdown */}
-                <Card className="col-span-4 border-border bg-card">
+                <Card className="lg:col-span-4 border-border bg-card">
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2 text-foreground">
                             <KanbanSquare className="h-4 w-4 text-primary" />
@@ -167,7 +167,7 @@ export default async function DashboardPage() {
                 </Card>
 
                 {/* Recent deals + upcoming appointments */}
-                <Card className="col-span-3 border-border bg-card">
+                <Card className="lg:col-span-3 border-border bg-card">
                     <CardHeader>
                         <CardTitle className="text-foreground">Actividad reciente</CardTitle>
                     </CardHeader>

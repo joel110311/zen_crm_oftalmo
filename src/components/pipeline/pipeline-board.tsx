@@ -250,7 +250,7 @@ export function PipelineBoard({ initialStages, initialDeals }: PipelineBoardProp
         <div className="flex flex-col h-[calc(100vh-8rem)] gap-4">
             <div className="flex items-center justify-between">
                 <div>
-                    <h1 className="text-3xl font-bold tracking-tight text-foreground">
+                    <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">
                         Pipeline
                     </h1>
                     <p className="text-sm mt-1 text-muted-foreground">
