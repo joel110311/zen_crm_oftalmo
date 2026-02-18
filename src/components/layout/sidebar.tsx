@@ -15,11 +15,15 @@ import {
     BrainCircuit,
     LogOut,
     Menu,
-    FileText
+    FileText,
+    Shield,
+    ShieldCheck
 } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useState } from "react";
 import { ZenLogo } from "@/components/icons/zen-logo";
+import { useSession, signOut } from "next-auth/react";
+import { Badge } from "@/components/ui/badge";
 
 const sidebarNavItems = [
     {
@@ -51,8 +55,8 @@ const sidebarNavItems = [
         title: "Cerebro IA",
         href: "/dashboard/brain",
         icon: BrainCircuit,
+        superadminOnly: true,
     },
-
     {
         title: "Configuración",
         href: "/dashboard/settings",
@@ -65,6 +69,14 @@ interface SidebarProps extends React.HTMLAttributes<HTMLDivElement> { }
 export function Sidebar({ className }: SidebarProps) {
     const pathname = usePathname();
     const [open, setOpen] = useState(false);
+    const { data: session } = useSession();
+    const userRole = (session?.user as any)?.role;
+    const userName = session?.user?.name || "Usuario";
+
+    const filteredNavItems = sidebarNavItems.filter((item) => {
+        if (item.superadminOnly && userRole !== "SUPERADMIN") return false;
+        return true;
+    });
 
     return (
         <>
@@ -91,7 +103,7 @@ export function Sidebar({ className }: SidebarProps) {
                 </div>
                 <ScrollArea className="flex-1 py-4">
                     <nav className="grid gap-1 px-2">
-                        {sidebarNavItems.map((item, index) => {
+                        {filteredNavItems.map((item, index) => {
                             const Icon = item.icon;
                             return (
                                 <Link
@@ -112,10 +124,25 @@ export function Sidebar({ className }: SidebarProps) {
                         })}
                     </nav>
                 </ScrollArea>
-                <div className="p-4 border-t">
-                    <Button variant="outline" className="w-full justify-start text-muted-foreground hover:text-destructive" onClick={() => console.log("Logout")}>
+                <div className="p-4 border-t space-y-3">
+                    <div className="flex items-center gap-2 px-2">
+                        <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary text-xs font-bold">
+                            {userName.charAt(0).toUpperCase()}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium truncate">{userName}</p>
+                            <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                                {userRole === "SUPERADMIN" ? (
+                                    <><ShieldCheck className="h-2.5 w-2.5 mr-0.5" /> Super Admin</>
+                                ) : (
+                                    <><Shield className="h-2.5 w-2.5 mr-0.5" /> Admin</>
+                                )}
+                            </Badge>
+                        </div>
+                    </div>
+                    <Button variant="outline" className="w-full justify-start text-muted-foreground hover:text-destructive" onClick={() => signOut({ callbackUrl: "/login" })}>
                         <LogOut className="mr-3 h-4 w-4" />
-                        Log out
+                        Cerrar Sesión
                     </Button>
                 </div>
             </div>
@@ -124,6 +151,14 @@ export function Sidebar({ className }: SidebarProps) {
 }
 
 function MobileSidebarContent({ pathname, setOpen }: { pathname: string, setOpen: (open: boolean) => void }) {
+    const { data: session } = useSession();
+    const userRole = (session?.user as any)?.role;
+
+    const filteredNavItems = sidebarNavItems.filter((item) => {
+        if (item.superadminOnly && userRole !== "SUPERADMIN") return false;
+        return true;
+    });
+
     return (
         <div className="flex flex-col h-full">
             <div className="flex h-16 items-center px-6 border-b">
@@ -134,7 +169,7 @@ function MobileSidebarContent({ pathname, setOpen }: { pathname: string, setOpen
             </div>
             <ScrollArea className="flex-1 py-4">
                 <nav className="grid gap-1 px-2">
-                    {sidebarNavItems.map((item, index) => {
+                    {filteredNavItems.map((item, index) => {
                         const Icon = item.icon;
                         return (
                             <Link
@@ -157,9 +192,9 @@ function MobileSidebarContent({ pathname, setOpen }: { pathname: string, setOpen
                 </nav>
             </ScrollArea>
             <div className="p-4 border-t">
-                <Button variant="outline" className="w-full justify-start text-muted-foreground hover:text-destructive" onClick={() => console.log("Logout")}>
+                <Button variant="outline" className="w-full justify-start text-muted-foreground hover:text-destructive" onClick={() => signOut({ callbackUrl: "/login" })}>
                     <LogOut className="mr-3 h-4 w-4" />
-                    Log out
+                    Cerrar Sesión
                 </Button>
             </div>
         </div>

@@ -1,6 +1,7 @@
 // API endpoint to seed the database with initial data
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import bcrypt from "bcryptjs";
 
 export async function GET() {
     try {
@@ -20,6 +21,34 @@ export async function GET() {
             },
         });
         console.log("[Seed] Created settings:", settings.id);
+
+        // Seed default users
+        const superadminPassword = await bcrypt.hash("super123", 12);
+        const adminPassword = await bcrypt.hash("admin123", 12);
+
+        const superadmin = await prisma.user.upsert({
+            where: { email: "superadmin@zencrm.com" },
+            update: { password: superadminPassword },
+            create: {
+                email: "superadmin@zencrm.com",
+                name: "Super Admin",
+                password: superadminPassword,
+                role: "SUPERADMIN",
+            },
+        });
+        console.log("[Seed] Created superadmin:", superadmin.email);
+
+        const admin = await prisma.user.upsert({
+            where: { email: "admin@zencrm.com" },
+            update: { password: adminPassword },
+            create: {
+                email: "admin@zencrm.com",
+                name: "Administrador",
+                password: adminPassword,
+                role: "ADMIN",
+            },
+        });
+        console.log("[Seed] Created admin:", admin.email);
 
         // Create a test contact (Joel Venegas)
         const contact = await prisma.contact.upsert({
@@ -62,6 +91,8 @@ export async function GET() {
             message: "Database seeded successfully!",
             data: {
                 settings: settings.id,
+                superadmin: superadmin.email,
+                admin: admin.email,
                 contact: contact.name,
                 conversation: conversation.id,
                 message: message.id,

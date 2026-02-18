@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -26,6 +27,9 @@ export default function SettingsPage() {
     const [ycloudPhoneId, setYcloudPhoneId] = useState("");
     const [isSaving, setIsSaving] = useState(false);
     const { toast } = useToast();
+    const { data: session } = useSession();
+    const userRole = (session?.user as any)?.role;
+    const isSuperadmin = userRole === "SUPERADMIN";
 
     // Chat notification preferences
     const [notifPrefs, setNotifPrefs] = useState<NotificationPrefs>({
@@ -99,8 +103,12 @@ export default function SettingsPage() {
                         <Palette className="h-3.5 w-3.5" />
                         Diseño
                     </TabsTrigger>
-                    <TabsTrigger value="ai">Inteligencia Artificial</TabsTrigger>
-                    <TabsTrigger value="whatsapp">WhatsApp (YCloud)</TabsTrigger>
+                    {isSuperadmin && (
+                        <TabsTrigger value="ai">Inteligencia Artificial</TabsTrigger>
+                    )}
+                    {isSuperadmin && (
+                        <TabsTrigger value="whatsapp">WhatsApp (YCloud)</TabsTrigger>
+                    )}
                     <TabsTrigger value="chats" className="flex items-center gap-1.5">
                         <MessageSquare className="h-3.5 w-3.5" />
                         Chats
@@ -130,87 +138,91 @@ export default function SettingsPage() {
                     </div>
                 </TabsContent>
 
-                <TabsContent value="ai">
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>Inteligencia Artificial</CardTitle>
-                            <CardDescription>Configura los proveedores de LLM para "El Cerebro".</CardDescription>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
-                            <div className="space-y-2">
-                                <Label htmlFor="openai">OpenAI API Key</Label>
-                                <Input
-                                    id="openai"
-                                    type="password"
-                                    placeholder="sk-..."
-                                    value={openaiKey}
-                                    onChange={(e) => setOpenaiKey(e.target.value)}
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="gemini">Gemini API Key</Label>
-                                <Input
-                                    id="gemini"
-                                    type="password"
-                                    placeholder="AIza..."
-                                    value={geminiKey}
-                                    onChange={(e) => setGeminiKey(e.target.value)}
-                                />
-                            </div>
-                        </CardContent>
-                        <CardFooter>
-                            <Button onClick={handleSave} disabled={isSaving}>
-                                {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                Guardar Cambios
-                            </Button>
-                        </CardFooter>
-                    </Card>
-                </TabsContent>
+                {isSuperadmin && (
+                    <TabsContent value="ai">
+                        <Card>
+                            <CardHeader>
+                                <CardTitle>Inteligencia Artificial</CardTitle>
+                                <CardDescription>Configura los proveedores de LLM para "El Cerebro".</CardDescription>
+                            </CardHeader>
+                            <CardContent className="space-y-4">
+                                <div className="space-y-2">
+                                    <Label htmlFor="openai">OpenAI API Key</Label>
+                                    <Input
+                                        id="openai"
+                                        type="password"
+                                        placeholder="sk-..."
+                                        value={openaiKey}
+                                        onChange={(e) => setOpenaiKey(e.target.value)}
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="gemini">Gemini API Key</Label>
+                                    <Input
+                                        id="gemini"
+                                        type="password"
+                                        placeholder="AIza..."
+                                        value={geminiKey}
+                                        onChange={(e) => setGeminiKey(e.target.value)}
+                                    />
+                                </div>
+                            </CardContent>
+                            <CardFooter>
+                                <Button onClick={handleSave} disabled={isSaving}>
+                                    {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                    Guardar Cambios
+                                </Button>
+                            </CardFooter>
+                        </Card>
+                    </TabsContent>
+                )}
 
-                <TabsContent value="whatsapp">
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>WhatsApp via YCloud</CardTitle>
-                            <CardDescription>Conecta tu cuenta de YCloud para enviar y recibir mensajes de WhatsApp.</CardDescription>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
-                            <div className="space-y-2">
-                                <Label htmlFor="ycloudKey">YCloud API Key</Label>
-                                <Input
-                                    id="ycloudKey"
-                                    type="password"
-                                    placeholder="Tu API Key de YCloud..."
-                                    value={ycloudApiKey}
-                                    onChange={(e) => setYcloudApiKey(e.target.value)}
-                                />
+                {isSuperadmin && (
+                    <TabsContent value="whatsapp">
+                        <Card>
+                            <CardHeader>
+                                <CardTitle>WhatsApp via YCloud</CardTitle>
+                                <CardDescription>Conecta tu cuenta de YCloud para enviar y recibir mensajes de WhatsApp.</CardDescription>
+                            </CardHeader>
+                            <CardContent className="space-y-4">
+                                <div className="space-y-2">
+                                    <Label htmlFor="ycloudKey">YCloud API Key</Label>
+                                    <Input
+                                        id="ycloudKey"
+                                        type="password"
+                                        placeholder="Tu API Key de YCloud..."
+                                        value={ycloudApiKey}
+                                        onChange={(e) => setYcloudApiKey(e.target.value)}
+                                    />
+                                    <p className="text-xs text-muted-foreground">
+                                        Obtén tu API Key en el dashboard de YCloud → Developer → API Keys
+                                    </p>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="ycloudPhone">YCloud Phone Number ID</Label>
+                                    <Input
+                                        id="ycloudPhone"
+                                        placeholder="El ID de tu número de WhatsApp..."
+                                        value={ycloudPhoneId}
+                                        onChange={(e) => setYcloudPhoneId(e.target.value)}
+                                    />
+                                    <p className="text-xs text-muted-foreground">
+                                        Se encuentra en YCloud Dashboard → WhatsApp → Phone Numbers
+                                    </p>
+                                </div>
+                            </CardContent>
+                            <CardFooter className="flex flex-col items-start gap-4">
+                                <Button onClick={handleSave} disabled={isSaving}>
+                                    {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                    Guardar Cambios
+                                </Button>
                                 <p className="text-xs text-muted-foreground">
-                                    Obtén tu API Key en el dashboard de YCloud → Developer → API Keys
+                                    Recuerda configurar el Webhook URL en YCloud apuntando a: <code className="bg-muted px-1 py-0.5 rounded">/api/webhook</code>
                                 </p>
-                            </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="ycloudPhone">YCloud Phone Number ID</Label>
-                                <Input
-                                    id="ycloudPhone"
-                                    placeholder="El ID de tu número de WhatsApp..."
-                                    value={ycloudPhoneId}
-                                    onChange={(e) => setYcloudPhoneId(e.target.value)}
-                                />
-                                <p className="text-xs text-muted-foreground">
-                                    Se encuentra en YCloud Dashboard → WhatsApp → Phone Numbers
-                                </p>
-                            </div>
-                        </CardContent>
-                        <CardFooter className="flex flex-col items-start gap-4">
-                            <Button onClick={handleSave} disabled={isSaving}>
-                                {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                Guardar Cambios
-                            </Button>
-                            <p className="text-xs text-muted-foreground">
-                                Recuerda configurar el Webhook URL en YCloud apuntando a: <code className="bg-muted px-1 py-0.5 rounded">/api/webhook</code>
-                            </p>
-                        </CardFooter>
-                    </Card>
-                </TabsContent>
+                            </CardFooter>
+                        </Card>
+                    </TabsContent>
+                )}
 
                 <TabsContent value="chats">
                     <Card>
