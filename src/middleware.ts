@@ -1,7 +1,8 @@
-import { auth } from "@/lib/auth";
+import { getToken } from "next-auth/jwt";
 import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
 
-export default auth((req) => {
+export async function middleware(req: NextRequest) {
     const { pathname } = req.nextUrl;
 
     // Public paths that don't require authentication
@@ -12,32 +13,26 @@ export default auth((req) => {
         return NextResponse.next();
     }
 
+    // getToken is edge-compatible (no Prisma needed)
+    const token = await getToken({ req, secret: process.env.AUTH_SECRET });
+
     // If not authenticated, redirect to login
-    if (!req.auth) {
+    if (!token) {
         const loginUrl = new URL("/login", req.url);
         loginUrl.searchParams.set("callbackUrl", pathname);
         return NextResponse.redirect(loginUrl);
     }
 
-    const userRole = (req.auth.user as any)?.role;
-
     // ADMIN users cannot access /dashboard/brain
-    if (userRole === "ADMIN" && pathname.startsWith("/dashboard/brain")) {
+    if (token.role === "ADMIN" && pathname.startsWith("/dashboard/brain")) {
         return NextResponse.redirect(new URL("/dashboard", req.url));
     }
 
     return NextResponse.next();
-});
+}
 
 export const config = {
     matcher: [
-        /*
-         * Match all request paths except:
-         * - _next/static (static files)
-         * - _next/image (image optimization)
-         * - favicon.ico
-         * - public files (images, etc.)
-         */
-        "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+        "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|mp3|wav|ogg)$).*)",
     ],
 };
