@@ -384,6 +384,11 @@ export default function InboxPage() {
     const prevMessagesLenRef = useRef(0);
     const isFirstLoadRef = useRef(true);
 
+    // Unread message count tracking (per conversation)
+    const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
+    const isFirstFetchRef = useRef(true);
+    const prevConvTimestampsRef = useRef<Record<string, string>>({});
+
     // Ref to keep the selected chat ID accessible inside polling closures
     const selectedChatIdRef = useRef<string | null>(null);
     useEffect(() => {
@@ -425,13 +430,46 @@ export default function InboxPage() {
                 }));
                 setConversations(transformed);
 
-                // Use the ref to read the CURRENT selected chat id (avoids stale closure)
                 const currentId = selectedChatIdRef.current;
+
+                // Track unread counts: compare updatedAt timestamps
+                if (!isFirstFetchRef.current) {
+                    const prevTimestamps = prevConvTimestampsRef.current;
+                    setUnreadCounts(prev => {
+                        const next = { ...prev };
+                        for (const conv of transformed) {
+                            // Skip the currently selected chat (user is viewing it)
+                            if (conv.id === currentId) continue;
+                            const prevTime = prevTimestamps[conv.id];
+                            const newTime = new Date(conv.updatedAt).toISOString();
+                            if (prevTime && newTime !== prevTime) {
+                                // Conversation has new activity
+                                next[conv.id] = (next[conv.id] || 0) + 1;
+                            }
+                        }
+                        return next;
+                    });
+                }
+
+                // Save current timestamps for next comparison
+                const timestamps: Record<string, string> = {};
+                for (const conv of transformed) {
+                    timestamps[conv.id] = new Date(conv.updatedAt).toISOString();
+                }
+                prevConvTimestampsRef.current = timestamps;
+
+                // Only auto-select a chat on the VERY FIRST load
+                if (isFirstFetchRef.current) {
+                    isFirstFetchRef.current = false;
+                    if (!currentId && transformed.length > 0) {
+                        setSelectedChat(transformed[0]);
+                    }
+                }
+
+                // Update selected chat data (keep same chat, just refresh its data)
                 if (currentId) {
                     const updated = transformed.find(c => c.id === currentId);
                     if (updated) setSelectedChat(updated);
-                } else if (transformed.length > 0) {
-                    setSelectedChat(transformed[0]);
                 }
             } catch (error) {
                 console.error("Failed to fetch conversations:", error);
@@ -905,7 +943,16 @@ export default function InboxPage() {
                             {filteredConversations.map((chat) => (
                                 <button
                                     key={chat.id}
-                                    onClick={() => { setSelectedChat(chat); setShowContactInfo(false); }}
+                                    onClick={() => {
+                                        setSelectedChat(chat);
+                                        setShowContactInfo(false);
+                                        // Clear unread count for this chat
+                                        setUnreadCounts(prev => {
+                                            const next = { ...prev };
+                                            delete next[chat.id];
+                                            return next;
+                                        });
+                                    }}
                                     className={cn(
                                         "flex items-center gap-3 p-4 text-left hover:bg-accent/50 transition-colors",
                                         selectedChat?.id === chat.id && "bg-accent"
@@ -927,9 +974,16 @@ export default function InboxPage() {
                                                 {chat.contact?.name || "Desconocido"}
                                                 {chat.isMuted && <BellOff className="h-3 w-3 text-muted-foreground" />}
                                             </span>
-                                            <span className="text-xs text-muted-foreground whitespace-nowrap ml-2">
-                                                {new Date(chat.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                            </span>
+                                            <div className="flex flex-col items-end gap-1 ml-2">
+                                                <span className="text-xs text-muted-foreground whitespace-nowrap">
+                                                    {new Date(chat.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                </span>
+                                                {unreadCounts[chat.id] > 0 && (
+                                                    <span className="flex items-center justify-center min-w-[20px] h-5 rounded-full bg-green-500 text-white text-[11px] font-bold px-1.5">
+                                                        {unreadCounts[chat.id]}
+                                                    </span>
+                                                )}
+                                            </div>
                                         </div>
                                         {chat.contact?.phone && (
                                             <p className="text-[11px] text-muted-foreground/80 truncate">{formatPhone(chat.contact.phone)}</p>
