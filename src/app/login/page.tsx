@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useActionState, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -9,23 +9,8 @@ import { Loader2, Eye, EyeOff } from "lucide-react";
 import { loginAction } from "./actions";
 
 export default function LoginPage() {
+    const [errorMessage, formAction, isPending] = useActionState(loginAction, undefined);
     const [showPassword, setShowPassword] = useState(false);
-    const [error, setError] = useState("");
-    const [isPending, startTransition] = useTransition();
-
-    const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-        e.preventDefault();
-        setError("");
-
-        const formData = new FormData(e.currentTarget);
-
-        startTransition(async () => {
-            const result = await loginAction(formData);
-            if (result?.error) {
-                setError(result.error);
-            }
-        });
-    };
 
     return (
         <div className="min-h-screen flex items-center justify-center bg-white relative overflow-hidden px-4">
@@ -56,7 +41,10 @@ export default function LoginPage() {
                         <p className="text-sm text-[#64748B] mt-0.5">Ingresa tus credenciales para continuar</p>
                     </div>
 
-                    <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-5">
+                    <form action={formAction} className="space-y-4 sm:space-y-5">
+                        {/* Hidden redirectTo field for Auth.js */}
+                        <input type="hidden" name="redirectTo" value="/dashboard" />
+
                         <div className="space-y-1.5">
                             <Label htmlFor="email" className="text-[#0F172A] text-sm font-medium">
                                 Correo Electrónico
@@ -67,7 +55,7 @@ export default function LoginPage() {
                                 type="email"
                                 placeholder="tu@email.com"
                                 required
-                                className="bg-[#F8FAFC] border-[#E2E8F0] text-[#0F172A] placeholder:text-[#94A3B8] focus:border-[#0F172A] focus:ring-[#0F172A]/20 h-12 sm:h-12 text-base"
+                                className="bg-[#F8FAFC] border-[#E2E8F0] text-[#0F172A] placeholder:text-[#94A3B8] focus:border-[#0F172A] focus:ring-[#0F172A]/20 h-12 text-base"
                             />
                         </div>
 
@@ -82,7 +70,7 @@ export default function LoginPage() {
                                     type={showPassword ? "text" : "password"}
                                     placeholder="••••••••"
                                     required
-                                    className="bg-[#F8FAFC] border-[#E2E8F0] text-[#0F172A] placeholder:text-[#94A3B8] focus:border-[#0F172A] focus:ring-[#0F172A]/20 h-12 sm:h-12 text-base pr-11"
+                                    className="bg-[#F8FAFC] border-[#E2E8F0] text-[#0F172A] placeholder:text-[#94A3B8] focus:border-[#0F172A] focus:ring-[#0F172A]/20 h-12 text-base pr-11"
                                 />
                                 <button
                                     type="button"
@@ -94,9 +82,9 @@ export default function LoginPage() {
                             </div>
                         </div>
 
-                        {error && (
+                        {errorMessage && (
                             <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-3">
-                                {error}
+                                {errorMessage}
                             </div>
                         )}
 

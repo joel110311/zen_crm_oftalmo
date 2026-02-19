@@ -3,21 +3,23 @@
 import { signIn } from "@/lib/auth";
 import { AuthError } from "next-auth";
 
-export async function loginAction(formData: FormData) {
-    const email = formData.get("email") as string;
-    const password = formData.get("password") as string;
-
+export async function loginAction(
+    prevState: string | undefined,
+    formData: FormData
+): Promise<string | undefined> {
     try {
-        await signIn("credentials", {
-            email,
-            password,
-            redirectTo: "/dashboard",
-        });
+        await signIn("credentials", formData);
     } catch (error) {
         if (error instanceof AuthError) {
-            return { error: "Credenciales incorrectas. Verifica tu email y contraseña." };
+            switch (error.type) {
+                case "CredentialsSignin":
+                    return "Credenciales incorrectas. Verifica tu email y contraseña.";
+                default:
+                    return "Ocurrió un error inesperado.";
+            }
         }
-        // Next.js redirect throws a NEXT_REDIRECT error — rethrow it
+        // NEXT_REDIRECT errors must be re-thrown
         throw error;
     }
+    return undefined;
 }

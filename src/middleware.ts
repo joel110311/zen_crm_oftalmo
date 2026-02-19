@@ -13,8 +13,22 @@ export async function middleware(req: NextRequest) {
         return NextResponse.next();
     }
 
-    // getToken is edge-compatible (no Prisma needed)
-    const token = await getToken({ req, secret: process.env.AUTH_SECRET });
+    // Try both cookie names (HTTPS uses __Secure- prefix, HTTP uses plain)
+    // Behind reverse proxies like Traefik, the internal request may be HTTP
+    // but the cookie was set with __Secure- prefix because AUTH_URL is HTTPS
+    let token = await getToken({
+        req,
+        secret: process.env.AUTH_SECRET,
+        cookieName: "__Secure-authjs.session-token",
+    });
+
+    if (!token) {
+        token = await getToken({
+            req,
+            secret: process.env.AUTH_SECRET,
+            cookieName: "authjs.session-token",
+        });
+    }
 
     // If not authenticated, redirect to login
     if (!token) {
