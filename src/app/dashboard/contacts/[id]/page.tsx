@@ -28,7 +28,7 @@ export default async function ContactDetailsPage(props: { params: Promise<{ id: 
     ) || [];
 
     return (
-        <div className="flex flex-col h-[calc(100vh-8rem)] gap-4">
+        <div className="flex flex-col h-full gap-4">
             {/* Header */}
             <div className="flex items-center gap-4 border-b pb-4">
                 <Link href="/dashboard/contacts">

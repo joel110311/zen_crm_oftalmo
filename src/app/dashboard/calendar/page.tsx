@@ -112,7 +112,7 @@ export default function CalendarPage() {
 
     return (
 
-        <div className="flex flex-col h-[calc(100vh-1rem)] gap-2 p-1 md:p-2 bg-background">
+        <div className="flex flex-col h-full gap-2 bg-background">
             {/* Header */}
             <div className="flex items-center justify-between shrink-0">
                 <div>

@@ -12,7 +12,7 @@ export default async function ContactsPage({
     const contacts = await getContacts(query);
 
     return (
-        <div className="h-[calc(100vh-8rem)]">
+        <div className="h-full">
             <ContactsTable contacts={contacts} />
         </div>
     );

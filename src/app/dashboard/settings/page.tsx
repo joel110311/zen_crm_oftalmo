@@ -98,7 +98,7 @@ export default function SettingsPage() {
             </div>
 
             <Tabs defaultValue="visual" className="space-y-4">
-                <TabsList>
+                <TabsList className="w-full md:w-auto overflow-x-auto flex justify-start">
                     <TabsTrigger value="visual" className="flex items-center gap-1.5">
                         <Palette className="h-3.5 w-3.5" />
                         Diseño

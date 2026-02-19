@@ -151,3 +151,51 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* ═══════ Mobile Native-App Enhancements ═══════ */
+
+/* Smooth scrolling across the app */
+html {
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
+}
+
+/* Prevent pull-to-refresh and overscroll bounce on mobile */
+body {
+  overscroll-behavior: none;
+}
+
+/* Optimize touch on scrollable containers */
+.overflow-auto,
+.overflow-y-auto,
+.overflow-x-auto {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Hide scrollbars on mobile for a cleaner app-like feel */
+@media (max-width: 767px) {
+
+  .overflow-auto::-webkit-scrollbar,
+  .overflow-y-auto::-webkit-scrollbar,
+  .overflow-x-auto::-webkit-scrollbar {
+    display: none;
+  }
+
+  .overflow-auto,
+  .overflow-y-auto,
+  .overflow-x-auto {
+    scrollbar-width: none;
+  }
+
+  /* Prevent iOS zoom on input focus (min 16px font-size) */
+  input[type="text"],
+  input[type="search"],
+  input[type="email"],
+  input[type="tel"],
+  input[type="url"],
+  input[type="password"],
+  textarea,
+  select {
+    font-size: 16px;
+  }
+}

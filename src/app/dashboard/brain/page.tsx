@@ -70,7 +70,7 @@ export default function BrainConfigPage() {
     }
 
     return (
-        <div className="flex flex-col gap-6 max-w-4xl mx-auto h-[calc(100vh-2rem)]">
+        <div className="flex flex-col gap-6 max-w-4xl mx-auto h-full">
             <div className="flex items-center justify-between shrink-0">
                 <div className="flex items-center gap-3">
                     <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
