@@ -69,9 +69,10 @@ interface SidebarProps extends React.HTMLAttributes<HTMLDivElement> { }
 export function Sidebar({ className }: SidebarProps) {
     const pathname = usePathname();
     const [open, setOpen] = useState(false);
-    const { data: session } = useSession();
+    const { data: session, status } = useSession();
+    const sessionLoading = status === "loading";
     const userRole = (session?.user as any)?.role;
-    const userName = session?.user?.name || "Usuario";
+    const userName = session?.user?.name || (sessionLoading ? "..." : "Usuario");
 
     // Close sidebar on route change (mobile)
     useEffect(() => {
@@ -91,6 +92,8 @@ export function Sidebar({ className }: SidebarProps) {
     }, [open]);
 
     const filteredNavItems = sidebarNavItems.filter((item) => {
+        // While loading, show all items (will be filtered after session loads)
+        if (sessionLoading) return !item.superadminOnly;
         if (item.superadminOnly && userRole !== "SUPERADMIN") return false;
         return true;
     });

@@ -27,9 +27,9 @@ export default function SettingsPage() {
     const [ycloudPhoneId, setYcloudPhoneId] = useState("");
     const [isSaving, setIsSaving] = useState(false);
     const { toast } = useToast();
-    const { data: session } = useSession();
+    const { data: session, status } = useSession();
     const userRole = (session?.user as any)?.role;
-    const isSuperadmin = userRole === "SUPERADMIN";
+    const isSuperadmin = status !== "loading" && userRole === "SUPERADMIN";
 
     // Chat notification preferences
     const [notifPrefs, setNotifPrefs] = useState<NotificationPrefs>({
