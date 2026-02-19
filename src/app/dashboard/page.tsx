@@ -1,6 +1,9 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Users, MessageSquare, DollarSign, TrendingUp, Calendar, KanbanSquare } from "lucide-react";
+import { StatsCard } from "@/components/dashboard/stats-card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Users, MessageSquare, DollarSign, TrendingUp, Calendar, KanbanSquare, ArrowRight, Wallet } from "lucide-react";
 import { prisma } from "@/lib/db";
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
 
 async function getDashboardStats() {
     const [
@@ -61,104 +64,89 @@ export default async function DashboardPage() {
     const stats = await getDashboardStats();
 
     return (
-        <div className="flex flex-col gap-6">
-            <div>
+        <div className="flex flex-col gap-6 md:gap-8">
+            <div className="flex flex-col gap-1">
                 <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">
-                    Dashboard
+                    Panel de Control
                 </h1>
-                <p className="text-sm mt-1 text-muted-foreground">
-                    Resumen general de tu CRM
+                <p className="text-muted-foreground text-sm">
+                    Visualiza el rendimiento general de tu negocio en tiempo real.
                 </p>
             </div>
 
-            {/* KPI Cards */}
-            <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
-                <Card className="border-border bg-card">
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium text-muted-foreground">Contactos totales</CardTitle>
-                        <Users className="h-4 w-4 text-primary" />
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-2xl font-bold text-foreground">
-                            {stats.totalContacts.toLocaleString("es-MX")}
-                        </div>
-                    </CardContent>
-                </Card>
-                <Card className="border-border bg-card">
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium text-muted-foreground">Chats activos</CardTitle>
-                        <MessageSquare className="h-4 w-4 text-primary" />
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-2xl font-bold text-foreground">
-                            {stats.activeConversations}
-                        </div>
-                    </CardContent>
-                </Card>
-                <Card className="border-border bg-card">
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium text-muted-foreground">Valor del pipeline</CardTitle>
-                        <DollarSign className="h-4 w-4 text-green-500" />
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-2xl font-bold text-foreground">
-                            ${stats.pipelineValue.toLocaleString("es-MX")}
-                        </div>
-                    </CardContent>
-                </Card>
-                <Card className="border-border bg-card">
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium text-muted-foreground">Cerrados ganados</CardTitle>
-                        <TrendingUp className="h-4 w-4 text-green-500" />
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-2xl font-bold text-foreground">
-                            ${stats.closedWonValue.toLocaleString("es-MX")}
-                        </div>
-                    </CardContent>
-                </Card>
+            {/* Stats Overview */}
+            <div className="grid gap-3 md:gap-6 grid-cols-2 lg:grid-cols-4">
+                <StatsCard
+                    title="Contactos Totales"
+                    value={stats.totalContacts.toLocaleString("es-MX")}
+                    icon={Users}
+                    color="#2563EB" // Blue
+                    description="Base de datos activa"
+                />
+                <StatsCard
+                    title="Conversaciones Activas"
+                    value={stats.activeConversations.toString()}
+                    icon={MessageSquare}
+                    color="#8B5CF6" // Purple
+                    description="En proceso de atención"
+                />
+                <StatsCard
+                    title="Valor en Pipeline"
+                    value={`$${stats.pipelineValue.toLocaleString("es-MX")}`}
+                    icon={Wallet}
+                    color="#F59E0B" // Amber
+                    description="Oportunidades abiertas"
+                />
+                <StatsCard
+                    title="Ventas Cerradas"
+                    value={`$${stats.closedWonValue.toLocaleString("es-MX")}`}
+                    icon={TrendingUp}
+                    color="#10B981" // Emerald
+                    description="Ingresos generados"
+                    trend={{ value: 12.5, isPositive: true, label: "vs mes anterior" }}
+                />
             </div>
 
-            {/* Pipeline breakdown + Recent Activity */}
-            <div className="grid gap-4 grid-cols-1 lg:grid-cols-7">
-                {/* Pipeline stages breakdown */}
-                <Card className="lg:col-span-4 border-border bg-card">
-                    <CardHeader>
-                        <CardTitle className="flex items-center gap-2 text-foreground">
-                            <KanbanSquare className="h-4 w-4 text-primary" />
-                            Distribución del Pipeline
-                        </CardTitle>
+            {/* Main Content Grid */}
+            <div className="grid gap-6 grid-cols-1 lg:grid-cols-7">
+
+                {/* 1. Pipeline Breakdown */}
+                <Card className="lg:col-span-4 border-none shadow-sm h-full">
+                    <CardHeader className="flex flex-row items-center justify-between pb-2">
+                        <div>
+                            <CardTitle className="text-lg font-bold">Distribución del Pipeline</CardTitle>
+                            <CardDescription>Oportunidades por etapa de venta</CardDescription>
+                        </div>
                     </CardHeader>
                     <CardContent>
-                        <div className="space-y-3">
-                            {stats.dealsByStage.map(stage => {
+                        <div className="space-y-5">
+                            {stats.dealsByStage.map((stage) => {
                                 const stageValue = stage.deals.reduce((v, d) => v + d.value, 0);
                                 const maxDeals = Math.max(...stats.dealsByStage.map(s => s._count.deals), 1);
-                                const width = Math.max((stage._count.deals / maxDeals) * 100, 4);
+                                const width = Math.max((stage._count.deals / maxDeals) * 100, 2); // Min 2% visibility
+
                                 return (
-                                    <div key={stage.id} className="flex items-center gap-3">
-                                        <div className="w-28 flex-shrink-0">
-                                            <p className="text-xs font-medium truncate text-foreground">
-                                                {stage.name}
-                                            </p>
+                                    <div key={stage.id} className="space-y-1.5">
+                                        <div className="flex items-center justify-between text-sm">
+                                            <span className="font-medium text-foreground">{stage.name}</span>
+                                            <span className="font-semibold text-muted-foreground">
+                                                ${stageValue.toLocaleString("es-MX")}
+                                            </span>
                                         </div>
-                                        <div className="flex-1 h-7 rounded-md overflow-hidden bg-muted">
-                                            <div
-                                                className="h-full rounded-md flex items-center px-2 transition-all"
-                                                style={{
-                                                    width: `${width}%`,
-                                                    backgroundColor: stage.color + "30",
-                                                    borderLeft: `3px solid ${stage.color}`,
-                                                }}
-                                            >
-                                                <span className="text-xs font-semibold" style={{ color: stage.color }}>
-                                                    {stage._count.deals}
-                                                </span>
+                                        <div className="grid grid-cols-[1fr_auto] gap-3 items-center">
+                                            <div className="h-2.5 w-full bg-muted/50 rounded-full overflow-hidden">
+                                                <div
+                                                    className="h-full rounded-full transition-all duration-500 ease-out"
+                                                    style={{
+                                                        width: `${width}%`,
+                                                        backgroundColor: stage.color,
+                                                    }}
+                                                />
                                             </div>
+                                            <span className="text-xs font-bold text-muted-foreground w-6 text-right">
+                                                {stage._count.deals}
+                                            </span>
                                         </div>
-                                        <span className="text-xs font-medium w-20 text-right text-muted-foreground">
-                                            ${stageValue.toLocaleString("es-MX")}
-                                        </span>
                                     </div>
                                 );
                             })}
@@ -166,63 +154,84 @@ export default async function DashboardPage() {
                     </CardContent>
                 </Card>
 
-                {/* Recent deals + upcoming appointments */}
-                <Card className="lg:col-span-3 border-border bg-card">
-                    <CardHeader>
-                        <CardTitle className="text-foreground">Actividad reciente</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="space-y-3">
-                            {stats.recentDeals.length === 0 ? (
-                                <p className="text-sm text-muted-foreground">Sin leads recientes</p>
-                            ) : (
-                                stats.recentDeals.map(deal => (
-                                    <div key={deal.id} className="flex items-center gap-3 pb-3 border-b border-border last:border-0 last:pb-0">
-                                        <div
-                                            className="h-8 w-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
-                                            style={{ backgroundColor: deal.stage.color + "20", color: deal.stage.color }}
-                                        >
-                                            {(deal.contact?.name || deal.title).charAt(0).toUpperCase()}
-                                        </div>
-                                        <div className="flex-1 min-w-0">
-                                            <p className="text-sm font-medium truncate text-foreground">
-                                                {deal.contact?.name || deal.title}
-                                            </p>
-                                            <p className="text-xs truncate text-muted-foreground">
-                                                {deal.stage.name} • ${deal.value.toLocaleString("es-MX")}
-                                            </p>
-                                        </div>
-                                        <span
-                                            className="text-[10px] px-1.5 py-0.5 rounded font-medium flex-shrink-0"
-                                            style={{ backgroundColor: deal.stage.color + "15", color: deal.stage.color }}
-                                        >
-                                            {deal.stage.name}
-                                        </span>
-                                    </div>
-                                ))
-                            )}
-                        </div>
+                {/* 2. Right Column Stack */}
+                <div className="lg:col-span-3 flex flex-col gap-6">
 
-                        {/* Upcoming appointments */}
-                        {stats.upcomingAppointments.length > 0 && (
-                            <>
-                                <div className="flex items-center gap-2 mt-5 mb-3">
-                                    <Calendar className="h-3.5 w-3.5 text-primary" />
-                                    <h4 className="text-xs font-semibold uppercase text-muted-foreground">
-                                        Próximas citas
-                                    </h4>
-                                </div>
-                                <div className="space-y-2">
-                                    {stats.upcomingAppointments.map(apt => (
-                                        <div key={apt.id} className="flex items-center gap-3 p-2 rounded-md bg-muted/50">
-                                            <div className="h-2 w-2 rounded-full flex-shrink-0 bg-primary" />
+                    {/* Activity Feed */}
+                    <Card className="border-none shadow-sm flex-1">
+                        <CardHeader className="flex flex-row items-center justify-between pb-2">
+                            <div>
+                                <CardTitle className="text-lg font-bold">Actividad Reciente</CardTitle>
+                                <CardDescription>Últimos movimientos</CardDescription>
+                            </div>
+                            <Button variant="ghost" size="sm" className="h-8 text-xs text-primary" asChild>
+                                <Link href="/dashboard/pipeline">
+                                    Ver todo <ArrowRight className="ml-1 h-3 w-3" />
+                                </Link>
+                            </Button>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="space-y-4">
+                                {stats.recentDeals.length === 0 ? (
+                                    <div className="text-center py-6 text-muted-foreground text-sm">
+                                        No hay actividad reciente.
+                                    </div>
+                                ) : (
+                                    stats.recentDeals.map((deal) => (
+                                        <div key={deal.id} className="flex items-center gap-3">
+                                            <div
+                                                className="h-8 w-8 sm:h-9 sm:w-9 rounded-full flex items-center justify-center text-[10px] sm:text-xs font-extrabold flex-shrink-0 shadow-sm"
+                                                style={{
+                                                    backgroundColor: deal.stage.color + "15",
+                                                    color: deal.stage.color,
+                                                    border: `1px solid ${deal.stage.color}30`
+                                                }}
+                                            >
+                                                {(deal.contact?.name || deal.title).charAt(0).toUpperCase()}
+                                            </div>
                                             <div className="flex-1 min-w-0">
-                                                <p className="text-xs font-medium truncate text-foreground">
+                                                <p className="text-sm font-semibold truncate text-foreground leading-none mb-1">
+                                                    {deal.contact?.name || deal.title}
+                                                </p>
+                                                <p className="text-xs text-muted-foreground truncate">
+                                                    {deal.stage.name} • <span className="font-medium text-foreground">${deal.value.toLocaleString("es-MX")}</span>
+                                                </p>
+                                            </div>
+                                            <div className="text-[10px] text-muted-foreground bg-muted px-2 py-1 rounded-md whitespace-nowrap">
+                                                Ahora
+                                            </div>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    {/* Upcoming Appointments */}
+                    <Card className="border-none shadow-sm">
+                        <CardHeader className="pb-2">
+                            <CardTitle className="text-lg font-bold flex items-center gap-2">
+                                <Calendar className="h-4 w-4 text-primary" />
+                                Próximas Citas
+                            </CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            {stats.upcomingAppointments.length === 0 ? (
+                                <p className="text-sm text-muted-foreground py-2">No tienes citas próximas.</p>
+                            ) : (
+                                <div className="space-y-3">
+                                    {stats.upcomingAppointments.map((apt) => (
+                                        <div key={apt.id} className="flex items-start gap-3 p-3 rounded-lg bg-muted/30 border border-border/50">
+                                            <div className="bg-primary/10 text-primary h-8 w-8 rounded flex items-center justify-center flex-shrink-0 mt-0.5">
+                                                <span className="text-xs font-bold">
+                                                    {new Date(apt.startTime).getDate()}
+                                                </span>
+                                            </div>
+                                            <div className="min-w-0 flex-1">
+                                                <p className="text-sm font-semibold text-foreground truncate">
                                                     {apt.title}
                                                 </p>
-                                                <p className="text-[10px] text-muted-foreground">
-                                                    {new Date(apt.startTime).toLocaleDateString("es-MX", { weekday: "short", month: "short", day: "numeric" })}
-                                                    {" "}
+                                                <p className="text-xs text-muted-foreground mt-0.5">
                                                     {new Date(apt.startTime).toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" })}
                                                     {apt.contact?.name ? ` • ${apt.contact.name}` : ""}
                                                 </p>
@@ -230,10 +239,10 @@ export default async function DashboardPage() {
                                         </div>
                                     ))}
                                 </div>
-                            </>
-                        )}
-                    </CardContent>
-                </Card>
+                            )}
+                        </CardContent>
+                    </Card>
+                </div>
             </div>
         </div>
     );

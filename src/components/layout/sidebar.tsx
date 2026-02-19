@@ -98,20 +98,20 @@ export function Sidebar({ className }: SidebarProps) {
     return (
         <>
             {/* ═══════ Mobile Fixed Top Header ═══════ */}
-            <header className="md:hidden fixed top-0 left-0 right-0 z-40 bg-card border-b border-border px-3 py-2.5 flex items-center justify-between backdrop-blur-sm bg-card/95">
+            <header className="md:hidden fixed top-0 left-0 right-0 z-40 bg-card/80 border-b border-border/40 px-3 py-2.5 flex items-center justify-between backdrop-blur-xl shadow-sm transition-all duration-200">
                 <button
                     onClick={() => setOpen(true)}
-                    className="p-2 hover:bg-accent rounded-xl transition-colors"
+                    className="p-2 hover:bg-accent/50 rounded-xl transition-colors active:scale-95"
                     aria-label="Abrir menú"
                 >
-                    <Menu className="w-5 h-5 text-foreground" />
+                    <Menu className="w-6 h-6 text-foreground/80" />
                 </button>
-                <div className="flex items-center gap-2">
-                    <ZenLogo className="h-7 w-7" />
-                    <span className="font-semibold text-foreground text-sm">Zen CRM</span>
+                <div className="flex items-center gap-2 opacity-90">
+                    <ZenLogo className="h-6 w-6" />
+                    <span className="font-semibold text-foreground text-sm tracking-tight">Zen CRM</span>
                 </div>
                 {/* Avatar placeholder for visual balance */}
-                <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary text-xs font-bold">
+                <div className="h-9 w-9 rounded-full bg-primary/10 flex items-center justify-center text-primary text-xs font-bold ring-2 ring-background">
                     {userName.charAt(0).toUpperCase()}
                 </div>
             </header>
@@ -119,7 +119,7 @@ export function Sidebar({ className }: SidebarProps) {
             {/* ═══════ Mobile Sidebar Overlay ═══════ */}
             {open && (
                 <div
-                    className="md:hidden fixed inset-0 bg-black/60 z-40 backdrop-blur-sm"
+                    className="md:hidden fixed inset-0 bg-black/40 z-40 backdrop-blur-md transition-opacity duration-300"
                     onClick={() => setOpen(false)}
                 />
             )}
@@ -127,8 +127,8 @@ export function Sidebar({ className }: SidebarProps) {
             {/* ═══════ Mobile Sidebar Drawer ═══════ */}
             <aside
                 className={cn(
-                    "md:hidden fixed inset-y-0 left-0 z-50 w-[280px] bg-card border-r border-border shadow-xl",
-                    "transform transition-transform duration-300 ease-in-out",
+                    "md:hidden fixed inset-y-0 left-0 z-50 w-[285px] bg-card/95 backdrop-blur-2xl border-r border-border/40 shadow-2xl rounded-r-3xl",
+                    "transform transition-transform duration-300 cubic-bezier(0.32, 0.72, 0, 1)", // iOS-like spring
                     open ? "translate-x-0" : "-translate-x-full"
                 )}
             >

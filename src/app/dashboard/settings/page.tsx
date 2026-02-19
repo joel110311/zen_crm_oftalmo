@@ -97,41 +97,88 @@ export default function SettingsPage() {
                 <p className="text-muted-foreground">Administra tus claves de API, integraciones y apariencia.</p>
             </div>
 
-            <Tabs defaultValue="visual" className="space-y-4">
-                <TabsList className="w-full md:w-auto overflow-x-auto flex justify-start">
-                    <TabsTrigger value="visual" className="flex items-center gap-1.5">
-                        <Palette className="h-3.5 w-3.5" />
-                        Diseño
+            <Tabs defaultValue="visual" className="space-y-6">
+                <TabsList className="bg-transparent h-auto p-0 w-full overflow-visible whitespace-normal grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <TabsTrigger
+                        value="visual"
+                        className="data-[state=active]:bg-card data-[state=active]:border-primary/50 data-[state=active]:shadow-premium border border-border/40 bg-card/40 hover:bg-card/60 h-auto py-4 px-4 flex flex-col items-start gap-3 rounded-2xl transition-all duration-300 group"
+                    >
+                        <div className="p-2.5 rounded-xl bg-primary/10 text-primary group-data-[state=active]:scale-110 transition-transform">
+                            <Palette className="h-5 w-5" />
+                        </div>
+                        <div className="text-left">
+                            <span className="block font-semibold text-foreground text-sm">Diseño</span>
+                            <span className="block text-xs text-muted-foreground font-normal mt-0.5 leading-tight">Tema y apariencia</span>
+                        </div>
                     </TabsTrigger>
+
                     {isSuperadmin && (
-                        <TabsTrigger value="ai">Inteligencia Artificial</TabsTrigger>
+                        <TabsTrigger
+                            value="ai"
+                            className="data-[state=active]:bg-card data-[state=active]:border-primary/50 data-[state=active]:shadow-premium border border-border/40 bg-card/40 hover:bg-card/60 h-auto py-4 px-4 flex flex-col items-start gap-3 rounded-2xl transition-all duration-300 group"
+                        >
+                            <div className="p-2.5 rounded-xl bg-indigo-500/10 text-indigo-500 group-data-[state=active]:scale-110 transition-transform">
+                                <Loader2 className="h-5 w-5" />
+                            </div>
+                            <div className="text-left">
+                                <span className="block font-semibold text-foreground text-sm">IA</span>
+                                <span className="block text-xs text-muted-foreground font-normal mt-0.5 leading-tight">Modelos y API</span>
+                            </div>
+                        </TabsTrigger>
                     )}
+
                     {isSuperadmin && (
-                        <TabsTrigger value="whatsapp">WhatsApp (YCloud)</TabsTrigger>
+                        <TabsTrigger
+                            value="whatsapp"
+                            className="data-[state=active]:bg-card data-[state=active]:border-primary/50 data-[state=active]:shadow-premium border border-border/40 bg-card/40 hover:bg-card/60 h-auto py-4 px-4 flex flex-col items-start gap-3 rounded-2xl transition-all duration-300 group"
+                        >
+                            <div className="p-2.5 rounded-xl bg-green-500/10 text-green-500 group-data-[state=active]:scale-110 transition-transform">
+                                <MessageSquare className="h-5 w-5" />
+                            </div>
+                            <div className="text-left">
+                                <span className="block font-semibold text-foreground text-sm">WhatsApp</span>
+                                <span className="block text-xs text-muted-foreground font-normal mt-0.5 leading-tight">Conexión YCloud</span>
+                            </div>
+                        </TabsTrigger>
                     )}
-                    <TabsTrigger value="chats" className="flex items-center gap-1.5">
-                        <MessageSquare className="h-3.5 w-3.5" />
-                        Chats
+
+                    <TabsTrigger
+                        value="chats"
+                        className="data-[state=active]:bg-card data-[state=active]:border-primary/50 data-[state=active]:shadow-premium border border-border/40 bg-card/40 hover:bg-card/60 h-auto py-4 px-4 flex flex-col items-start gap-3 rounded-2xl transition-all duration-300 group"
+                    >
+                        <div className="p-2.5 rounded-xl bg-orange-500/10 text-orange-500 group-data-[state=active]:scale-110 transition-transform">
+                            <Volume2 className="h-5 w-5" />
+                        </div>
+                        <div className="text-left">
+                            <span className="block font-semibold text-foreground text-sm">Chats</span>
+                            <span className="block text-xs text-muted-foreground font-normal mt-0.5 leading-tight">Sonidos y alertas</span>
+                        </div>
                     </TabsTrigger>
                 </TabsList>
 
-                <TabsContent value="visual">
-                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-2">
-                        <Card>
-                            <CardHeader>
-                                <CardTitle>Modo de Visualización</CardTitle>
-                                <CardDescription>Elige entre tema claro, oscuro o del sistema.</CardDescription>
-                            </CardHeader>
-                            <CardContent>
+                <TabsContent value="visual" className="space-y-6">
+
+                    {/* Visual Mode Section */}
+                    <div className="space-y-3">
+                        <div className="flex items-center gap-2 text-primary">
+                            <Palette className="h-4 w-4" />
+                            <h3 className="font-semibold text-lg text-foreground">Modo de Visualización</h3>
+                        </div>
+                        <Card className="border-none shadow-sm bg-card">
+                            <CardContent className="pt-6">
                                 <ThemeToggle />
                             </CardContent>
                         </Card>
-                        <Card>
-                            <CardHeader>
-                                <CardTitle>Tema de Colores</CardTitle>
-                                <CardDescription>Personaliza el color de acento del sistema.</CardDescription>
-                            </CardHeader>
-                            <CardContent>
+                    </div>
+
+                    {/* Color Theme Section */}
+                    <div className="space-y-3">
+                        <div className="flex items-center gap-2 text-primary">
+                            <Palette className="h-4 w-4" />
+                            <h3 className="font-semibold text-lg text-foreground">Tema de Colores</h3>
+                        </div>
+                        <Card className="border-none shadow-sm bg-card">
+                            <CardContent className="pt-6">
                                 <ThemeCustomizer />
                             </CardContent>
                         </Card>
