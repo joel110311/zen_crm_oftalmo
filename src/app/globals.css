@@ -45,15 +45,12 @@
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
   --radius-2xl: 1rem;
-  /* 16px */
   --radius-3xl: 1.5rem;
-  /* 24px */
   --radius-4xl: 2rem;
-  /* 32px */
 
   /* Soft Neumorphism Shadows */
-  --shadow-premium: 0 4px 20px -2px rgba(0, 0, 0, 0.05), 0 10px 15px -3px rgba(0, 0, 0, 0.02);
-  --shadow-premium-hover: 0 10px 25px -5px rgba(0, 0, 0, 0.08), 0 8px 10px -6px rgba(0, 0, 0, 0.01);
+  --shadow-premium: 0 4px 20px -2px rgba(0, 0, 0, 0.15), 0 10px 15px -3px rgba(0, 0, 0, 0.06);
+  --shadow-premium-hover: 0 10px 25px -5px rgba(0, 0, 0, 0.2), 0 8px 10px -6px rgba(0, 0, 0, 0.04);
 }
 
 @utility shadow-premium {
@@ -65,105 +62,115 @@
 }
 
 @utility glass {
-  @apply bg-background/60 backdrop-blur-xl border border-white/10 dark:border-white/5;
+  @apply bg-background/60 backdrop-blur-xl border border-white/5;
 }
 
 @utility glass-card {
   @apply bg-card/50 backdrop-blur-md border border-border/50;
 }
 
+/* ═══════════════════════════════════════════════
+   NEXUS DARK THEME — Primary Palette
+   ═══════════════════════════════════════════════ */
+
+/* Light mode (still available but secondary) */
 :root {
-  --background: hsl(210 40% 98%);
-  /* #F8FAFC */
-  --foreground: hsl(215 28% 17%);
-  /* #0F172A */
+  --background: hsl(220 20% 97%);
+  --foreground: hsl(222 47% 11%);
   --card: hsl(0 0% 100%);
-  --card-foreground: hsl(215 28% 17%);
+  --card-foreground: hsl(222 47% 11%);
   --popover: hsl(0 0% 100%);
-  --popover-foreground: hsl(215 28% 17%);
-  --primary: hsl(240 5.9% 10%);
-  /* #09090b - Zinc 950 */
+  --popover-foreground: hsl(222 47% 11%);
+  --primary: hsl(221 83% 53%);
   --primary-foreground: hsl(0 0% 100%);
-  --secondary: hsl(210 40% 96.1%);
-  --secondary-foreground: hsl(222.2 47.4% 11.2%);
-  --muted: hsl(210 40% 96.1%);
-  --muted-foreground: hsl(215.4 16.3% 46.9%);
-  --accent: hsl(210 40% 96.1%);
-  --accent-foreground: hsl(222.2 47.4% 11.2%);
-  --destructive: hsl(0 84.2% 60.2%);
-  --destructive-foreground: hsl(210 40% 98%);
-  --border: hsl(214.3 31.8% 91.4%);
-  /* #E2E8F0 */
-  --input: hsl(214.3 31.8% 91.4%);
-  --ring: hsl(240 5.9% 10%);
-  --radius: 0.5rem;
-  --chart-1: hsl(12 76% 61%);
-  --chart-2: hsl(173 58% 39%);
-  --chart-3: hsl(197 37% 24%);
-  --chart-4: hsl(43 74% 66%);
-  --chart-5: hsl(27 87% 67%);
+  --secondary: hsl(220 14% 96%);
+  --secondary-foreground: hsl(222 47% 11%);
+  --muted: hsl(220 14% 96%);
+  --muted-foreground: hsl(220 9% 46%);
+  --accent: hsl(220 14% 96%);
+  --accent-foreground: hsl(222 47% 11%);
+  --destructive: hsl(0 72% 51%);
+  --destructive-foreground: hsl(0 0% 100%);
+  --border: hsl(220 13% 91%);
+  --input: hsl(220 13% 91%);
+  --ring: hsl(221 83% 53%);
+  --radius: 0.75rem;
 
-  /* Sidebar */
-  --sidebar: hsl(0 0% 100%);
-  --sidebar-foreground: hsl(215 28% 17%);
-  --sidebar-primary: hsl(240 5.9% 10%);
+  /* Charts: NO green, NO purple */
+  --chart-1: hsl(221 83% 53%);
+  /* Blue */
+  --chart-2: hsl(38 92% 50%);
+  /* Amber/Gold */
+  --chart-3: hsl(12 76% 61%);
+  /* Coral */
+  --chart-4: hsl(189 94% 43%);
+  /* Cyan */
+  --chart-5: hsl(350 89% 60%);
+  /* Rose */
+
+  /* Sidebar Light */
+  --sidebar: hsl(225 25% 15%);
+  --sidebar-foreground: hsl(220 20% 85%);
+  --sidebar-primary: hsl(221 83% 53%);
   --sidebar-primary-foreground: hsl(0 0% 100%);
-  --sidebar-accent: hsl(210 40% 96.1%);
-  --sidebar-accent-foreground: hsl(215 28% 17%);
-  --sidebar-border: hsl(214.3 31.8% 91.4%);
-  --sidebar-ring: hsl(240 5.9% 10%);
+  --sidebar-accent: hsl(225 25% 20%);
+  --sidebar-accent-foreground: hsl(0 0% 100%);
+  --sidebar-border: hsl(225 20% 22%);
+  --sidebar-ring: hsl(221 83% 53%);
 }
 
+/* Dark mode — the PRIMARY mode inspired by Nexus */
 .dark {
-  --background: hsl(222.2 84% 4.9%);
+  --background: hsl(228 20% 7%);
+  /* #0F1117 deep charcoal */
   --foreground: hsl(210 40% 98%);
-  --card: hsl(222.2 84% 4.9%);
+  /* #F8FAFC crisp white */
+  --card: hsl(228 18% 12%);
+  /* #1C1F2E elevated dark */
   --card-foreground: hsl(210 40% 98%);
-  --popover: hsl(222.2 84% 4.9%);
+  --popover: hsl(228 18% 14%);
   --popover-foreground: hsl(210 40% 98%);
-  --primary: hsl(210 40% 98%);
-  --primary-foreground: hsl(222.2 47.4% 11.2%);
-  --secondary: hsl(217.2 32.6% 17.5%);
+  --primary: hsl(221 83% 53%);
+  /* #3B82F6 bright blue */
+  --primary-foreground: hsl(0 0% 100%);
+  --secondary: hsl(228 15% 17%);
+  /* Slightly lighter than card */
   --secondary-foreground: hsl(210 40% 98%);
-  --muted: hsl(217.2 32.6% 17.5%);
-  --muted-foreground: hsl(215 20.2% 65.1%);
-  --accent: hsl(217.2 32.6% 17.5%);
+  --muted: hsl(228 15% 17%);
+  --muted-foreground: hsl(215 16% 57%);
+  /* #8494AE softer gray */
+  --accent: hsl(228 15% 20%);
+  /* Hover states */
   --accent-foreground: hsl(210 40% 98%);
-  --destructive: hsl(0 62.8% 30.6%);
-  --destructive-foreground: hsl(210 40% 98%);
-  --border: hsl(217.2 32.6% 17.5%);
-  --input: hsl(217.2 32.6% 17.5%);
-  --ring: hsl(212.7 26.8% 83.9%);
-  --chart-1: hsl(220 70% 50%);
-  --chart-2: hsl(160 60% 45%);
-  --chart-3: hsl(30 80% 55%);
-  --chart-4: hsl(280 65% 60%);
-  --chart-5: hsl(340 75% 55%);
+  --destructive: hsl(0 72% 51%);
+  --destructive-foreground: hsl(0 0% 100%);
+  --border: hsl(228 14% 20%);
+  /* #2A2D3E subtle border */
+  --input: hsl(228 14% 20%);
+  --ring: hsl(221 83% 53%);
 
-  /* Sidebar Dark */
-  --sidebar: hsl(222.2 84% 4.9%);
-  --sidebar-foreground: hsl(210 40% 98%);
-  --sidebar-primary: hsl(221.2 83.2% 53.3%);
+  /* Charts: NO green, NO purple — warm + cool palette */
+  --chart-1: hsl(221 83% 53%);
+  /* Blue */
+  --chart-2: hsl(38 92% 50%);
+  /* Amber/Gold */
+  --chart-3: hsl(12 76% 61%);
+  /* Coral/Orange */
+  --chart-4: hsl(189 94% 43%);
+  /* Cyan */
+  --chart-5: hsl(350 89% 60%);
+  /* Rose */
+
+  /* Sidebar — Deep Navy */
+  --sidebar: hsl(228 30% 12%);
+  /* #1a1f37 deep navy */
+  --sidebar-foreground: hsl(220 20% 75%);
+  --sidebar-primary: hsl(221 83% 53%);
   --sidebar-primary-foreground: hsl(0 0% 100%);
-  --sidebar-accent: hsl(217.2 32.6% 17.5%);
-  --sidebar-accent-foreground: hsl(210 40% 98%);
-  --sidebar-border: hsl(217.2 32.6% 17.5%);
-  --sidebar-ring: hsl(212.7 26.8% 83.9%);
-}
-
-.theme-lime {
-  --primary: hsl(84 79% 45%);
-  /* #84CC16 - Lime 500 equivalent */
-  --primary-foreground: hsl(0 0% 0%);
-  /* Black text for contrast on lime */
-  --ring: hsl(84 79% 45%);
-}
-
-.dark.theme-lime {
-  --primary: hsl(84 81% 44%);
-  /* Slightly darker lime for dark mode if needed, or keep vibrant */
-  --primary-foreground: hsl(0 0% 0%);
-  --ring: hsl(84 81% 44%);
+  --sidebar-accent: hsl(228 30% 18%);
+  --sidebar-accent-foreground: hsl(0 0% 100%);
+  --sidebar-border: hsl(228 20% 18%);
+  --sidebar-ring: hsl(221 83% 53%);
 }
 
 @layer base {
@@ -221,5 +228,26 @@ body {
   textarea,
   select {
     font-size: 16px;
+  }
+}
+
+/* Custom thin scrollbar for desktop */
+@media (min-width: 768px) {
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: hsl(228 14% 25%);
+    border-radius: 3px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: hsl(228 14% 35%);
   }
 }

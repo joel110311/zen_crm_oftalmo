@@ -13,7 +13,7 @@ interface StatsCardProps {
         isPositive?: boolean;
     };
     description?: string;
-    color?: string; // Hex or tailwind class for icon color
+    color?: string;
     className?: string;
 }
 
@@ -27,41 +27,37 @@ export function StatsCard({
     className,
 }: StatsCardProps) {
     return (
-        <Card className={cn("border-none shadow-sm hover:shadow-md transition-shadow duration-200", className)}>
-            <CardContent className="p-4 sm:p-6">
-                <div className="flex items-start justify-between gap-4">
-                    <div className="space-y-1 min-w-0">
-                        <p className="text-sm font-medium text-muted-foreground truncate">{title}</p>
-                        <div className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground truncate">
+        <Card className={cn("border border-border/60 shadow-premium hover:shadow-premium-hover transition-all duration-300 rounded-xl", className)}>
+            <CardContent className="p-4 sm:p-5">
+                <div className="flex items-start justify-between gap-3">
+                    <div className="space-y-1 min-w-0 flex-1">
+                        <p className="text-xs sm:text-sm font-medium text-muted-foreground truncate">{title}</p>
+                        <div className="text-xl sm:text-2xl 2xl:text-3xl font-bold tracking-tight text-foreground truncate">
                             {value}
                         </div>
                         {description && (
-                            <p className="text-xs sm:text-sm text-muted-foreground mt-1 truncate">{description}</p>
+                            <p className="text-[11px] sm:text-xs text-muted-foreground/70 mt-0.5 truncate">{description}</p>
                         )}
                     </div>
                     <div
-                        className={cn(
-                            "p-2.5 sm:p-3 rounded-xl bg-opacity-10 flex items-center justify-center transition-colors shrink-0",
-                            // Dynamic bg based on color for a premium feel
-                            `bg-[${color}]/10`
-                        )}
+                        className="p-2.5 rounded-xl flex items-center justify-center shrink-0"
                         style={{
-                            backgroundColor: color.startsWith("#") ? `${color}15` : undefined, // 15 = ~10% opacity hex
+                            backgroundColor: color.startsWith("#") ? `${color}18` : undefined,
                             color: color.startsWith("#") ? color : undefined,
                         }}
                     >
-                        <Icon className={cn("h-5 w-5 sm:h-6 sm:w-6", !color.startsWith("#") && color)} />
+                        <Icon className={cn("h-5 w-5 sm:h-5 sm:w-5", !color.startsWith("#") && color)} />
                     </div>
                 </div>
 
                 {trend && (
-                    <div className="mt-4 flex items-center text-xs font-medium">
+                    <div className="mt-3 flex items-center text-xs font-medium">
                         <span
                             className={cn(
                                 "flex items-center gap-1 rounded-full px-2 py-0.5",
                                 trend.isPositive
-                                    ? "text-emerald-600 bg-emerald-50 dark:bg-emerald-950/30 dark:text-emerald-400"
-                                    : "text-rose-600 bg-rose-50 dark:bg-rose-950/30 dark:text-rose-400"
+                                    ? "text-sky-400 bg-sky-500/10"
+                                    : "text-rose-400 bg-rose-500/10"
                             )}
                         >
                             {trend.isPositive ? (

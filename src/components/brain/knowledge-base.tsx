@@ -125,7 +125,7 @@ export function KnowledgeBase() {
                                                 <span className="truncate max-w-[150px]" title={doc.title}>{doc.title}</span>
                                             </TableCell>
                                             <TableCell>
-                                                <Badge variant="outline" className="text-green-600 border-green-200 bg-green-50 text-[10px]">
+                                                <Badge variant="outline" className="text-sky-400 border-sky-500/20 bg-sky-500/10 text-[10px]">
                                                     Indexado
                                                 </Badge>
                                             </TableCell>

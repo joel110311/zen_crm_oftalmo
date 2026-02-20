@@ -67,7 +67,7 @@ export function NewLeadDialog({ stages }: NewLeadDialogProps) {
     return (
         <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
-                <Button style={{ backgroundColor: "#2563EB", color: "#FFFFFF", borderRadius: "8px" }}>
+                <Button className="bg-primary text-primary-foreground hover:bg-primary/90 rounded-lg">
                     <Plus className="mr-2 h-4 w-4" /> Nuevo Lead
                 </Button>
             </DialogTrigger>
@@ -100,8 +100,7 @@ export function NewLeadDialog({ stages }: NewLeadDialogProps) {
                                 id="stageId"
                                 name="stageId"
                                 defaultValue={defaultStageId}
-                                className="col-span-3 h-9 px-3 text-sm rounded-md border"
-                                style={{ borderColor: "#E2E8F0" }}
+                                className="col-span-3 h-9 px-3 text-sm rounded-md border border-border bg-background text-foreground"
                             >
                                 {availableStages.map((s) => (
                                     <option key={s.id} value={s.id}>
@@ -118,8 +117,7 @@ export function NewLeadDialog({ stages }: NewLeadDialogProps) {
                                 id="priority"
                                 name="priority"
                                 defaultValue="medium"
-                                className="col-span-3 h-9 px-3 text-sm rounded-md border"
-                                style={{ borderColor: "#E2E8F0" }}
+                                className="col-span-3 h-9 px-3 text-sm rounded-md border border-border bg-background text-foreground"
                             >
                                 <option value="low">Baja</option>
                                 <option value="medium">Media</option>
@@ -131,7 +129,7 @@ export function NewLeadDialog({ stages }: NewLeadDialogProps) {
                         <Button
                             type="submit"
                             disabled={isPending}
-                            style={{ backgroundColor: "#2563EB", color: "#FFFFFF" }}
+                            className="bg-primary text-primary-foreground hover:bg-primary/90"
                         >
                             {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                             {isPending ? "Guardando..." : "Crear Lead"}

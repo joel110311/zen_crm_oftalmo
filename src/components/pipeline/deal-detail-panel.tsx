@@ -119,14 +119,13 @@ export function DealDetailPanel({ deal, onClose, onUpdate, onDelete }: DealDetai
             const result = await deleteTag(tagId);
             if (!result.success) {
                 alert("Error al eliminar etiqueta: " + result.error);
-                // Revert fetch needed if failed, but for now simple alert
             }
         });
     };
 
     const handleCreateTag = () => {
         if (!newTagName.trim()) return;
-        const colors = ["#2563EB", "#7C3AED", "#059669", "#D97706", "#DC2626", "#0891B2", "#4F46E5"];
+        const colors = ["#3B82F6", "#F59E0B", "#0EA5E9", "#EC4899", "#6366F1", "#0891B2", "#F97316"];
         const color = colors[Math.floor(Math.random() * colors.length)];
         startTransition(async () => {
             const result = await createTag(newTagName.trim(), color);
@@ -145,30 +144,18 @@ export function DealDetailPanel({ deal, onClose, onUpdate, onDelete }: DealDetai
         <>
             {/* Backdrop */}
             <div
-                className="fixed inset-0 z-40"
-                style={{ backgroundColor: "rgba(0,0,0,0.3)" }}
+                className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm"
                 onClick={onClose}
             />
 
             {/* Panel */}
             <div
-                className="fixed right-0 top-0 h-full z-50 overflow-y-auto"
-                style={{
-                    width: "420px",
-                    backgroundColor: "#FFFFFF",
-                    boxShadow: "-4px 0 25px rgba(0,0,0,0.1)",
-                    animation: "slideIn 0.2s ease-out",
-                }}
+                className="fixed right-0 top-0 h-full z-50 overflow-y-auto w-full sm:w-[420px] bg-card border-l border-border shadow-2xl"
+                style={{ animation: "slideIn 0.2s ease-out" }}
             >
                 {/* Header */}
-                <div
-                    className="flex items-center justify-between px-6 py-4 sticky top-0 z-10"
-                    style={{
-                        backgroundColor: "#FFFFFF",
-                        borderBottom: "1px solid #E2E8F0",
-                    }}
-                >
-                    <h2 className="text-lg font-bold" style={{ color: "#0F172A" }}>
+                <div className="flex items-center justify-between px-6 py-4 sticky top-0 z-10 bg-card border-b border-border">
+                    <h2 className="text-lg font-bold text-foreground">
                         Detalle del Lead
                     </h2>
                     <div className="flex items-center gap-2">
@@ -187,8 +174,7 @@ export function DealDetailPanel({ deal, onClose, onUpdate, onDelete }: DealDetai
                                 size="sm"
                                 onClick={handleSave}
                                 disabled={isPending}
-                                className="h-8"
-                                style={{ backgroundColor: "#2563EB", color: "#FFFFFF" }}
+                                className="h-8 bg-primary text-primary-foreground hover:bg-primary/90"
                             >
                                 <Save className="h-3.5 w-3.5 mr-1" />
                                 Guardar
@@ -211,7 +197,7 @@ export function DealDetailPanel({ deal, onClose, onUpdate, onDelete }: DealDetai
                         {isEditing ? (
                             <div className="space-y-3">
                                 <div>
-                                    <label className="text-xs font-medium" style={{ color: "#64748B" }}>Título</label>
+                                    <label className="text-xs font-medium text-muted-foreground">Título</label>
                                     <Input
                                         value={editTitle}
                                         onChange={(e) => setEditTitle(e.target.value)}
@@ -219,7 +205,7 @@ export function DealDetailPanel({ deal, onClose, onUpdate, onDelete }: DealDetai
                                     />
                                 </div>
                                 <div>
-                                    <label className="text-xs font-medium" style={{ color: "#64748B" }}>Valor ($)</label>
+                                    <label className="text-xs font-medium text-muted-foreground">Valor ($)</label>
                                     <Input
                                         type="number"
                                         value={editValue}
@@ -228,12 +214,11 @@ export function DealDetailPanel({ deal, onClose, onUpdate, onDelete }: DealDetai
                                     />
                                 </div>
                                 <div>
-                                    <label className="text-xs font-medium" style={{ color: "#64748B" }}>Prioridad</label>
+                                    <label className="text-xs font-medium text-muted-foreground">Prioridad</label>
                                     <select
                                         value={editPriority}
                                         onChange={(e) => setEditPriority(e.target.value)}
-                                        className="mt-1 w-full h-9 px-3 text-sm rounded-md border"
-                                        style={{ borderColor: "#E2E8F0" }}
+                                        className="mt-1 w-full h-9 px-3 text-sm rounded-md border border-border bg-background text-foreground"
                                     >
                                         <option value="low">Baja</option>
                                         <option value="medium">Media</option>
@@ -243,11 +228,11 @@ export function DealDetailPanel({ deal, onClose, onUpdate, onDelete }: DealDetai
                             </div>
                         ) : (
                             <>
-                                <h3 className="text-xl font-bold" style={{ color: "#0F172A" }}>
+                                <h3 className="text-xl font-bold text-foreground">
                                     {deal.title}
                                 </h3>
                                 {deal.value > 0 && (
-                                    <p className="text-2xl font-bold mt-1" style={{ color: "#2563EB" }}>
+                                    <p className="text-2xl font-bold mt-1 text-primary">
                                         ${deal.value.toLocaleString("es-MX")}
                                     </p>
                                 )}
@@ -256,17 +241,14 @@ export function DealDetailPanel({ deal, onClose, onUpdate, onDelete }: DealDetai
                     </div>
 
                     {/* Stage */}
-                    <div
-                        className="flex items-center gap-3 p-3 rounded-lg"
-                        style={{ backgroundColor: "#F8FAFC", border: "1px solid #E2E8F0" }}
-                    >
+                    <div className="flex items-center gap-3 p-3 rounded-xl bg-secondary border border-border">
                         <div
                             className="h-3 w-3 rounded-full"
                             style={{ backgroundColor: deal.stage?.color || "#64748B" }}
                         />
                         <div>
-                            <p className="text-xs" style={{ color: "#64748B" }}>Etapa actual</p>
-                            <p className="text-sm font-semibold" style={{ color: "#0F172A" }}>
+                            <p className="text-xs text-muted-foreground">Etapa actual</p>
+                            <p className="text-sm font-semibold text-foreground">
                                 {deal.stage?.name || "Sin etapa"}
                             </p>
                         </div>
@@ -274,36 +256,29 @@ export function DealDetailPanel({ deal, onClose, onUpdate, onDelete }: DealDetai
 
                     {/* Contact Info */}
                     <div>
-                        <h4 className="text-sm font-semibold mb-3" style={{ color: "#0F172A" }}>
+                        <h4 className="text-sm font-semibold mb-3 text-foreground">
                             Información del Contacto
                         </h4>
-                        <div
-                            className="rounded-lg p-4 space-y-3"
-                            style={{ backgroundColor: "#F8FAFC", border: "1px solid #E2E8F0" }}
-                        >
+                        <div className="rounded-xl p-4 space-y-3 bg-secondary border border-border">
                             <div className="flex items-center gap-3">
-                                <div
-                                    className="h-10 w-10 rounded-full flex items-center justify-center text-sm font-bold"
-                                    style={{ backgroundColor: "#EFF6FF", color: "#2563EB" }}
-                                >
+                                <div className="h-10 w-10 rounded-full flex items-center justify-center text-sm font-bold bg-primary/10 text-primary">
                                     {contactName.charAt(0).toUpperCase()}
                                 </div>
                                 <div>
-                                    <p className="text-sm font-semibold" style={{ color: "#0F172A" }}>{contactName}</p>
-                                    <p className="text-xs" style={{ color: "#64748B" }}>Contacto</p>
+                                    <p className="text-sm font-semibold text-foreground">{contactName}</p>
+                                    <p className="text-xs text-muted-foreground">Contacto</p>
                                 </div>
                             </div>
 
                             {deal.contact?.phone && (
                                 <div className="flex items-center gap-2">
-                                    <Phone className="h-4 w-4" style={{ color: "#64748B" }} />
-                                    <span className="text-sm" style={{ color: "#334155" }}>+{deal.contact.phone}</span>
+                                    <Phone className="h-4 w-4 text-muted-foreground" />
+                                    <span className="text-sm text-foreground/80">+{deal.contact.phone}</span>
                                     <a
                                         href={`https://wa.me/${deal.contact.phone}`}
                                         target="_blank"
                                         rel="noopener noreferrer"
-                                        className="ml-auto text-xs font-medium px-2 py-1 rounded"
-                                        style={{ backgroundColor: "#25D36615", color: "#25D366" }}
+                                        className="ml-auto text-xs font-medium px-2 py-1 rounded bg-[#25D366]/10 text-[#25D366]"
                                     >
                                         <MessageSquare className="h-3 w-3 inline mr-1" />
                                         WhatsApp
@@ -313,15 +288,15 @@ export function DealDetailPanel({ deal, onClose, onUpdate, onDelete }: DealDetai
 
                             {deal.contact?.email && (
                                 <div className="flex items-center gap-2">
-                                    <Mail className="h-4 w-4" style={{ color: "#64748B" }} />
-                                    <span className="text-sm" style={{ color: "#334155" }}>{deal.contact.email}</span>
+                                    <Mail className="h-4 w-4 text-muted-foreground" />
+                                    <span className="text-sm text-foreground/80">{deal.contact.email}</span>
                                 </div>
                             )}
 
                             {deal.contact?.company && (
                                 <div className="flex items-center gap-2">
-                                    <Building2 className="h-4 w-4" style={{ color: "#64748B" }} />
-                                    <span className="text-sm" style={{ color: "#334155" }}>{deal.contact.company}</span>
+                                    <Building2 className="h-4 w-4 text-muted-foreground" />
+                                    <span className="text-sm text-foreground/80">{deal.contact.company}</span>
                                 </div>
                             )}
                         </div>
@@ -329,13 +304,10 @@ export function DealDetailPanel({ deal, onClose, onUpdate, onDelete }: DealDetai
 
                     {/* Etiquetas (Tags) */}
                     <div>
-                        <h4 className="text-sm font-semibold mb-3" style={{ color: "#0F172A" }}>
+                        <h4 className="text-sm font-semibold mb-3 text-foreground">
                             Etiquetas
                         </h4>
-                        <div
-                            className="rounded-lg p-4 space-y-3"
-                            style={{ backgroundColor: "#F8FAFC", border: "1px solid #E2E8F0" }}
-                        >
+                        <div className="rounded-xl p-4 space-y-3 bg-secondary border border-border">
                             {/* Assigned tags */}
                             {assignedTags.length > 0 ? (
                                 <div className="flex flex-wrap gap-2">
@@ -344,7 +316,7 @@ export function DealDetailPanel({ deal, onClose, onUpdate, onDelete }: DealDetai
                                             key={tag.id}
                                             className="inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full"
                                             style={{
-                                                backgroundColor: tag.color + "15",
+                                                backgroundColor: tag.color + "18",
                                                 color: tag.color,
                                                 border: `1px solid ${tag.color}30`,
                                             }}
@@ -360,7 +332,7 @@ export function DealDetailPanel({ deal, onClose, onUpdate, onDelete }: DealDetai
                                     ))}
                                 </div>
                             ) : (
-                                <p className="text-xs" style={{ color: "#94A3B8" }}>Sin etiquetas</p>
+                                <p className="text-xs text-muted-foreground">Sin etiquetas</p>
                             )}
 
                             {/* Available tags dropdown */}
@@ -369,16 +341,16 @@ export function DealDetailPanel({ deal, onClose, onUpdate, onDelete }: DealDetai
                                     {availableTags.map((tag) => (
                                         <div
                                             key={tag.id}
-                                            className="group flex items-center bg-gray-100 rounded-full pl-2 pr-1 py-0.5 hover:bg-gray-200 transition-colors"
+                                            className="group flex items-center bg-accent rounded-full pl-2 pr-1 py-0.5 hover:bg-accent/80 transition-colors"
                                         >
                                             <button
-                                                className="text-[11px] font-medium text-gray-600 hover:text-gray-900"
+                                                className="text-[11px] font-medium text-muted-foreground hover:text-foreground"
                                                 onClick={() => handleAddTag(tag.id)}
                                             >
                                                 + {tag.name}
                                             </button>
                                             <button
-                                                className="ml-1 p-0.5 text-gray-400 hover:text-red-500 rounded-full hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-all"
+                                                className="ml-1 p-0.5 text-muted-foreground hover:text-destructive rounded-full hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-all"
                                                 onClick={(e) => {
                                                     e.stopPropagation();
                                                     handleDeleteTag(tag.id);
@@ -407,8 +379,7 @@ export function DealDetailPanel({ deal, onClose, onUpdate, onDelete }: DealDetai
                                     />
                                     <Button
                                         size="sm"
-                                        className="h-8 px-3 text-xs"
-                                        style={{ backgroundColor: "#2563EB", color: "#FFFFFF" }}
+                                        className="h-8 px-3 text-xs bg-primary text-primary-foreground hover:bg-primary/90"
                                         onClick={handleCreateTag}
                                         disabled={isPending || !newTagName.trim()}
                                     >
@@ -425,8 +396,7 @@ export function DealDetailPanel({ deal, onClose, onUpdate, onDelete }: DealDetai
                                 </div>
                             ) : (
                                 <button
-                                    className="flex items-center gap-1 text-xs font-medium hover:opacity-80"
-                                    style={{ color: "#2563EB" }}
+                                    className="flex items-center gap-1 text-xs font-medium hover:opacity-80 text-primary"
                                     onClick={() => setShowTagInput(true)}
                                 >
                                     <Plus className="h-3.5 w-3.5" />
@@ -438,39 +408,28 @@ export function DealDetailPanel({ deal, onClose, onUpdate, onDelete }: DealDetai
 
                     {/* Notes */}
                     <div>
-                        <h4 className="text-sm font-semibold mb-2" style={{ color: "#0F172A" }}>
+                        <h4 className="text-sm font-semibold mb-2 text-foreground">
                             Notas
                         </h4>
                         {isEditing ? (
                             <textarea
                                 value={editNotes}
                                 onChange={(e) => setEditNotes(e.target.value)}
-                                className="w-full h-24 p-3 text-sm rounded-lg resize-none"
-                                style={{ border: "1px solid #E2E8F0" }}
+                                className="w-full h-24 p-3 text-sm rounded-xl resize-none border border-border bg-background text-foreground"
                                 placeholder="Agregar notas sobre este lead..."
                             />
                         ) : (
-                            <div
-                                className="p-3 rounded-lg text-sm min-h-[60px]"
-                                style={{
-                                    backgroundColor: "#F8FAFC",
-                                    border: "1px solid #E2E8F0",
-                                    color: deal.notes ? "#334155" : "#94A3B8",
-                                }}
-                            >
+                            <div className={`p-3 rounded-xl text-sm min-h-[60px] bg-secondary border border-border ${deal.notes ? "text-foreground/80" : "text-muted-foreground"}`}>
                                 {deal.notes || "Sin notas"}
                             </div>
                         )}
                     </div>
 
                     {/* Metadata */}
-                    <div
-                        className="p-4 rounded-lg space-y-2"
-                        style={{ backgroundColor: "#F8FAFC", border: "1px solid #E2E8F0" }}
-                    >
+                    <div className="p-4 rounded-xl space-y-2 bg-secondary border border-border">
                         <div className="flex items-center gap-2">
-                            <Calendar className="h-3.5 w-3.5" style={{ color: "#64748B" }} />
-                            <span className="text-xs" style={{ color: "#64748B" }}>
+                            <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
+                            <span className="text-xs text-muted-foreground">
                                 Creado: {new Date(deal.createdAt).toLocaleDateString("es-MX", {
                                     day: "numeric",
                                     month: "long",
@@ -481,7 +440,7 @@ export function DealDetailPanel({ deal, onClose, onUpdate, onDelete }: DealDetai
                             </span>
                         </div>
                         <div className="flex items-center gap-2">
-                            <span className="text-xs" style={{ color: "#64748B" }}>
+                            <span className="text-xs text-muted-foreground">
                                 Fuente: <span className="font-medium">{deal.source === "whatsapp" ? "📱 WhatsApp" : "✏️ Manual"}</span>
                             </span>
                         </div>
@@ -490,8 +449,7 @@ export function DealDetailPanel({ deal, onClose, onUpdate, onDelete }: DealDetai
                     {/* Delete Button */}
                     <Button
                         variant="outline"
-                        className="w-full"
-                        style={{ borderColor: "#FCA5A5", color: "#DC2626" }}
+                        className="w-full border-destructive/50 text-destructive hover:bg-destructive/10"
                         onClick={handleDelete}
                         disabled={isPending}
                     >

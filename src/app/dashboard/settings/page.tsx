@@ -132,7 +132,7 @@ export default function SettingsPage() {
                             value="whatsapp"
                             className="data-[state=active]:bg-card data-[state=active]:border-primary/50 data-[state=active]:shadow-premium border border-border/40 bg-card/40 hover:bg-card/60 h-auto py-4 px-4 flex flex-col items-start gap-3 rounded-2xl transition-all duration-300 group"
                         >
-                            <div className="p-2.5 rounded-xl bg-green-500/10 text-green-500 group-data-[state=active]:scale-110 transition-transform">
+                            <div className="p-2.5 rounded-xl bg-sky-500/10 text-sky-400 group-data-[state=active]:scale-110 transition-transform">
                                 <MessageSquare className="h-5 w-5" />
                             </div>
                             <div className="text-left">

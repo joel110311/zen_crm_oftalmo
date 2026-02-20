@@ -87,7 +87,7 @@ export default async function DashboardPage() {
                     title="Conversaciones Activas"
                     value={stats.activeConversations.toString()}
                     icon={MessageSquare}
-                    color="#8B5CF6" // Purple
+                    color="#F59E0B"
                     description="En proceso de atención"
                 />
                 <StatsCard
@@ -101,7 +101,7 @@ export default async function DashboardPage() {
                     title="Ventas Cerradas"
                     value={`$${stats.closedWonValue.toLocaleString("es-MX")}`}
                     icon={TrendingUp}
-                    color="#10B981" // Emerald
+                    color="#0EA5E9"
                     description="Ingresos generados"
                     trend={{ value: 12.5, isPositive: true, label: "vs mes anterior" }}
                 />
@@ -111,7 +111,7 @@ export default async function DashboardPage() {
             <div className="grid gap-4 md:gap-6 grid-cols-1 xl:grid-cols-12">
 
                 {/* 1. Pipeline Breakdown */}
-                <Card className="xl:col-span-7 border-none shadow-sm h-full rounded-2xl">
+                <Card className="xl:col-span-7 border border-border/60 shadow-premium h-full rounded-xl">
                     <CardHeader className="flex flex-row items-center justify-between pb-4">
                         <div>
                             <CardTitle className="text-xl font-bold">Distribución del Pipeline</CardTitle>
@@ -158,7 +158,7 @@ export default async function DashboardPage() {
                 <div className="xl:col-span-5 flex flex-col gap-4 md:gap-6">
 
                     {/* Activity Feed */}
-                    <Card className="border-none shadow-sm flex-1 rounded-2xl">
+                    <Card className="border border-border/60 shadow-premium flex-1 rounded-xl">
                         <CardHeader className="flex flex-row items-center justify-between pb-4">
                             <div>
                                 <CardTitle className="text-xl font-bold">Actividad Reciente</CardTitle>
@@ -208,7 +208,7 @@ export default async function DashboardPage() {
                     </Card>
 
                     {/* Upcoming Appointments */}
-                    <Card className="border-none shadow-sm rounded-2xl">
+                    <Card className="border border-border/60 shadow-premium rounded-xl">
                         <CardHeader className="pb-4">
                             <CardTitle className="text-xl font-bold flex items-center gap-2">
                                 <Calendar className="h-5 w-5 text-primary" />

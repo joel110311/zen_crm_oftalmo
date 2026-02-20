@@ -59,7 +59,7 @@ export default async function ContactDetailsPage(props: { params: Promise<{ id: 
                                 <Button size="icon" variant="outline" className="rounded-full h-10 w-10 border-blue-200 text-blue-600 hover:bg-blue-50">
                                     <MessageSquare className="h-5 w-5" />
                                 </Button>
-                                <Button size="icon" variant="outline" className="rounded-full h-10 w-10 border-green-200 text-green-600 hover:bg-green-50">
+                                <Button size="icon" variant="outline" className="rounded-full h-10 w-10 border-sky-500/20 text-sky-400 hover:bg-sky-500/10">
                                     <Phone className="h-5 w-5" />
                                 </Button>
                                 <Button size="icon" variant="outline" className="rounded-full h-10 w-10 border-gray-200 text-gray-600 hover:bg-gray-50">

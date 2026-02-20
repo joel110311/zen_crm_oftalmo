@@ -334,7 +334,7 @@ function WindowTimer({ expiresAt }: { expiresAt: string | null | undefined }) {
     return (
         <div className={cn(
             "mx-4 mb-2 px-3 py-1.5 rounded-md text-xs font-medium flex items-center justify-center gap-2 transition-colors",
-            isOpen ? "bg-emerald-100 text-emerald-800 border border-emerald-200" : "bg-rose-100 text-rose-800 border border-rose-200"
+            isOpen ? "bg-sky-500/10 text-sky-400 border border-sky-500/20" : "bg-rose-500/10 text-rose-400 border border-rose-500/20"
         )}>
             {isOpen ? (
                 <>
@@ -979,7 +979,7 @@ export default function InboxPage() {
                                                     {new Date(chat.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                                 </span>
                                                 {unreadCounts[chat.id] > 0 && (
-                                                    <span className="flex items-center justify-center min-w-[20px] h-5 rounded-full bg-green-500 text-white text-[11px] font-bold px-1.5">
+                                                    <span className="flex items-center justify-center min-w-[20px] h-5 rounded-full bg-primary text-primary-foreground text-[11px] font-bold px-1.5">
                                                         {unreadCounts[chat.id]}
                                                     </span>
                                                 )}

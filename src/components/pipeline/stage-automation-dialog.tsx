@@ -93,7 +93,7 @@ export function StageAutomationDialog({ open, onOpenChange, stages }: StageAutom
             <DialogContent className="sm:max-w-[700px] max-h-[80vh] overflow-y-auto">
                 <DialogHeader>
                     <DialogTitle className="flex items-center gap-2">
-                        <Zap className="h-5 w-5" style={{ color: "#2563EB" }} />
+                        <Zap className="h-5 w-5 text-primary" />
                         Automatización de Etapas
                     </DialogTitle>
                     <DialogDescription>
@@ -103,7 +103,7 @@ export function StageAutomationDialog({ open, onOpenChange, stages }: StageAutom
 
                 {isPending ? (
                     <div className="flex items-center justify-center py-12">
-                        <Loader2 className="h-6 w-6 animate-spin" style={{ color: "#2563EB" }} />
+                        <Loader2 className="h-6 w-6 animate-spin text-primary" />
                     </div>
                 ) : (
                     <div className="space-y-4 mt-2">
@@ -112,8 +112,7 @@ export function StageAutomationDialog({ open, onOpenChange, stages }: StageAutom
                             return (
                                 <div
                                     key={stage.id}
-                                    className="rounded-lg border p-4"
-                                    style={{ borderColor: "#E2E8F0" }}
+                                    className="rounded-xl border border-border p-4"
                                 >
                                     {/* Stage header */}
                                     <div className="flex items-center gap-2 mb-3">
@@ -121,11 +120,11 @@ export function StageAutomationDialog({ open, onOpenChange, stages }: StageAutom
                                             className="h-3 w-3 rounded-full"
                                             style={{ backgroundColor: stage.color }}
                                         />
-                                        <h4 className="font-semibold text-sm" style={{ color: "#0F172A" }}>
+                                        <h4 className="font-semibold text-sm text-foreground">
                                             {stage.name}
                                         </h4>
                                         {stage.isIncoming && (
-                                            <span className="text-xs px-1.5 py-0.5 rounded" style={{ backgroundColor: "#EFF6FF", color: "#2563EB" }}>
+                                            <span className="text-xs px-1.5 py-0.5 rounded bg-primary/10 text-primary">
                                                 Auto
                                             </span>
                                         )}
@@ -137,21 +136,20 @@ export function StageAutomationDialog({ open, onOpenChange, stages }: StageAutom
                                             {stageAutos.map(auto => (
                                                 <div
                                                     key={auto.id}
-                                                    className="flex items-center justify-between px-3 py-2 rounded-md text-sm"
-                                                    style={{ backgroundColor: "#F8FAFC", border: "1px solid #E2E8F0" }}
+                                                    className="flex items-center justify-between px-3 py-2 rounded-lg text-sm bg-secondary border border-border"
                                                 >
                                                     <div className="flex items-center gap-2">
-                                                        <Zap className="h-3.5 w-3.5" style={{ color: "#F59E0B" }} />
-                                                        <span style={{ color: "#64748B" }}>
+                                                        <Zap className="h-3.5 w-3.5 text-amber-500" />
+                                                        <span className="text-muted-foreground">
                                                             Cuando es movido →
                                                         </span>
-                                                        <span className="font-medium" style={{ color: "#0F172A" }}>
+                                                        <span className="font-medium text-foreground">
                                                             {auto.action === "add_tag" ? "Agregar" : "Eliminar"} etiqueta:
                                                         </span>
                                                         <span
                                                             className="text-xs px-1.5 py-0.5 rounded font-medium"
                                                             style={{
-                                                                backgroundColor: auto.tag.color + "15",
+                                                                backgroundColor: auto.tag.color + "18",
                                                                 color: auto.tag.color,
                                                                 border: `1px solid ${auto.tag.color}30`,
                                                             }}
@@ -161,35 +159,31 @@ export function StageAutomationDialog({ open, onOpenChange, stages }: StageAutom
                                                     </div>
                                                     <Button
                                                         variant="ghost" size="icon"
-                                                        className="h-7 w-7"
+                                                        className="h-7 w-7 text-destructive hover:bg-destructive/10"
                                                         onClick={() => handleDelete(auto.id)}
                                                     >
-                                                        <Trash2 className="h-3.5 w-3.5" style={{ color: "#DC2626" }} />
+                                                        <Trash2 className="h-3.5 w-3.5" />
                                                     </Button>
                                                 </div>
                                             ))}
                                         </div>
                                     ) : (
-                                        <p className="text-xs mb-3" style={{ color: "#94A3B8" }}>
+                                        <p className="text-xs mb-3 text-muted-foreground">
                                             Sin automatizaciones configuradas
                                         </p>
                                     )}
 
                                     {/* Add automation form */}
                                     {addingForStage === stage.id ? (
-                                        <div
-                                            className="p-3 rounded-lg space-y-3"
-                                            style={{ backgroundColor: "#F8FAFC", border: "1px solid #E2E8F0" }}
-                                        >
-                                            <p className="text-xs font-medium" style={{ color: "#64748B" }}>
+                                        <div className="p-3 rounded-xl space-y-3 bg-secondary border border-border">
+                                            <p className="text-xs font-medium text-muted-foreground">
                                                 Ejecutar: Cuando es movido a esta etapa
                                             </p>
                                             <div className="flex gap-2">
                                                 <select
                                                     value={newAction}
                                                     onChange={e => setNewAction(e.target.value)}
-                                                    className="h-8 px-2 text-sm rounded-md border flex-1"
-                                                    style={{ borderColor: "#E2E8F0" }}
+                                                    className="h-8 px-2 text-sm rounded-md border border-border bg-background text-foreground flex-1"
                                                 >
                                                     <option value="add_tag">Agregar etiqueta</option>
                                                     <option value="remove_tag">Eliminar etiqueta</option>
@@ -197,8 +191,7 @@ export function StageAutomationDialog({ open, onOpenChange, stages }: StageAutom
                                                 <select
                                                     value={newTagId}
                                                     onChange={e => setNewTagId(e.target.value)}
-                                                    className="h-8 px-2 text-sm rounded-md border flex-1"
-                                                    style={{ borderColor: "#E2E8F0" }}
+                                                    className="h-8 px-2 text-sm rounded-md border border-border bg-background text-foreground flex-1"
                                                 >
                                                     <option value="">Seleccionar etiqueta...</option>
                                                     {tags.map(t => (
@@ -212,15 +205,13 @@ export function StageAutomationDialog({ open, onOpenChange, stages }: StageAutom
                                                     value={newTagName}
                                                     onChange={e => setNewTagName(e.target.value)}
                                                     placeholder="Nombre de la etiqueta"
-                                                    className="h-8 px-2 text-sm rounded-md border w-full"
-                                                    style={{ borderColor: "#E2E8F0" }}
+                                                    className="h-8 px-2 text-sm rounded-md border border-border bg-background text-foreground w-full"
                                                 />
                                             )}
                                             <div className="flex gap-2">
                                                 <Button
                                                     size="sm"
-                                                    className="h-7 text-xs"
-                                                    style={{ backgroundColor: "#2563EB", color: "#fff" }}
+                                                    className="h-7 text-xs bg-primary text-primary-foreground hover:bg-primary/90"
                                                     onClick={() => handleCreate(stage.id)}
                                                     disabled={!newTagId || (newTagId === "__new__" && !newTagName.trim())}
                                                 >
@@ -238,8 +229,7 @@ export function StageAutomationDialog({ open, onOpenChange, stages }: StageAutom
                                     ) : (
                                         <button
                                             onClick={() => { setAddingForStage(stage.id); setNewAction("add_tag"); setNewTagId(""); }}
-                                            className="flex items-center gap-1.5 text-xs font-medium transition-colors hover:opacity-80"
-                                            style={{ color: "#2563EB" }}
+                                            className="flex items-center gap-1.5 text-xs font-medium transition-colors hover:opacity-80 text-primary"
                                         >
                                             <Plus className="h-3.5 w-3.5" />
                                             Agregar disparador

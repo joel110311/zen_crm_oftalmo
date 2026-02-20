@@ -135,11 +135,11 @@ export function BigCalendar({ initialEvents, onSelectSlot, onSelectEvent }: BigC
 
         const baseClasses = "flex items-start gap-2 h-full w-full px-1.5 py-0.5 leading-tight rounded-r-md border-l-[6px] transition-all shadow-sm overflow-hidden";
         const colorClasses = isRed
-            ? "bg-red-50 border-red-500 text-red-700 hover:bg-red-100"
-            : "bg-emerald-50 border-emerald-500 text-emerald-700 hover:bg-emerald-100";
+            ? "bg-red-500/10 border-red-500 text-red-400 hover:bg-red-500/15"
+            : "bg-sky-500/10 border-sky-500 text-sky-400 hover:bg-sky-500/15";
 
-        const dotColor = isRed ? "bg-red-500" : "bg-emerald-500";
-        const dotShadow = isRed ? "shadow-[0_0_6px_rgba(239,68,68,0.6)]" : "shadow-[0_0_6px_rgba(16,185,129,0.6)]";
+        const dotColor = isRed ? "bg-red-500" : "bg-sky-500";
+        const dotShadow = isRed ? "shadow-[0_0_6px_rgba(239,68,68,0.6)]" : "shadow-[0_0_6px_rgba(14,165,233,0.6)]";
 
         return (
             <div className={`${baseClasses} ${colorClasses}`}>

@@ -16,7 +16,6 @@ import {
     LogOut,
     Menu,
     X,
-    FileText,
     Shield,
     ShieldCheck
 } from "lucide-react";
@@ -26,42 +25,13 @@ import { useSession, signOut } from "next-auth/react";
 import { Badge } from "@/components/ui/badge";
 
 const sidebarNavItems = [
-    {
-        title: "Dashboard",
-        href: "/dashboard",
-        icon: LayoutDashboard,
-    },
-    {
-        title: "Contactos",
-        href: "/dashboard/contacts",
-        icon: Users,
-    },
-    {
-        title: "Pipeline",
-        href: "/dashboard/pipeline",
-        icon: KanbanSquare,
-    },
-    {
-        title: "Chats",
-        href: "/dashboard/inbox",
-        icon: MessageSquare,
-    },
-    {
-        title: "Calendario",
-        href: "/dashboard/calendar",
-        icon: Calendar,
-    },
-    {
-        title: "Cerebro IA",
-        href: "/dashboard/brain",
-        icon: BrainCircuit,
-        superadminOnly: true,
-    },
-    {
-        title: "Configuración",
-        href: "/dashboard/settings",
-        icon: Settings,
-    },
+    { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+    { title: "Contactos", href: "/dashboard/contacts", icon: Users },
+    { title: "Pipeline", href: "/dashboard/pipeline", icon: KanbanSquare },
+    { title: "Chats", href: "/dashboard/inbox", icon: MessageSquare },
+    { title: "Calendario", href: "/dashboard/calendar", icon: Calendar },
+    { title: "Cerebro IA", href: "/dashboard/brain", icon: BrainCircuit, superadminOnly: true },
+    { title: "Configuración", href: "/dashboard/settings", icon: Settings },
 ];
 
 interface SidebarProps extends React.HTMLAttributes<HTMLDivElement> { }
@@ -74,47 +44,82 @@ export function Sidebar({ className }: SidebarProps) {
     const userRole = (session?.user as any)?.role;
     const userName = session?.user?.name || (sessionLoading ? "..." : "Usuario");
 
-    // Close sidebar on route change (mobile)
-    useEffect(() => {
-        setOpen(false);
-    }, [pathname]);
+    useEffect(() => { setOpen(false); }, [pathname]);
 
-    // Prevent body scroll when sidebar is open on mobile
     useEffect(() => {
-        if (open) {
-            document.body.style.overflow = "hidden";
-        } else {
-            document.body.style.overflow = "";
-        }
-        return () => {
-            document.body.style.overflow = "";
-        };
+        if (open) { document.body.style.overflow = "hidden"; }
+        else { document.body.style.overflow = ""; }
+        return () => { document.body.style.overflow = ""; };
     }, [open]);
 
     const filteredNavItems = sidebarNavItems.filter((item) => {
-        // While loading, show all items (will be filtered after session loads)
         if (sessionLoading) return !item.superadminOnly;
         if (item.superadminOnly && userRole !== "SUPERADMIN") return false;
         return true;
     });
 
+    // ════════ Shared Nav Item Renderer ════════
+    const renderNavItem = (item: typeof sidebarNavItems[0], index: number, onClickExtra?: () => void) => {
+        const Icon = item.icon;
+        const isActive = pathname === item.href;
+        return (
+            <Link key={index} href={item.href} onClick={onClickExtra}>
+                <span
+                    className={cn(
+                        "group relative flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-medium transition-all duration-200",
+                        isActive
+                            ? "bg-primary/15 text-primary"
+                            : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                    )}
+                >
+                    {/* Active indicator bar */}
+                    {isActive && (
+                        <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 rounded-r-full bg-primary" />
+                    )}
+                    <Icon className={cn("h-[18px] w-[18px] flex-shrink-0", isActive ? "text-primary" : "text-sidebar-foreground/50 group-hover:text-sidebar-foreground/80")} />
+                    <span className="truncate">{item.title}</span>
+                </span>
+            </Link>
+        );
+    };
+
+    // ════════ User Info Block ════════
+    const renderUserInfo = (compact?: boolean) => (
+        <div className={cn("flex items-center gap-3", compact ? "px-2" : "px-3 py-2.5 bg-sidebar-accent/40 rounded-xl")}>
+            <div className={cn(
+                "rounded-lg flex items-center justify-center flex-shrink-0 font-bold text-primary-foreground",
+                compact ? "h-8 w-8 text-xs" : "h-9 w-9 text-sm"
+            )} style={{ background: "linear-gradient(135deg, hsl(221 83% 53%), hsl(221 83% 40%))" }}>
+                {userName.charAt(0).toUpperCase()}
+            </div>
+            <div className="flex-1 min-w-0">
+                <p className={cn("font-medium truncate text-sidebar-foreground", compact ? "text-sm" : "text-sm")}>{userName}</p>
+                {!compact && (
+                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-sidebar-border text-sidebar-foreground/60 mt-0.5">
+                        {userRole === "SUPERADMIN" ? (
+                            <><ShieldCheck className="h-2.5 w-2.5 mr-0.5" /> Super Admin</>
+                        ) : (
+                            <><Shield className="h-2.5 w-2.5 mr-0.5" /> Admin</>
+                        )}
+                    </Badge>
+                )}
+            </div>
+        </div>
+    );
+
     return (
         <>
             {/* ═══════ Mobile Fixed Top Header ═══════ */}
-            <header className="md:hidden fixed top-0 left-0 right-0 z-40 bg-card/80 border-b border-border/40 px-3 py-2.5 flex items-center justify-between backdrop-blur-xl shadow-sm transition-all duration-200">
-                <button
-                    onClick={() => setOpen(true)}
-                    className="p-2 hover:bg-accent/50 rounded-xl transition-colors active:scale-95"
-                    aria-label="Abrir menú"
-                >
-                    <Menu className="w-6 h-6 text-foreground/80" />
+            <header className="md:hidden fixed top-0 left-0 right-0 z-40 bg-sidebar/95 border-b border-sidebar-border px-3 py-2.5 flex items-center justify-between backdrop-blur-xl">
+                <button onClick={() => setOpen(true)} className="p-2 hover:bg-sidebar-accent rounded-xl transition-colors active:scale-95" aria-label="Abrir menú">
+                    <Menu className="w-5 h-5 text-sidebar-foreground" />
                 </button>
-                <div className="flex items-center gap-2 opacity-90">
+                <div className="flex items-center gap-2">
                     <ZenLogo className="h-6 w-6" />
-                    <span className="font-semibold text-foreground text-sm tracking-tight">Zen CRM</span>
+                    <span className="font-semibold text-sidebar-foreground text-sm tracking-tight">Zen CRM</span>
                 </div>
-                {/* Avatar placeholder for visual balance */}
-                <div className="h-9 w-9 rounded-full bg-primary/10 flex items-center justify-center text-primary text-xs font-bold ring-2 ring-background">
+                <div className="h-8 w-8 rounded-lg flex items-center justify-center text-xs font-bold text-primary-foreground"
+                    style={{ background: "linear-gradient(135deg, hsl(221 83% 53%), hsl(221 83% 40%))" }}>
                     {userName.charAt(0).toUpperCase()}
                 </div>
             </header>
@@ -122,7 +127,7 @@ export function Sidebar({ className }: SidebarProps) {
             {/* ═══════ Mobile Sidebar Overlay ═══════ */}
             {open && (
                 <div
-                    className="md:hidden fixed inset-0 bg-black/40 z-40 backdrop-blur-md transition-opacity duration-300"
+                    className="md:hidden fixed inset-0 bg-black/50 z-40 backdrop-blur-sm transition-opacity duration-300"
                     onClick={() => setOpen(false)}
                 />
             )}
@@ -130,143 +135,75 @@ export function Sidebar({ className }: SidebarProps) {
             {/* ═══════ Mobile Sidebar Drawer ═══════ */}
             <aside
                 className={cn(
-                    "md:hidden fixed inset-y-0 left-0 z-50 w-[285px] bg-card/95 backdrop-blur-2xl border-r border-border/40 shadow-2xl rounded-r-3xl",
-                    "transform transition-transform duration-300 cubic-bezier(0.32, 0.72, 0, 1)", // iOS-like spring
+                    "md:hidden fixed inset-y-0 left-0 z-50 w-[280px] bg-sidebar border-r border-sidebar-border",
+                    "transform transition-transform duration-300 ease-out",
                     open ? "translate-x-0" : "-translate-x-full"
                 )}
             >
                 <div className="flex flex-col h-full">
-                    {/* Sidebar Header */}
-                    <div className="flex items-center justify-between p-4 border-b border-border">
+                    {/* Header */}
+                    <div className="flex items-center justify-between p-4 border-b border-sidebar-border">
                         <div className="flex items-center gap-2.5">
-                            <ZenLogo className="h-10 w-10" />
-                            <span className="font-bold text-lg text-primary">Zen CRM</span>
+                            <ZenLogo className="h-8 w-8" />
+                            <span className="font-bold text-lg text-sidebar-foreground">Zen CRM</span>
                         </div>
-                        <button
-                            onClick={() => setOpen(false)}
-                            className="p-2 hover:bg-accent rounded-xl transition-colors"
-                        >
-                            <X className="w-5 h-5 text-muted-foreground" />
+                        <button onClick={() => setOpen(false)} className="p-2 hover:bg-sidebar-accent rounded-xl transition-colors">
+                            <X className="w-4 h-4 text-sidebar-foreground/60" />
                         </button>
                     </div>
 
                     {/* Navigation */}
-                    <ScrollArea className="flex-1 py-3">
-                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 px-5">
+                    <ScrollArea className="flex-1 py-4">
+                        <p className="text-[11px] font-semibold text-sidebar-foreground/40 uppercase tracking-widest mb-3 px-5">
                             Menú
                         </p>
-                        <nav className="grid gap-1 px-3">
-                            {filteredNavItems.map((item, index) => {
-                                const Icon = item.icon;
-                                const isActive = pathname === item.href;
-                                return (
-                                    <Link
-                                        key={index}
-                                        href={item.href}
-                                        onClick={() => setOpen(false)}
-                                    >
-                                        <span
-                                            className={cn(
-                                                "group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200",
-                                                isActive
-                                                    ? "bg-primary/10 text-primary"
-                                                    : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                                            )}
-                                        >
-                                            <div
-                                                className={cn(
-                                                    "w-9 h-9 rounded-lg flex items-center justify-center transition-all duration-200",
-                                                    isActive
-                                                        ? "bg-primary text-primary-foreground"
-                                                        : "bg-muted text-muted-foreground group-hover:text-foreground"
-                                                )}
-                                            >
-                                                <Icon className="w-5 h-5" />
-                                            </div>
-                                            <span>{item.title}</span>
-                                            {isActive && (
-                                                <div className="ml-auto w-1.5 h-1.5 rounded-full bg-primary" />
-                                            )}
-                                        </span>
-                                    </Link>
-                                );
-                            })}
+                        <nav className="grid gap-0.5 px-3">
+                            {filteredNavItems.map((item, i) => renderNavItem(item, i, () => setOpen(false)))}
                         </nav>
                     </ScrollArea>
 
                     {/* User Info & Logout */}
-                    <div className="p-3 border-t border-border space-y-2">
-                        <div className="flex items-center gap-3 px-3 py-2 bg-muted/50 rounded-xl">
-                            <div className="w-9 h-9 bg-primary/15 rounded-lg flex items-center justify-center flex-shrink-0">
-                                <span className="text-primary text-sm font-bold">{userName.charAt(0).toUpperCase()}</span>
-                            </div>
-                            <div className="flex-1 min-w-0">
-                                <p className="text-sm font-medium truncate">{userName}</p>
-                                <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-                                    {userRole === "SUPERADMIN" ? (
-                                        <><ShieldCheck className="h-2.5 w-2.5 mr-0.5" /> Super Admin</>
-                                    ) : (
-                                        <><Shield className="h-2.5 w-2.5 mr-0.5" /> Admin</>
-                                    )}
-                                </Badge>
-                            </div>
-                        </div>
+                    <div className="p-3 border-t border-sidebar-border space-y-2">
+                        {renderUserInfo()}
                         <button
                             onClick={() => signOut({ callbackUrl: "/login" })}
-                            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-all duration-200 text-sm font-medium"
+                            className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sidebar-foreground/50 hover:bg-destructive/10 hover:text-destructive transition-all duration-200 text-sm font-medium"
                         >
-                            <div className="w-9 h-9 rounded-lg flex items-center justify-center">
-                                <LogOut className="w-5 h-5" />
-                            </div>
+                            <LogOut className="w-[18px] h-[18px]" />
                             Cerrar Sesión
                         </button>
                     </div>
                 </div>
             </aside>
 
-            {/* ═══════ Desktop Sidebar (unchanged behavior) ═══════ */}
-            <div className={cn("hidden border-r bg-card md:block w-64 2xl:w-72 flex-col", className)}>
-                <div className="flex h-16 items-center px-4 2xl:px-6 border-b">
-                    <Link href="/dashboard" className="flex items-center gap-2.5 font-bold text-lg 2xl:text-xl text-primary">
-                        <ZenLogo className="h-10 w-10 2xl:h-12 2xl:w-12" />
+            {/* ═══════ Desktop Sidebar ═══════ */}
+            <div className={cn("hidden border-r border-sidebar-border bg-sidebar md:flex md:flex-col w-64 2xl:w-72 flex-shrink-0", className)}>
+                {/* Logo */}
+                <div className="flex h-16 items-center px-5 2xl:px-6 border-b border-sidebar-border">
+                    <Link href="/dashboard" className="flex items-center gap-2.5 font-bold text-lg text-sidebar-foreground">
+                        <ZenLogo className="h-8 w-8 2xl:h-9 2xl:w-9" />
                         <span>Zen CRM</span>
                     </Link>
                 </div>
-                <ScrollArea className="flex-1 py-4">
-                    <nav className="grid gap-1 px-2">
-                        {filteredNavItems.map((item, index) => {
-                            const Icon = item.icon;
-                            return (
-                                <Link
-                                    key={index}
-                                    href={item.href}
-                                >
-                                    <span
-                                        className={cn(
-                                            "group flex items-center rounded-md px-3 py-2.5 text-sm font-medium hover:bg-accent hover:text-accent-foreground transition-colors",
-                                            pathname === item.href ? "bg-primary/10 text-primary hover:bg-primary/15" : "text-muted-foreground"
-                                        )}
-                                    >
-                                        <Icon className="mr-3 h-5 w-5" />
-                                        {item.title}
-                                    </span>
-                                </Link>
-                            );
-                        })}
+
+                {/* Navigation */}
+                <ScrollArea className="flex-1 py-5">
+                    <p className="text-[11px] font-semibold text-sidebar-foreground/35 uppercase tracking-widest mb-3 px-5">
+                        Menú
+                    </p>
+                    <nav className="grid gap-0.5 px-3">
+                        {filteredNavItems.map((item, i) => renderNavItem(item, i))}
                     </nav>
                 </ScrollArea>
-                <div className="p-4 border-t space-y-3">
-                    <div className="flex items-center gap-3 px-2">
-                        <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary text-xs font-bold flex-shrink-0">
-                            {userName.charAt(0).toUpperCase()}
-                        </div>
-                        <p className="text-sm font-medium truncate">{userName}</p>
-                    </div>
+
+                {/* User & Logout */}
+                <div className="p-3 border-t border-sidebar-border space-y-2">
+                    {renderUserInfo()}
                     <button
                         onClick={() => signOut({ callbackUrl: "/login" })}
-                        className="flex items-center gap-3 px-4 py-2 w-full text-sm text-muted-foreground hover:text-destructive transition-colors"
+                        className="flex items-center gap-3 px-3.5 py-2 w-full text-sm text-sidebar-foreground/50 hover:text-destructive transition-colors rounded-xl hover:bg-destructive/10"
                     >
-                        <LogOut className="h-4 w-4" />
+                        <LogOut className="h-[18px] w-[18px]" />
                         Cerrar Sesión
                     </button>
                 </div>

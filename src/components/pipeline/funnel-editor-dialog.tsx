@@ -46,13 +46,13 @@ interface FunnelEditorDialogProps {
 
 const STAGE_COLORS = [
     "#3B82F6", // Blue
-    "#10B981", // Emerald
+    "#0EA5E9", // Sky
     "#F59E0B", // Amber
     "#EF4444", // Red
-    "#8B5CF6", // Violet
+    "#F43F5E", // Rose
     "#EC4899", // Pink
     "#6366F1", // Indigo
-    "#14B8A6", // Teal
+    "#0891B2", // Cyan
     "#F97316", // Orange
     "#64748B", // Slate
 ];
@@ -306,8 +306,6 @@ function SortableStageItem({
         transform: CSS.Transform.toString(transform),
         transition,
         opacity: isDragging ? 0.3 : 1,
-        border: "1px solid #E2E8F0",
-        backgroundColor: "#FFFFFF",
         position: "relative" as const,
         zIndex: isDragging ? 999 : "auto",
     };
@@ -316,7 +314,7 @@ function SortableStageItem({
         <div
             ref={setNodeRef}
             style={style}
-            className="flex items-center gap-2 px-3 py-2.5 rounded-lg mb-2"
+            className="flex items-center gap-2 px-3 py-2.5 rounded-lg mb-2 border border-border bg-card"
         >
             <div
                 {...attributes}
@@ -335,7 +333,7 @@ function SortableStageItem({
                 />
                 {!isLocked && (
                     <div
-                        className="absolute left-0 top-6 z-50 hidden group-hover:flex flex-wrap gap-1 p-2 bg-white rounded-lg shadow-xl border"
+                        className="absolute left-0 top-6 z-50 hidden group-hover:flex flex-wrap gap-1 p-2 bg-popover rounded-lg shadow-xl border border-border"
                         style={{ width: "150px" }}
                     >
                         {STAGE_COLORS.map((c) => (
@@ -346,8 +344,8 @@ function SortableStageItem({
                                     backgroundColor: c,
                                     border:
                                         c === stage.color
-                                            ? "2px solid #0F172A"
-                                            : "1px solid #E2E8F0",
+                                            ? "2px solid currentColor"
+                                            : "1px solid hsl(228 14% 20%)",
                                 }}
                                 onClick={() => handleColorChange(stage.id, c)}
                             />
