@@ -10,7 +10,9 @@ import {
     PointerSensor,
     useSensor,
     useSensors,
-    closestCorners,
+    pointerWithin,
+    closestCenter,
+    CollisionDetection,
 } from "@dnd-kit/core";
 import { arrayMove } from "@dnd-kit/sortable";
 import { PipelineColumn } from "./pipeline-column";
@@ -71,6 +73,13 @@ interface PipelineBoardProps {
     initialStages: PipelineStageData[];
     initialDeals: DealData[];
 }
+
+// Custom collision: use pointer position first, fall back to closest center
+const customCollision: CollisionDetection = (args) => {
+    const pointerCollisions = pointerWithin(args);
+    if (pointerCollisions.length > 0) return pointerCollisions;
+    return closestCenter(args);
+};
 
 export function PipelineBoard({ initialStages, initialDeals }: PipelineBoardProps) {
     const [stages, setStages] = useState<PipelineStageData[]>(initialStages);
@@ -346,7 +355,7 @@ export function PipelineBoard({ initialStages, initialDeals }: PipelineBoardProp
 
             <DndContext
                 sensors={sensors}
-                collisionDetection={closestCorners}
+                collisionDetection={customCollision}
                 onDragStart={handleDragStart}
                 onDragOver={handleDragOver}
                 onDragEnd={handleDragEnd}
