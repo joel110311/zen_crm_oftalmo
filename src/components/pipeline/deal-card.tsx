@@ -28,7 +28,6 @@ export function DealCard({ deal, onDealClick, isOverlay }: DealCardProps) {
     const style = {
         transform: CSS.Transform.toString(transform),
         transition,
-        opacity: isDragging ? 0.4 : 1,
     };
 
     const contactName = [deal.contact?.name, deal.contact?.lastName]
@@ -39,6 +38,17 @@ export function DealCard({ deal, onDealClick, isOverlay }: DealCardProps) {
         ? (deal.lastMessage.length > 50 ? deal.lastMessage.slice(0, 50) + "..." : deal.lastMessage)
         : null;
     const tags = deal.dealTags?.map((dt) => dt.tag) || [];
+
+    // When this card is being dragged, show a dashed placeholder in its original spot
+    if (isDragging) {
+        return (
+            <div
+                ref={setNodeRef}
+                style={style}
+                className="rounded-lg border-2 border-dashed border-primary/30 bg-primary/5 h-[72px]"
+            />
+        );
+    }
 
     return (
         <div
@@ -51,7 +61,7 @@ export function DealCard({ deal, onDealClick, isOverlay }: DealCardProps) {
             onClick={() => onDealClick(deal)}
         >
             <div
-                className={`rounded-lg px-3 py-2.5 transition-all duration-150 bg-card border border-border ${isOverlay ? "shadow-2xl scale-105" : "shadow-sm group-hover:shadow-md group-hover:border-primary/50"
+                className={`rounded-lg px-3 py-2.5 transition-all duration-150 bg-card border border-border ${isOverlay ? "shadow-2xl scale-105 rotate-[2deg]" : "shadow-sm group-hover:shadow-md group-hover:border-primary/50"
                     }`}
             >
                 {/* Contact row: avatar + name/phone + value */}

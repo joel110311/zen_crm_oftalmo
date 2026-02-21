@@ -11,21 +11,27 @@ interface PipelineColumnProps {
     stage: PipelineStageData;
     deals: DealData[];
     onDealClick: (deal: DealData) => void;
+    activeDealId: string | null;
 }
 
 const isClosed = (stage: PipelineStageData) => stage.isClosedWon || stage.isClosedLost;
 
-export function PipelineColumn({ stage, deals, onDealClick }: PipelineColumnProps) {
+export function PipelineColumn({ stage, deals, onDealClick, activeDealId }: PipelineColumnProps) {
     const { isOver, setNodeRef } = useDroppable({
         id: stage.id,
     });
 
     const totalValue = deals.reduce((sum, deal) => sum + deal.value, 0);
 
+    // Check if the active deal is currently in this column (dragged here via handleDragOver)
+    const hasActiveDeal = activeDealId ? deals.some((d) => d.id === activeDealId) : false;
+
     return (
         <div
             ref={setNodeRef}
-            className={`flex flex-col h-full transition-all duration-200 rounded-xl border w-[260px] min-w-[260px] md:w-[280px] md:min-w-[280px] 2xl:w-[320px] 2xl:min-w-[320px] ${isOver ? "border-dashed ring-2 ring-primary/20 bg-accent/50" : "border-border bg-card/50"
+            className={`flex flex-col h-full transition-all duration-200 rounded-xl border w-[260px] min-w-[260px] md:w-[280px] md:min-w-[280px] 2xl:w-[320px] 2xl:min-w-[320px] ${isOver
+                ? "border-dashed ring-2 ring-primary/30 bg-accent/50"
+                : "border-border bg-card/50"
                 }`}
             style={{
                 borderColor: isOver ? stage.color : undefined,
@@ -82,15 +88,19 @@ export function PipelineColumn({ stage, deals, onDealClick }: PipelineColumnProp
                     className="flex-1 overflow-y-auto px-3 py-3 space-y-2.5"
                     style={{ minHeight: "100px" }}
                 >
-                    {deals.length === 0 ? null : (
-                        deals.map((deal) => (
-                            <DealCard
-                                key={deal.id}
-                                deal={deal}
-                                onDealClick={onDealClick}
-                            />
-                        ))
+                    {deals.length === 0 && isOver && (
+                        /* Empty column drop placeholder */
+                        <div className="rounded-lg border-2 border-dashed border-primary/30 bg-primary/5 h-[72px] flex items-center justify-center">
+                            <span className="text-xs text-primary/50 font-medium">Soltar aquí</span>
+                        </div>
                     )}
+                    {deals.map((deal) => (
+                        <DealCard
+                            key={deal.id}
+                            deal={deal}
+                            onDealClick={onDealClick}
+                        />
+                    ))}
                 </div>
             </SortableContext>
         </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useCallback, useTransition, useEffect } from "react";
+import React, { useState, useCallback, useTransition, useEffect, useRef } from "react";
 import {
     DndContext,
     DragEndEvent,
@@ -83,10 +83,27 @@ export function PipelineBoard({ initialStages, initialDeals }: PipelineBoardProp
     const [showAutomationDialog, setShowAutomationDialog] = useState(false);
     const [showFunnelEditor, setShowFunnelEditor] = useState(false);
 
+    // --- DnD stability refs ---
+    const isDraggingRef = useRef(false);
+    const skipNextPollRef = useRef(false);
+    const originalStageIdRef = useRef<string | null>(null);
+    const dealsRef = useRef(deals);
+    dealsRef.current = deals;
+
     // Refresh pipeline data from server
     const refreshPipelineData = useCallback(() => {
+        // Skip refresh while dragging or right after a drop
+        if (isDraggingRef.current) return;
+        if (skipNextPollRef.current) {
+            skipNextPollRef.current = false;
+            return;
+        }
+
         startTransition(async () => {
             const data = await getPipelineData();
+            // Double-check we're not mid-drag when the async response arrives
+            if (isDraggingRef.current) return;
+
             if (data.stages) {
                 setStages(data.stages as PipelineStageData[]);
             }
@@ -118,22 +135,24 @@ export function PipelineBoard({ initialStages, initialDeals }: PipelineBoardProp
     );
 
     const handleDragStart = useCallback((event: DragStartEvent) => {
-        const deal = deals.find((d) => d.id === event.active.id);
+        const deal = dealsRef.current.find((d) => d.id === event.active.id);
         if (deal) {
+            isDraggingRef.current = true;
+            originalStageIdRef.current = deal.stageId;
             setActiveDeal(deal);
         }
-    }, [deals]);
+    }, []);
 
     // Helper to find which stage a sortable ID belongs to
     const findStageId = useCallback(
         (id: string): string | undefined => {
             // Is it a stage directly?
             if (stages.find((s) => s.id === id)) return id;
-            // Is it a deal? Return its stageId
-            const deal = deals.find((d) => d.id === id);
+            // Is it a deal? Return its stageId from the ref (always fresh)
+            const deal = dealsRef.current.find((d) => d.id === id);
             return deal?.stageId;
         },
-        [deals, stages]
+        [stages]
     );
 
     // Handle drag over for cross-column movement (live preview)
@@ -175,28 +194,46 @@ export function PipelineBoard({ initialStages, initialDeals }: PipelineBoardProp
     const handleDragEnd = useCallback(
         (event: DragEndEvent) => {
             const { active, over } = event;
+
+            // Always clear drag state
+            isDraggingRef.current = false;
             setActiveDeal(null);
 
-            if (!over) return;
+            if (!over) {
+                // Dropped outside — revert to original stage
+                const origStageId = originalStageIdRef.current;
+                if (origStageId) {
+                    setDeals((prev) =>
+                        prev.map((d) =>
+                            d.id === (active.id as string) ? { ...d, stageId: origStageId } : d
+                        )
+                    );
+                }
+                originalStageIdRef.current = null;
+                return;
+            }
 
             const activeId = active.id as string;
             const overId = over.id as string;
 
-            if (activeId === overId) return;
-
-            const activeStageId = findStageId(activeId);
+            // Use ref to get CURRENT stageId (handleDragOver already updated it)
+            const currentStageId = dealsRef.current.find((d) => d.id === activeId)?.stageId;
             const overStageId = findStageId(overId);
+            const origStageId = originalStageIdRef.current;
+            originalStageIdRef.current = null;
 
-            if (!activeStageId || !overStageId) return;
+            if (!currentStageId || !overStageId) return;
 
-            const deal = deals.find((d) => d.id === activeId);
-            if (!deal) return;
+            if (activeId === overId && currentStageId === origStageId) {
+                // No movement at all
+                return;
+            }
 
-            if (activeStageId === overStageId) {
-                // Same column: reorder
+            if (currentStageId === overStageId && origStageId === overStageId) {
+                // Same column reorder
                 setDeals((prev) => {
-                    const stageDeals = prev.filter((d) => d.stageId === activeStageId);
-                    const otherDeals = prev.filter((d) => d.stageId !== activeStageId);
+                    const stageDeals = prev.filter((d) => d.stageId === currentStageId);
+                    const otherDeals = prev.filter((d) => d.stageId !== currentStageId);
                     const oldIndex = stageDeals.findIndex((d) => d.id === activeId);
                     const newIndex = stageDeals.findIndex((d) => d.id === overId);
                     if (oldIndex === -1 || newIndex === -1) return prev;
@@ -204,28 +241,28 @@ export function PipelineBoard({ initialStages, initialDeals }: PipelineBoardProp
                     return [...otherDeals, ...reordered];
                 });
             } else {
-                // Cross-column: update stageId (already moved during dragOver)
-                // Just ensure the stageId is correct
-                setDeals((prev) =>
-                    prev.map((d) => (d.id === activeId ? { ...d, stageId: overStageId } : d))
-                );
+                // Cross-column move — state is already updated by handleDragOver
+                // Skip next poll to prevent stale server data from reverting
+                skipNextPollRef.current = true;
 
                 // Server update
-                const originalStageId = deal.stageId;
                 startTransition(async () => {
-                    const result = await moveDealToStage(activeId, overStageId);
+                    const targetStage = overStageId;
+                    const result = await moveDealToStage(activeId, targetStage);
                     if (!result.success) {
-                        // Revert on failure
-                        setDeals((prev) =>
-                            prev.map((d) =>
-                                d.id === activeId ? { ...d, stageId: originalStageId } : d
-                            )
-                        );
+                        // Revert on failure using the stable ref
+                        if (origStageId) {
+                            setDeals((prev) =>
+                                prev.map((d) =>
+                                    d.id === activeId ? { ...d, stageId: origStageId } : d
+                                )
+                            );
+                        }
                     }
                 });
             }
         },
-        [deals, stages, findStageId]
+        [findStageId]
     );
 
     const handleDealClick = useCallback((deal: DealData) => {
@@ -245,6 +282,8 @@ export function PipelineBoard({ initialStages, initialDeals }: PipelineBoardProp
             setSelectedDeal(null);
         }
     }, [selectedDeal]);
+
+    const activeDealId = activeDeal?.id ?? null;
 
     return (
         <div className="flex flex-col h-full gap-3 md:gap-4">
@@ -288,7 +327,7 @@ export function PipelineBoard({ initialStages, initialDeals }: PipelineBoardProp
                                 onClick={() => setShowAutomationDialog(true)}
                                 className="cursor-pointer"
                             >
-                                <Zap className="h-4 w-4 mr-2" style={{ color: "#F59E0B" }} />
+                                <Zap className="h-4 w-4 mr-2 text-amber-500" />
                                 Automatización
                             </DropdownMenuItem>
                             <DropdownMenuItem
@@ -322,13 +361,14 @@ export function PipelineBoard({ initialStages, initialDeals }: PipelineBoardProp
                                     stage={stage}
                                     deals={stageDeals}
                                     onDealClick={handleDealClick}
+                                    activeDealId={activeDealId}
                                 />
                             );
                         })}
                     </div>
                 </div>
 
-                <DragOverlay>
+                <DragOverlay dropAnimation={null}>
                     {activeDeal ? (
                         <DealCard
                             deal={activeDeal}
