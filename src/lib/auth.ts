@@ -34,10 +34,11 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
                     return null;
                 }
 
+                // ALWAYS return a non-null name — use email as fallback 
                 return {
                     id: user.id,
                     email: user.email,
-                    name: user.name,
+                    name: user.name || user.email,
                     role: user.role,
                 };
             },
@@ -48,27 +49,35 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             if (user) {
                 token.role = (user as any).role;
                 token.id = user.id;
-                token.name = user.name || (user.email ?? "Usuario");
+                // user.name is guaranteed non-null from authorize()
+                token.name = user.name;
             }
-            // Fallback for existing sessions where name was never stored in the token
-            if (!token.name && token.id) {
-                try {
-                    const dbUser = await prisma.user.findUnique({
-                        where: { id: token.id as string },
-                        select: { name: true, email: true },
-                    });
-                    token.name = dbUser?.name || dbUser?.email || "Usuario";
-                } catch {
+
+            // Belt-and-suspenders: if token still has no name, resolve it now
+            // This handles old JWT cookies from before this fix was deployed
+            if (!token.name) {
+                if (token.id) {
+                    try {
+                        const dbUser = await prisma.user.findUnique({
+                            where: { id: token.id as string },
+                            select: { name: true, email: true },
+                        });
+                        token.name = dbUser?.name || dbUser?.email || (token.email as string) || "Usuario";
+                    } catch {
+                        token.name = (token.email as string) || "Usuario";
+                    }
+                } else {
                     token.name = (token.email as string) || "Usuario";
                 }
             }
+
             return token;
         },
         async session({ session, token }) {
             if (session.user) {
                 (session.user as any).role = token.role;
                 (session.user as any).id = token.id;
-                session.user.name = (token.name as string) || "Usuario";
+                session.user.name = (token.name as string) || (token.email as string) || "Usuario";
             }
             return session;
         },
