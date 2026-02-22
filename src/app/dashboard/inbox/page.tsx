@@ -118,53 +118,35 @@ function AudioPlayer({ src, isOutbound }: { src: string; isOutbound: boolean }) 
         const audio = audioRef.current;
         if (!audio) return;
 
-        const trySetDuration = () => {
+        const onDurationChange = () => {
+            const d = audio.duration;
+            if (d && isFinite(d) && d > 0) setDuration(d);
+        };
+        const onTimeUpdate = () => {
+            setCurrentTime(audio.currentTime);
+            // For files without duration metadata, grow our known duration
             const d = audio.duration;
             if (d && isFinite(d) && d > 0) {
                 setDuration(d);
-                return true;
-            }
-            return false;
-        };
-
-        const onLoaded = () => {
-            if (!trySetDuration()) {
-                // WebM/OGG workaround: seek to large value to force browser to find real duration
-                audio.currentTime = 1e10;
-            }
-        };
-
-        const onSeeked = () => {
-            // After the seek-to-end workaround, the browser now knows the real duration
-            if (trySetDuration()) {
-                audio.currentTime = 0; // Reset back to start
-            }
-        };
-
-        const onDurationChange = () => trySetDuration();
-        const onTimeUpdate = () => {
-            setCurrentTime(audio.currentTime);
-            // Fallback: track max currentTime as duration if still unknown
-            if (!duration || !isFinite(audio.duration)) {
-                setDuration(prev => Math.max(prev, audio.currentTime));
+            } else {
+                // Fallback: expand duration as we discover more of the file
+                setDuration(prev => Math.max(prev, audio.currentTime + 0.5));
             }
         };
         const onEnded = () => {
+            // We now know the exact duration
+            setDuration(prev => Math.max(prev, audio.currentTime));
             setIsPlaying(false);
             setCurrentTime(0);
-            // Now we definitively know the duration
-            if (audio.currentTime > 0) setDuration(audio.currentTime);
         };
 
-        audio.addEventListener("loadedmetadata", onLoaded);
+        audio.addEventListener("loadedmetadata", onDurationChange);
         audio.addEventListener("durationchange", onDurationChange);
-        audio.addEventListener("seeked", onSeeked);
         audio.addEventListener("timeupdate", onTimeUpdate);
         audio.addEventListener("ended", onEnded);
         return () => {
-            audio.removeEventListener("loadedmetadata", onLoaded);
+            audio.removeEventListener("loadedmetadata", onDurationChange);
             audio.removeEventListener("durationchange", onDurationChange);
-            audio.removeEventListener("seeked", onSeeked);
             audio.removeEventListener("timeupdate", onTimeUpdate);
             audio.removeEventListener("ended", onEnded);
         };
@@ -193,7 +175,7 @@ function AudioPlayer({ src, isOutbound }: { src: string; isOutbound: boolean }) 
 
     return (
         <div className="flex items-center gap-2 min-w-[200px] max-w-[280px]">
-            <audio ref={audioRef} src={src} preload="metadata" />
+            <audio ref={audioRef} src={src} preload="auto" />
             <button
                 onClick={togglePlay}
                 className={cn(
