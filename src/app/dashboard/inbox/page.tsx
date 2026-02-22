@@ -525,7 +525,10 @@ export default function InboxPage() {
         if (isFirstLoadRef.current) {
             // First load of this chat: scroll to bottom instantly
             isFirstLoadRef.current = false;
+            // Use multiple attempts because mobile layout can be slow to settle
             setTimeout(() => scrollToBottom("instant"), 50);
+            setTimeout(() => scrollToBottom("instant"), 200);
+            setTimeout(() => scrollToBottom("instant"), 500);
             prevMessagesLenRef.current = messages.length;
             return;
         }
@@ -859,6 +862,8 @@ export default function InboxPage() {
         };
         setMessages(prev => [...prev, optimistic]);
         setInputText("");
+        // Always scroll to bottom when user sends a message
+        setTimeout(() => scrollToBottom("smooth"), 100);
         try {
             const res = await fetch("/api/send-message", {
                 method: "POST",
