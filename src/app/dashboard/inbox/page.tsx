@@ -886,7 +886,7 @@ export default function InboxPage() {
                 />
             )}
 
-            <div className="flex h-full bg-card border rounded-lg overflow-hidden shadow-sm">
+            <div className="flex h-[calc(100dvh-3.5rem-2rem)] md:h-full bg-card border rounded-lg overflow-hidden shadow-sm">
                 {/* ──── Sidebar ──── */}
                 <div className={cn("w-full md:w-80 2xl:w-96 border-r flex flex-col bg-muted/10", selectedChat ? "hidden md:flex" : "flex")}>
                     <div className="p-4 border-b space-y-3">
@@ -1026,11 +1026,11 @@ export default function InboxPage() {
                                         </div>
                                     </button>
                                 </div>
-                                <div className="flex items-center gap-1 flex-shrink-0">
-                                    <Button variant="ghost" size="icon" onClick={() => setShowContactInfo(!showContactInfo)} title="Info del contacto">
+                                <div className="flex items-center gap-0.5 flex-shrink-0">
+                                    <Button variant="ghost" size="icon" className="hidden sm:inline-flex" onClick={() => setShowContactInfo(!showContactInfo)} title="Info del contacto">
                                         <Info className="h-4 w-4" />
                                     </Button>
-                                    <Separator orientation="vertical" className="h-6 mx-1" />
+                                    <Separator orientation="vertical" className="h-6 mx-1 hidden sm:block" />
                                     {/* Dropdown Menu */}
                                     <DropdownMenu>
                                         <DropdownMenuTrigger asChild>
