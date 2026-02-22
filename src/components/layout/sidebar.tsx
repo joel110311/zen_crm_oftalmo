@@ -90,13 +90,17 @@ export function Sidebar({ className }: SidebarProps) {
                 "rounded-lg flex items-center justify-center flex-shrink-0 font-bold text-primary-foreground",
                 compact ? "h-8 w-8 text-xs" : "h-9 w-9 text-sm"
             )} style={{ background: "linear-gradient(135deg, hsl(221 83% 53%), hsl(221 83% 40%))" }}>
-                {userName.charAt(0).toUpperCase()}
+                {!sessionLoading && userName.charAt(0).toUpperCase()}
             </div>
             <div className="flex-1 min-w-0">
-                <p className={cn("font-medium truncate text-sidebar-foreground", compact ? "text-sm" : "text-sm")}>{userName}</p>
+                <div className={cn("font-medium truncate text-sidebar-foreground flex items-center h-5", compact ? "text-sm" : "text-sm")}>
+                    {sessionLoading ? <div className="h-3 w-16 bg-sidebar-foreground/10 rounded animate-pulse" /> : userName}
+                </div>
                 {!compact && (
-                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-sidebar-border text-sidebar-foreground/60 mt-0.5">
-                        {userRole === "SUPERADMIN" ? (
+                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 min-h-[18px] border-sidebar-border text-sidebar-foreground/60 mt-0.5">
+                        {sessionLoading ? (
+                            <div className="h-2 w-12 bg-sidebar-foreground/10 rounded animate-pulse my-1" />
+                        ) : userRole === "SUPERADMIN" ? (
                             <><ShieldCheck className="h-2.5 w-2.5 mr-0.5" /> Super Admin</>
                         ) : (
                             <><Shield className="h-2.5 w-2.5 mr-0.5" /> Admin</>
@@ -120,7 +124,7 @@ export function Sidebar({ className }: SidebarProps) {
                 </div>
                 <div className="h-8 w-8 rounded-lg flex items-center justify-center text-xs font-bold text-primary-foreground"
                     style={{ background: "linear-gradient(135deg, hsl(221 83% 53%), hsl(221 83% 40%))" }}>
-                    {userName.charAt(0).toUpperCase()}
+                    {!sessionLoading && userName.charAt(0).toUpperCase()}
                 </div>
             </header>
 

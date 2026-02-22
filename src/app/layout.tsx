@@ -17,15 +17,11 @@ import { Toaster } from "@/components/ui/toaster"
 import { SessionProvider } from "@/components/providers/session-provider"
 import { auth } from "@/lib/auth"
 
-export default async function RootLayout({
+export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  // Fetch session server-side so useSession() has data on FIRST render
-  // This eliminates the "loading" flash where role/name are undefined
-  const session = await auth();
-
   return (
     <html lang="es" suppressHydrationWarning>
       <head>
@@ -33,7 +29,7 @@ export default async function RootLayout({
         <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
       </head>
       <body className="font-sans antialiased">
-        <SessionProvider session={session}>
+        <SessionProvider>
           <ThemeProvider
             attribute="class"
             defaultTheme="system"
