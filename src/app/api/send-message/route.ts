@@ -16,21 +16,28 @@ const logMsg = (msg: string) => {
     try { fs.appendFileSync(path.join(process.cwd(), "media-upload.log"), line); } catch { }
 };
 
-// Convert audio file to MP3 using ffmpeg-static
-// MP3 is universally supported by WhatsApp and catbox.moe serves it as audio/mpeg
-async function convertToMp3(inputPath: string): Promise<string | null> {
+// Convert audio file to OGG/Opus using system ffmpeg
+// OGG/Opus is natively supported by WhatsApp and most browsers
+async function convertAudioForWhatsApp(inputPath: string): Promise<string | null> {
     try {
-        // Turbopack virtualizes require(), so construct path manually
-        const ffmpegPath = path.join(process.cwd(), "node_modules", "ffmpeg-static", "ffmpeg.exe");
-        const outputPath = inputPath.replace(/\.[^.]+$/, ".mp3");
+        const ext = path.extname(inputPath).toLowerCase();
 
-        logMsg(`[CONVERT] Converting ${path.basename(inputPath)} to MP3`);
+        // OGG files are already WhatsApp-compatible, skip conversion
+        if (ext === ".ogg") {
+            logMsg(`[CONVERT] Skipping conversion — ${path.basename(inputPath)} is already OGG`);
+            return inputPath;
+        }
 
-        await execFileAsync(ffmpegPath, [
+        // Use system ffmpeg (installed via apk in Docker, or available on PATH locally)
+        const outputPath = inputPath.replace(/\.[^.]+$/, ".ogg");
+
+        logMsg(`[CONVERT] Converting ${path.basename(inputPath)} to OGG/Opus`);
+
+        await execFileAsync("ffmpeg", [
             "-i", inputPath,
-            "-c:a", "libmp3lame", // MP3 codec
-            "-b:a", "128k",      // Bitrate
-            "-ar", "44100",      // Sample rate
+            "-c:a", "libopus",   // Opus codec (WhatsApp native)
+            "-b:a", "64k",       // Bitrate
+            "-ar", "48000",      // Sample rate
             "-ac", "1",          // Mono
             "-y",                // Overwrite
             outputPath
@@ -118,11 +125,11 @@ async function resolveMediaUrl(mediaUrl: string, mediaType?: string): Promise<st
 
     let fileToUpload = localPath;
 
-    // For audio files, convert to MP3 (universally supported by WhatsApp)
+    // For audio files, convert to OGG/Opus (WhatsApp native format)
     if (mediaType === "audio" || filename.match(/\.(m4a|mp4|webm|ogg|wav|aac|amr)$/i)) {
-        const mp3Path = await convertToMp3(localPath);
-        if (mp3Path) {
-            fileToUpload = mp3Path;
+        const convertedPath = await convertAudioForWhatsApp(localPath);
+        if (convertedPath) {
+            fileToUpload = convertedPath;
         } else {
             logMsg("[RESOLVE] WARNING: FFmpeg conversion failed, uploading original file");
         }

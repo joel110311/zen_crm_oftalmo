@@ -34,9 +34,9 @@ ENV HOSTNAME="0.0.0.0"
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
-# Start: Fix required for Prisma on Alpine
-RUN apk add --no-cache openssl
-# End: Fix required for Prisma on Alpine
+# Start: Fix required for Prisma on Alpine + ffmpeg for audio conversion
+RUN apk add --no-cache openssl ffmpeg
+# End: Fix
 
 # Copy public assets
 # Copy public assets

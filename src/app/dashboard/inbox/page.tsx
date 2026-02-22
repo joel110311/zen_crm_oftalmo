@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
     Search, MoreVertical, Phone, Video, Paperclip, Send, Mic, X,
     FileText, Download, Square, Star, BellOff, Bell, Archive, Trash2,
     Info, Users, MessageSquare, ChevronRight, ChevronDown, Mail, Tag, Clock,
-    Eraser, Image as ImageIcon
+    Eraser, Image as ImageIcon, Play, Pause
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -107,6 +107,98 @@ function getCleanMediaUrl(url: string | null | undefined): string | undefined {
     return cleanUrl;
 }
 
+// ──────────── WhatsApp-style Audio Player ────────────
+function AudioPlayer({ src, isOutbound }: { src: string; isOutbound: boolean }) {
+    const audioRef = useRef<HTMLAudioElement>(null);
+    const [isPlaying, setIsPlaying] = useState(false);
+    const [duration, setDuration] = useState(0);
+    const [currentTime, setCurrentTime] = useState(0);
+
+    useEffect(() => {
+        const audio = audioRef.current;
+        if (!audio) return;
+        const onLoaded = () => setDuration(audio.duration || 0);
+        const onTimeUpdate = () => setCurrentTime(audio.currentTime);
+        const onEnded = () => { setIsPlaying(false); setCurrentTime(0); };
+        audio.addEventListener("loadedmetadata", onLoaded);
+        audio.addEventListener("timeupdate", onTimeUpdate);
+        audio.addEventListener("ended", onEnded);
+        return () => {
+            audio.removeEventListener("loadedmetadata", onLoaded);
+            audio.removeEventListener("timeupdate", onTimeUpdate);
+            audio.removeEventListener("ended", onEnded);
+        };
+    }, [src]);
+
+    const togglePlay = () => {
+        const audio = audioRef.current;
+        if (!audio) return;
+        if (isPlaying) { audio.pause(); } else { audio.play(); }
+        setIsPlaying(!isPlaying);
+    };
+
+    const formatTime = (s: number) => {
+        if (!s || !isFinite(s)) return "0:00";
+        return `${Math.floor(s / 60)}:${Math.floor(s % 60).toString().padStart(2, "0")}`;
+    };
+
+    const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
+
+    // Generate pseudo-random waveform bar heights (deterministic per src)
+    const bars = 28;
+    const barHeights = Array.from({ length: bars }, (_, i) => {
+        const seed = (i * 7 + src.charCodeAt(i % src.length)) % 100;
+        return 20 + (seed / 100) * 80; // 20% to 100% height
+    });
+
+    return (
+        <div className="flex items-center gap-2 min-w-[200px] max-w-[280px]">
+            <audio ref={audioRef} src={src} preload="metadata" />
+            <button
+                onClick={togglePlay}
+                className={cn(
+                    "w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 transition-colors",
+                    isOutbound
+                        ? "bg-primary-foreground/20 hover:bg-primary-foreground/30 text-primary-foreground"
+                        : "bg-primary/10 hover:bg-primary/20 text-primary"
+                )}
+            >
+                {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4 ml-0.5" />}
+            </button>
+            <div className="flex-1 flex flex-col gap-1">
+                <div className="flex items-end gap-[2px] h-5 cursor-pointer"
+                    onClick={(e) => {
+                        if (!audioRef.current || !duration) return;
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        const pct = (e.clientX - rect.left) / rect.width;
+                        audioRef.current.currentTime = pct * duration;
+                    }}
+                >
+                    {barHeights.map((h, i) => {
+                        const barPct = ((i + 1) / bars) * 100;
+                        const active = barPct <= progress;
+                        return (
+                            <div
+                                key={i}
+                                className={cn(
+                                    "w-[3px] rounded-full transition-colors",
+                                    active
+                                        ? isOutbound ? "bg-primary-foreground" : "bg-primary"
+                                        : isOutbound ? "bg-primary-foreground/30" : "bg-muted-foreground/30"
+                                )}
+                                style={{ height: `${h}%` }}
+                            />
+                        );
+                    })}
+                </div>
+                <span className={cn("text-[10px] tabular-nums", isOutbound ? "text-primary-foreground/70" : "text-muted-foreground")}>
+                    {isPlaying ? formatTime(currentTime) : formatTime(duration)}
+                </span>
+            </div>
+        </div>
+    );
+}
+
 function MediaContent({ msg, onImageClick }: { msg: Message, onImageClick?: (msgId: string) => void }) {
     const isOutbound = msg.direction === "outbound";
     const cleanUrl = getCleanMediaUrl(msg.mediaUrl);
@@ -129,11 +221,7 @@ function MediaContent({ msg, onImageClick }: { msg: Message, onImageClick?: (msg
     }
 
     if (msg.type === "audio" && cleanUrl) {
-        return (
-            <audio controls className="max-w-[250px]" preload="metadata">
-                <source src={cleanUrl} type={msg.mediaType || "audio/ogg"} />
-            </audio>
-        );
+        return <AudioPlayer src={cleanUrl} isOutbound={isOutbound} />;
     }
 
     if (msg.type === "video" && cleanUrl) {
@@ -1115,34 +1203,58 @@ export default function InboxPage() {
                                     style={{ scrollBehavior: "auto" }}
                                 >
                                     <div className="flex flex-col gap-4 max-w-3xl mx-auto">
-                                        <div className="flex justify-center my-4">
-                                            <Badge variant="outline" className="text-xs font-normal text-muted-foreground bg-muted/50 border-0">
-                                                Hoy
-                                            </Badge>
-                                        </div>
-                                        {messages.map((msg) => (
-                                            <div
-                                                key={msg.id}
-                                                className={cn(
-                                                    "flex gap-2 max-w-[85%] sm:max-w-[80%] 2xl:max-w-[70%]",
-                                                    msg.direction === "outbound" ? "self-end flex-row-reverse" : "self-start"
-                                                )}
-                                            >
-                                                <div
-                                                    className={cn(
-                                                        "rounded-2xl px-4 py-2 shadow-sm text-sm",
-                                                        msg.direction === "outbound"
-                                                            ? "bg-primary text-primary-foreground rounded-br-none"
-                                                            : "bg-card border rounded-bl-none"
+                                        {messages.map((msg, idx) => {
+                                            // Dynamic date separators
+                                            const msgDate = new Date(msg.createdAt);
+                                            const prevDate = idx > 0 ? new Date(messages[idx - 1].createdAt) : null;
+                                            const showDateSep = idx === 0 || (prevDate && msgDate.toDateString() !== prevDate.toDateString());
+
+                                            let dateLabel = "";
+                                            if (showDateSep) {
+                                                const today = new Date();
+                                                const yesterday = new Date();
+                                                yesterday.setDate(today.getDate() - 1);
+                                                if (msgDate.toDateString() === today.toDateString()) {
+                                                    dateLabel = "Hoy";
+                                                } else if (msgDate.toDateString() === yesterday.toDateString()) {
+                                                    dateLabel = "Ayer";
+                                                } else {
+                                                    dateLabel = msgDate.toLocaleDateString("es-MX", { day: "numeric", month: "numeric", year: "numeric" });
+                                                }
+                                            }
+
+                                            return (
+                                                <React.Fragment key={msg.id}>
+                                                    {showDateSep && (
+                                                        <div className="flex justify-center my-2">
+                                                            <Badge variant="outline" className="text-xs font-normal text-muted-foreground bg-muted/50 border-0 shadow-sm">
+                                                                {dateLabel}
+                                                            </Badge>
+                                                        </div>
                                                     )}
-                                                >
-                                                    <MediaContent msg={msg} onImageClick={setViewerMessageId} />
-                                                    <p className={cn("text-[10px] mt-1 text-right opacity-70", msg.direction === "outbound" ? "text-primary-foreground" : "text-muted-foreground")}>
-                                                        {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                                    </p>
-                                                </div>
-                                            </div>
-                                        ))}
+                                                    <div
+                                                        className={cn(
+                                                            "flex gap-2 max-w-[85%] sm:max-w-[80%] 2xl:max-w-[70%]",
+                                                            msg.direction === "outbound" ? "self-end flex-row-reverse" : "self-start"
+                                                        )}
+                                                    >
+                                                        <div
+                                                            className={cn(
+                                                                "rounded-2xl px-4 py-2 shadow-sm text-sm",
+                                                                msg.direction === "outbound"
+                                                                    ? "bg-primary text-primary-foreground rounded-br-none"
+                                                                    : "bg-card border rounded-bl-none"
+                                                            )}
+                                                        >
+                                                            <MediaContent msg={msg} onImageClick={setViewerMessageId} />
+                                                            <p className={cn("text-[10px] mt-1 text-right opacity-70", msg.direction === "outbound" ? "text-primary-foreground" : "text-muted-foreground")}>
+                                                                {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                </React.Fragment>
+                                            );
+                                        })}
                                         <div ref={messagesEndRef} />
                                     </div>
                                 </div>
