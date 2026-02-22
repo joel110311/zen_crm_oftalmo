@@ -16,30 +16,32 @@ const logMsg = (msg: string) => {
     try { fs.appendFileSync(path.join(process.cwd(), "media-upload.log"), line); } catch { }
 };
 
-// Convert audio file to OGG/Opus using system ffmpeg
-// OGG/Opus is natively supported by WhatsApp and most browsers
+// Convert audio to MP3 using ffmpeg — MP3 is the only format confirmed to work
+// with the full pipeline: ffmpeg → catbox.moe (serves as audio/mpeg) → YCloud → WhatsApp
+// Browser records WebM/Opus but saves as .ogg — WhatsApp rejects that mismatch.
 async function convertAudioForWhatsApp(inputPath: string): Promise<string | null> {
     try {
-        const ext = path.extname(inputPath).toLowerCase();
+        const outputPath = inputPath.replace(/\.[^.]+$/, ".mp3");
 
-        // OGG files are already WhatsApp-compatible, skip conversion
-        if (ext === ".ogg") {
-            logMsg(`[CONVERT] Skipping conversion — ${path.basename(inputPath)} is already OGG`);
-            return inputPath;
+        logMsg(`[CONVERT] Converting ${path.basename(inputPath)} to MP3`);
+
+        // Try system ffmpeg first (Docker), then fall back to ffmpeg-static (Windows dev)
+        let ffmpegBin = "ffmpeg";
+        const ffmpegStaticPath = path.join(process.cwd(), "node_modules", "ffmpeg-static", process.platform === "win32" ? "ffmpeg.exe" : "ffmpeg");
+        if (fs.existsSync(ffmpegStaticPath)) {
+            ffmpegBin = ffmpegStaticPath;
+            logMsg(`[CONVERT] Using ffmpeg-static: ${ffmpegBin}`);
+        } else {
+            logMsg(`[CONVERT] Using system ffmpeg`);
         }
 
-        // Use system ffmpeg (installed via apk in Docker, or available on PATH locally)
-        const outputPath = inputPath.replace(/\.[^.]+$/, ".ogg");
-
-        logMsg(`[CONVERT] Converting ${path.basename(inputPath)} to OGG/Opus`);
-
-        await execFileAsync("ffmpeg", [
+        await execFileAsync(ffmpegBin, [
             "-i", inputPath,
-            "-c:a", "libopus",   // Opus codec (WhatsApp native)
-            "-b:a", "64k",       // Bitrate
-            "-ar", "48000",      // Sample rate
-            "-ac", "1",          // Mono
-            "-y",                // Overwrite
+            "-c:a", "libmp3lame", // MP3 codec — universally supported
+            "-b:a", "128k",       // Bitrate
+            "-ar", "44100",       // Sample rate
+            "-ac", "1",           // Mono
+            "-y",                 // Overwrite
             outputPath
         ]);
 

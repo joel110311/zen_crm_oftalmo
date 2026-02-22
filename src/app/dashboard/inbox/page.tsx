@@ -159,14 +159,14 @@ function AudioPlayer({ src, isOutbound }: { src: string; isOutbound: boolean }) 
                 className={cn(
                     "w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 transition-colors",
                     isOutbound
-                        ? "bg-primary-foreground/20 hover:bg-primary-foreground/30 text-primary-foreground"
+                        ? "bg-white/20 hover:bg-white/30 text-white"
                         : "bg-primary/10 hover:bg-primary/20 text-primary"
                 )}
             >
                 {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4 ml-0.5" />}
             </button>
             <div className="flex-1 flex flex-col gap-1">
-                <div className="flex items-end gap-[2px] h-5 cursor-pointer"
+                <div className="relative flex items-end gap-[2px] h-6 cursor-pointer"
                     onClick={(e) => {
                         if (!audioRef.current || !duration) return;
                         const rect = e.currentTarget.getBoundingClientRect();
@@ -180,18 +180,29 @@ function AudioPlayer({ src, isOutbound }: { src: string; isOutbound: boolean }) 
                         return (
                             <div
                                 key={i}
-                                className={cn(
-                                    "w-[3px] rounded-full transition-colors",
-                                    active
-                                        ? isOutbound ? "bg-primary-foreground" : "bg-primary"
-                                        : isOutbound ? "bg-primary-foreground/30" : "bg-muted-foreground/30"
-                                )}
-                                style={{ height: `${h}%` }}
+                                className="w-[3px] rounded-full"
+                                style={{
+                                    height: `${h}%`,
+                                    backgroundColor: active
+                                        ? (isOutbound ? "rgba(255,255,255,1)" : "rgba(37,99,235,1)")
+                                        : (isOutbound ? "rgba(255,255,255,0.2)" : "rgba(100,116,139,0.25)")
+                                }}
                             />
                         );
                     })}
+                    {/* Position indicator dot */}
+                    {duration > 0 && (
+                        <div
+                            className="absolute top-1/2 -translate-y-1/2 w-2.5 h-2.5 rounded-full shadow-sm"
+                            style={{
+                                left: `${Math.min(progress, 100)}%`,
+                                backgroundColor: isOutbound ? "#fff" : "#2563EB",
+                                transform: `translateX(-50%) translateY(-50%)`,
+                            }}
+                        />
+                    )}
                 </div>
-                <span className={cn("text-[10px] tabular-nums", isOutbound ? "text-primary-foreground/70" : "text-muted-foreground")}>
+                <span className={cn("text-[10px] tabular-nums", isOutbound ? "text-white/70" : "text-muted-foreground")}>
                     {isPlaying ? formatTime(currentTime) : formatTime(duration)}
                 </span>
             </div>
