@@ -502,7 +502,10 @@ export default function InboxPage() {
 
     // ──── Smart scroll logic ────
     const scrollToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
-        if (messagesContainerRef.current) {
+        // Use scrollIntoView on the sentinel div — much more reliable on mobile
+        if (messagesEndRef.current) {
+            messagesEndRef.current.scrollIntoView({ behavior, block: "end" });
+        } else if (messagesContainerRef.current) {
             messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
         }
         setNewMessageCount(0);
@@ -891,7 +894,8 @@ export default function InboxPage() {
                 />
             )}
 
-            <div className="flex h-[calc(100dvh-3.5rem-2rem)] md:h-full bg-card border rounded-lg overflow-hidden shadow-sm">
+            <div className="flex h-[calc(100dvh-3.5rem-2rem)] md:h-full bg-card border rounded-lg overflow-hidden shadow-sm"
+                style={{ contain: "layout size" }}>
                 {/* ──── Sidebar ──── */}
                 <div className={cn("w-full md:w-80 2xl:w-96 border-r flex flex-col bg-muted/10", selectedChat ? "hidden md:flex" : "flex")}>
                     <div className="p-4 border-b space-y-3">
