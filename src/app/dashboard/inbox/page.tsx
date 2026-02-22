@@ -117,14 +117,54 @@ function AudioPlayer({ src, isOutbound }: { src: string; isOutbound: boolean }) 
     useEffect(() => {
         const audio = audioRef.current;
         if (!audio) return;
-        const onLoaded = () => setDuration(audio.duration || 0);
-        const onTimeUpdate = () => setCurrentTime(audio.currentTime);
-        const onEnded = () => { setIsPlaying(false); setCurrentTime(0); };
+
+        const trySetDuration = () => {
+            const d = audio.duration;
+            if (d && isFinite(d) && d > 0) {
+                setDuration(d);
+                return true;
+            }
+            return false;
+        };
+
+        const onLoaded = () => {
+            if (!trySetDuration()) {
+                // WebM/OGG workaround: seek to large value to force browser to find real duration
+                audio.currentTime = 1e10;
+            }
+        };
+
+        const onSeeked = () => {
+            // After the seek-to-end workaround, the browser now knows the real duration
+            if (trySetDuration()) {
+                audio.currentTime = 0; // Reset back to start
+            }
+        };
+
+        const onDurationChange = () => trySetDuration();
+        const onTimeUpdate = () => {
+            setCurrentTime(audio.currentTime);
+            // Fallback: track max currentTime as duration if still unknown
+            if (!duration || !isFinite(audio.duration)) {
+                setDuration(prev => Math.max(prev, audio.currentTime));
+            }
+        };
+        const onEnded = () => {
+            setIsPlaying(false);
+            setCurrentTime(0);
+            // Now we definitively know the duration
+            if (audio.currentTime > 0) setDuration(audio.currentTime);
+        };
+
         audio.addEventListener("loadedmetadata", onLoaded);
+        audio.addEventListener("durationchange", onDurationChange);
+        audio.addEventListener("seeked", onSeeked);
         audio.addEventListener("timeupdate", onTimeUpdate);
         audio.addEventListener("ended", onEnded);
         return () => {
             audio.removeEventListener("loadedmetadata", onLoaded);
+            audio.removeEventListener("durationchange", onDurationChange);
+            audio.removeEventListener("seeked", onSeeked);
             audio.removeEventListener("timeupdate", onTimeUpdate);
             audio.removeEventListener("ended", onEnded);
         };
@@ -142,7 +182,7 @@ function AudioPlayer({ src, isOutbound }: { src: string; isOutbound: boolean }) 
         return `${Math.floor(s / 60)}:${Math.floor(s % 60).toString().padStart(2, "0")}`;
     };
 
-    const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
+    const progress = duration > 0 && isFinite(duration) ? (currentTime / duration) * 100 : 0;
 
     // Generate pseudo-random waveform bar heights (deterministic per src)
     const bars = 28;
