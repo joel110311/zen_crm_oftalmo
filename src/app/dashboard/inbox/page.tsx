@@ -1006,25 +1006,27 @@ export default function InboxPage() {
                         <>
                             {/* Header */}
                             <div className="h-16 border-b flex items-center justify-between px-3 md:px-6 bg-card">
-                                {/* Back button on mobile */}
-                                <button className="md:hidden mr-1 p-1.5 rounded-md hover:bg-muted flex-shrink-0" onClick={() => setSelectedChat(null)}>
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6" /></svg>
-                                </button>
-                                <button className="flex items-center gap-3 hover:opacity-80 transition" onClick={() => setShowContactInfo(true)}>
-                                    <Avatar className="h-9 w-9">
-                                        <AvatarFallback>{selectedChat.contact?.name?.charAt(0) || "?"}</AvatarFallback>
-                                    </Avatar>
-                                    <div className="text-left">
-                                        <div className="font-medium flex items-center gap-1.5">
-                                            {selectedChat.contact?.name || "Desconocido"}
-                                            {selectedChat.status === "closed" && (
-                                                <Badge variant="secondary" className="text-[10px] py-0 px-1.5">Cerrada</Badge>
-                                            )}
+                                <div className="flex items-center gap-1 overflow-hidden">
+                                    {/* Back button on mobile */}
+                                    <button className="md:hidden p-1.5 rounded-md hover:bg-muted flex-shrink-0" onClick={() => setSelectedChat(null)}>
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6" /></svg>
+                                    </button>
+                                    <button className="flex items-center gap-3 hover:opacity-80 transition text-left overflow-hidden ml-1 md:ml-0" onClick={() => setShowContactInfo(true)}>
+                                        <Avatar className="h-9 w-9 flex-shrink-0">
+                                            <AvatarFallback>{selectedChat.contact?.name?.charAt(0) || "?"}</AvatarFallback>
+                                        </Avatar>
+                                        <div className="overflow-hidden">
+                                            <div className="font-medium flex items-center gap-1.5 truncate">
+                                                <span className="truncate">{selectedChat.contact?.name || "Desconocido"}</span>
+                                                {selectedChat.status === "closed" && (
+                                                    <Badge variant="secondary" className="text-[10px] py-0 px-1.5 shrink-0">Cerrada</Badge>
+                                                )}
+                                            </div>
+                                            <div className="text-xs text-muted-foreground truncate">{formatPhone(selectedChat.contact?.phone)}</div>
                                         </div>
-                                        <div className="text-xs text-muted-foreground">{formatPhone(selectedChat.contact?.phone)}</div>
-                                    </div>
-                                </button>
-                                <div className="flex items-center gap-1">
+                                    </button>
+                                </div>
+                                <div className="flex items-center gap-1 flex-shrink-0">
                                     <Button variant="ghost" size="icon" onClick={() => setShowContactInfo(!showContactInfo)} title="Info del contacto">
                                         <Info className="h-4 w-4" />
                                     </Button>
