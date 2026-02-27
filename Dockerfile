@@ -62,5 +62,5 @@ USER nextjs
 
 EXPOSE 3000
 
-# Apply schema changes then start server
-CMD npx prisma db push --skip-generate && node server.js
+# Apply schema changes then start server (non-fatal if already up to date)
+CMD sh -c "node ./node_modules/prisma/build/index.js db push --skip-generate 2>&1 || true; node server.js"
