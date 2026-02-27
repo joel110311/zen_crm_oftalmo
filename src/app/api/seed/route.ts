@@ -90,12 +90,12 @@ export async function GET() {
         const existingStages = await prisma.pipelineStage.count();
         if (existingStages === 0) {
             const defaultStages = [
-                { name: "Entrante", color: "#3B82F6", order: 0, isIncoming: true },
-                { name: "Contactado", color: "#8B5CF6", order: 1 },
-                { name: "En negociación", color: "#F59E0B", order: 2 },
-                { name: "Propuesta enviada", color: "#F97316", order: 3 },
-                { name: "Cerrado ganado", color: "#22C55E", order: 4, isClosedWon: true },
-                { name: "Cerrado perdido", color: "#EF4444", order: 5, isClosedLost: true },
+                { name: "Nuevo Lead", color: "#3B82F6", order: 0, isIncoming: true },
+                { name: "Calificado", color: "#8B5CF6", order: 1 },
+                { name: "Propuesta", color: "#F59E0B", order: 2 },
+                { name: "Negociación", color: "#F97316", order: 3 },
+                { name: "Cerrado Ganado", color: "#22C55E", order: 4, isClosedWon: true },
+                { name: "Cerrado Perdido", color: "#EF4444", order: 5, isClosedLost: true },
             ];
 
             for (const stage of defaultStages) {

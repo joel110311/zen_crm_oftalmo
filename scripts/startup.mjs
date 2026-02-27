@@ -67,12 +67,12 @@ async function autoSeed() {
 
         // ── Kommo-style Pipeline Stages ──
         const stages = [
-            { name: "Entrante", color: "#3B82F6", order: 0, isIncoming: true, isClosedWon: false, isClosedLost: false },
-            { name: "Contacto inicial", color: "#8B5CF6", order: 1, isIncoming: false, isClosedWon: false, isClosedLost: false },
-            { name: "En negociación", color: "#F59E0B", order: 2, isIncoming: false, isClosedWon: false, isClosedLost: false },
-            { name: "Toma de decisión", color: "#F97316", order: 3, isIncoming: false, isClosedWon: false, isClosedLost: false },
-            { name: "Cerrado ganado", color: "#22C55E", order: 4, isIncoming: false, isClosedWon: true, isClosedLost: false },
-            { name: "Cerrado perdido", color: "#EF4444", order: 5, isIncoming: false, isClosedWon: false, isClosedLost: true },
+            { name: "Nuevo Lead", color: "#3B82F6", order: 0, isIncoming: true, isClosedWon: false, isClosedLost: false },
+            { name: "Calificado", color: "#8B5CF6", order: 1, isIncoming: false, isClosedWon: false, isClosedLost: false },
+            { name: "Propuesta", color: "#F59E0B", order: 2, isIncoming: false, isClosedWon: false, isClosedLost: false },
+            { name: "Negociación", color: "#F97316", order: 3, isIncoming: false, isClosedWon: false, isClosedLost: false },
+            { name: "Cerrado Ganado", color: "#22C55E", order: 4, isIncoming: false, isClosedWon: true, isClosedLost: false },
+            { name: "Cerrado Perdido", color: "#EF4444", order: 5, isIncoming: false, isClosedWon: false, isClosedLost: true },
         ];
 
         for (const s of stages) {
