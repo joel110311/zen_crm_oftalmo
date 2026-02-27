@@ -67,6 +67,44 @@ export async function POST(request: NextRequest) {
                 return NextResponse.json({ success: true, deleted: true });
             }
 
+            case "toggleBot": {
+                const conv = await prisma.conversation.findUnique({
+                    where: { id: conversationId },
+                    include: { contact: true },
+                });
+                const newBotActive = !conv?.botActive;
+                const updated = await prisma.conversation.update({
+                    where: { id: conversationId },
+                    data: { botActive: newBotActive },
+                });
+
+                // Send webhook to n8n with tag
+                try {
+                    const settings = await prisma.systemSettings.findFirst();
+                    if (settings?.n8nWebhookUrl) {
+                        const tag = newBotActive ? "activar" : "detener";
+                        fetch(settings.n8nWebhookUrl, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                                from: conv?.contact?.phone || "",
+                                text: "",
+                                customerName: conv?.contact?.name || "",
+                                contactId: conv?.contact?.id || "",
+                                conversationId,
+                                tag,
+                                action: newBotActive ? "bot_activated" : "bot_deactivated",
+                                timestamp: new Date().toISOString(),
+                            }),
+                        }).catch(err => console.error("[Bot Toggle] Webhook error:", err));
+                    }
+                } catch (e) {
+                    console.error("[Bot Toggle] Settings error:", e);
+                }
+
+                return NextResponse.json({ success: true, botActive: updated.botActive });
+            }
+
             default:
                 return NextResponse.json({ error: "Unknown action" }, { status: 400 });
         }

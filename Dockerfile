@@ -52,12 +52,15 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/prisma.config.ts ./
 COPY --from=builder /app/prisma.config.js ./
-# Copy generated Prisma client
+# Copy generated Prisma client + prisma CLI for db push
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
+COPY --from=builder /app/node_modules/prisma ./node_modules/prisma
+COPY --from=builder /app/node_modules/dotenv ./node_modules/dotenv
 
 USER nextjs
 
 EXPOSE 3000
 
-CMD ["node", "server.js"]
+# Apply schema changes then start server
+CMD npx prisma db push --skip-generate && node server.js

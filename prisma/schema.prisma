@@ -51,6 +51,7 @@ model Conversation {
   isMuted    Boolean   @default(false)
   isFavorite Boolean   @default(false)
   isGroup    Boolean   @default(false)
+  botActive  Boolean   @default(true) // true = IA handles, false = Humano handles
   createdAt  DateTime  @default(now())
 
   updatedAt  DateTime  @updatedAt
@@ -67,6 +68,7 @@ model Message {
   type           String       @default("text") // text, image, document, audio, video
   direction      String       // inbound, outbound
   status         String       @default("sent") // sent, delivered, read, failed
+  senderType     String?      // "bot" for IA responses, "human" for CRM agent
   mediaUrl       String?      // URL to media file
   mediaType      String?      // MIME type (image/jpeg, audio/ogg, etc.)
   mediaFileName  String?      // Original filename for documents
