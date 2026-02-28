@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { X, ChevronLeft, ChevronRight, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -15,19 +15,19 @@ interface ImageViewerProps {
 }
 
 export function ImageViewer({ conversation, messages, initialMessageId, onClose }: ImageViewerProps) {
-    const [currentIndex, setCurrentIndex] = useState(0);
-
-    // Filter to only include image messages that have a valid URL
-    const imageMessages = messages.filter(
-        msg => msg.type === "image" && Boolean(msg.mediaUrl)
+    // Stable reference for filtered image messages
+    const imageMessages = useMemo(
+        () => messages.filter(msg => msg.type === "image" && Boolean(msg.mediaUrl)),
+        [messages]
     );
 
-    useEffect(() => {
-        const initialIndex = imageMessages.findIndex(msg => msg.id === initialMessageId);
-        if (initialIndex !== -1) {
-            setCurrentIndex(initialIndex);
-        }
+    // Calculate initial index synchronously (not in useEffect)
+    const initialIndex = useMemo(() => {
+        const idx = imageMessages.findIndex(msg => msg.id === initialMessageId);
+        return idx !== -1 ? idx : 0;
     }, [initialMessageId, imageMessages]);
+
+    const [currentIndex, setCurrentIndex] = useState(initialIndex);
 
     // Handle escape key
     useEffect(() => {
