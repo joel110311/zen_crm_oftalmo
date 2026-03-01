@@ -7,6 +7,7 @@ import { format, parse, startOfWeek, getDay } from "date-fns";
 import { es } from "date-fns/locale";
 import "react-big-calendar/lib/css/react-big-calendar.css";
 import "react-big-calendar/lib/addons/dragAndDrop/styles.css";
+import "./big-calendar-overrides.css";
 
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -265,101 +266,6 @@ export function BigCalendar({ initialEvents, onSelectSlot, onSelectEvent }: BigC
 
     return (
         <div className="h-full flex flex-col big-calendar-wrapper">
-            <style jsx global>{`
-                .rbc-calendar { font-family: inherit; color: hsl(var(--foreground)); }
-                .rbc-toolbar { margin-bottom: 1rem; }
-
-                /* Override RBC default white backgrounds for dark mode */
-                .rbc-month-view,
-                .rbc-time-view,
-                .rbc-day-bg,
-                .rbc-time-content,
-                .rbc-time-gutter,
-                .rbc-row-bg,
-                .rbc-month-row { background-color: hsl(var(--card)) !important; }
-
-                .rbc-off-range { color: hsl(var(--muted-foreground) / 0.5) !important; }
-                .rbc-off-range-bg { background-color: hsl(var(--muted) / 0.3) !important; }
-                .rbc-label { color: hsl(var(--muted-foreground)) !important; }
-                
-                .rbc-event { 
-                    background-color: transparent !important; 
-                    border: none !important; 
-                    padding: 0 !important;
-                    outline: none !important;
-                    box-shadow: none !important;
-                    width: 100% !important;
-                    z-index: 10; 
-                }
-                .rbc-event-content {
-                    height: 100% !important;
-                    display: block !important;
-                }
-                .rbc-event:focus { outline: none !important; }
-                .rbc-event-content { font-size: 11px; }
-
-                /* Theme Colors */
-                .rbc-today { background-color: hsl(var(--accent) / 0.3) !important; }
-                
-                .rbc-header { 
-                    padding: 8px; 
-                    font-weight: 600; 
-                    font-size: 0.875rem; 
-                    color: hsl(var(--muted-foreground)); 
-                    border-bottom: 1px solid hsl(var(--border)) !important; 
-                }
-                .rbc-header + .rbc-header { border-left: 1px solid hsl(var(--border)) !important; }
-                
-                .rbc-date-cell { 
-                    padding: 4px; 
-                    font-size: 0.875rem; 
-                    font-weight: 500; 
-                    color: hsl(var(--foreground)); 
-                }
-                
-                /* ═══ MONTH VIEW BORDERS ═══ */
-                .rbc-month-view { 
-                    border: 1px solid hsl(var(--border)) !important; 
-                    border-radius: 0.5rem; 
-                    overflow: hidden; 
-                }
-                .rbc-month-row { border-top: 1px solid hsl(var(--border)) !important; }
-                .rbc-month-row:first-child { border-top: none !important; }
-                .rbc-day-bg + .rbc-day-bg { border-left: 1px solid hsl(var(--border)) !important; }
-                
-                /* ═══ WEEK / DAY VIEW BORDERS ═══ */
-                .rbc-time-view { 
-                    border: 1px solid hsl(var(--border)) !important; 
-                    border-radius: 0.5rem; 
-                    overflow: hidden;
-                }
-                .rbc-time-header { border-bottom: 1px solid hsl(var(--border)) !important; }
-                .rbc-time-header-content { border-left: 1px solid hsl(var(--border)) !important; }
-                .rbc-time-content { border-top: 1px solid hsl(var(--border)) !important; }
-                .rbc-time-content > * + * > * { 
-                    border-left: 1px solid hsl(var(--border)) !important;
-                }
-                
-                /* Time slot grid lines */
-                .rbc-timeslot-group { 
-                    border-bottom: 1px solid hsl(var(--border)) !important; 
-                    min-height: 80px !important;
-                }
-                .rbc-day-slot .rbc-time-slot { 
-                    border-top: 1px dotted hsl(var(--border) / 0.5) !important;
-                }
-                .rbc-time-gutter .rbc-timeslot-group { 
-                    border-bottom: 1px solid hsl(var(--border)) !important; 
-                    color: hsl(var(--muted-foreground));
-                }
-                
-                /* Hide default RBC label (e.g. "9:00 - 9:30") so our CustomEvent has space */
-                .rbc-event-label { display: none !important; }
-                
-                /* Hide current time indicator */
-                .rbc-current-time-indicator { display: none !important; }
-                
-            `}</style>
 
             <DragAndDropCalendar
                 localizer={localizer}
