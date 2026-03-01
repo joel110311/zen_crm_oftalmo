@@ -69,6 +69,51 @@
   @apply bg-card/50 backdrop-blur-md border border-border/50;
 }
 
+@utility glass-input {
+  @apply bg-background/80 backdrop-blur-xl border-t border-border shadow-premium;
+}
+
+@utility bg-whatsapp-pattern {
+  /* WhatsApp Doodle Pattern logic */
+  background-image: var(--bg-whatsapp);
+  background-repeat: repeat;
+  background-size: 400px;
+  background-color: var(--background);
+}
+
+/* Chat bubble tails using CSS borders */
+@layer utilities {
+  .chat-bubble-tail-right {
+    position: relative;
+  }
+
+  .chat-bubble-tail-right::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    right: -8px;
+    width: 0;
+    height: 0;
+    border-top: 10px solid var(--primary);
+    border-right: 10px solid transparent;
+  }
+
+  .chat-bubble-tail-left {
+    position: relative;
+  }
+
+  .chat-bubble-tail-left::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: -8px;
+    width: 0;
+    height: 0;
+    border-top: 10px solid var(--card);
+    border-left: 10px solid transparent;
+  }
+}
+
 /* ═══════════════════════════════════════════════
    NEXUS DARK THEME — Primary Palette
    ═══════════════════════════════════════════════ */
@@ -117,6 +162,9 @@
   --sidebar-accent-foreground: hsl(0 0% 100%);
   --sidebar-border: hsl(225 20% 22%);
   --sidebar-ring: hsl(221 83% 53%);
+
+  /* WhatsApp Base64 Pattern SVG - Light Mode */
+  --bg-whatsapp: url("data:image/svg+xml,%3Csvg width='100' height='100' viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M10 10A5 5 0 1 1 10 20A5 5 0 1 1 10 10ZM30 30A7 7 0 1 1 30 44A7 7 0 1 1 30 30ZM80 20L85 10L90 15L85 25Z' fill='%23000000' fill-opacity='0.04' fill-rule='evenodd'/%3E%3C/svg%3E");
 }
 
 /* Dark mode — the PRIMARY mode inspired by Nexus */

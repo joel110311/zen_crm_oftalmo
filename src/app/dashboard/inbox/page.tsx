@@ -1260,10 +1260,11 @@ export default function InboxPage() {
                                 <div
                                     ref={messagesContainerRef}
                                     onScroll={handleMessagesScroll}
-                                    className="h-full overflow-y-auto p-4 bg-muted/5"
+                                    className="h-full overflow-y-auto p-4 sm:px-8 bg-whatsapp-pattern"
                                     style={{ scrollBehavior: "auto" }}
                                 >
-                                    <div className="flex flex-col gap-4 max-w-3xl mx-auto">
+                                    {/* Extra padding at bottom to account for the floating input area on desktop */}
+                                    <div className="flex flex-col gap-4 max-w-3xl mx-auto pb-32 sm:pb-40">
                                         {messages.map((msg, idx) => {
                                             // Dynamic date separators
                                             const msgDate = new Date(msg.createdAt);
@@ -1287,8 +1288,8 @@ export default function InboxPage() {
                                             return (
                                                 <React.Fragment key={msg.id}>
                                                     {showDateSep && (
-                                                        <div className="flex justify-center my-2">
-                                                            <Badge variant="outline" className="text-xs font-normal text-muted-foreground bg-muted/50 border-0 shadow-sm">
+                                                        <div className="flex justify-center my-4">
+                                                            <Badge variant="outline" className="text-xs font-normal text-foreground/80 bg-background/80 backdrop-blur-md border border-white/10 shadow-sm px-3 py-1 rounded-full">
                                                                 {dateLabel}
                                                             </Badge>
                                                         </div>
@@ -1299,28 +1300,39 @@ export default function InboxPage() {
                                                             msg.direction === "outbound" ? "self-end items-end" : "self-start items-start"
                                                         )}
                                                     >
-                                                        {/* Sender type label */}
-                                                        <span className={cn(
-                                                            "flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-md",
-                                                            msg.direction === "outbound"
-                                                                ? "text-green-600 bg-green-500/10"
-                                                                : "text-blue-600 bg-blue-500/10"
-                                                        )}>
-                                                            {msg.direction === "outbound"
-                                                                ? <><UserIcon className="h-2.5 w-2.5" /> Humano</>
-                                                                : <><Bot className="h-2.5 w-2.5" /> IA</>
-                                                            }
-                                                        </span>
+                                                        {/* Sender type label (only show if it's the first message in a group to reduce clutter) */}
+                                                        {(idx === 0 || messages[idx - 1].direction !== msg.direction) && (
+                                                            <span className={cn(
+                                                                "flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-md mb-0.5",
+                                                                msg.direction === "outbound"
+                                                                    ? "text-green-600 bg-green-500/10"
+                                                                    : "text-blue-600 bg-blue-500/10"
+                                                            )}>
+                                                                {msg.direction === "outbound"
+                                                                    ? <><UserIcon className="h-2.5 w-2.5" /> Humano</>
+                                                                    : <><Bot className="h-2.5 w-2.5" /> IA</>
+                                                                }
+                                                            </span>
+                                                        )}
                                                         <div
                                                             className={cn(
-                                                                "rounded-2xl px-4 py-2 shadow-sm text-sm",
+                                                                "rounded-2xl px-4 py-2 shadow-premium text-sm relative",
                                                                 msg.direction === "outbound"
-                                                                    ? "bg-primary text-primary-foreground rounded-br-none"
-                                                                    : "bg-card border rounded-bl-none"
+                                                                    ? "bg-primary text-primary-foreground"
+                                                                    : "bg-card border-white/5",
+                                                                // Apply tails and specific rounding only to the very first message of a contiguous group
+                                                                (idx === 0 || messages[idx - 1].direction !== msg.direction)
+                                                                    ? msg.direction === "outbound"
+                                                                        ? "rounded-tr-sm chat-bubble-tail-right" // Tail right
+                                                                        : "rounded-tl-sm chat-bubble-tail-left"  // Tail left
+                                                                    : "" // Middle messages stay fully rounded
                                                             )}
                                                         >
                                                             <MediaContent msg={msg} onImageClick={setViewerMessageId} />
-                                                            <p className={cn("text-[10px] mt-1 text-right opacity-70", msg.direction === "outbound" ? "text-primary-foreground" : "text-muted-foreground")}>
+                                                            <p className={cn(
+                                                                "text-[10px] mt-1 text-right font-medium",
+                                                                msg.direction === "outbound" ? "text-primary-foreground/70" : "text-muted-foreground"
+                                                            )}>
                                                                 {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                                             </p>
                                                         </div>
@@ -1336,7 +1348,7 @@ export default function InboxPage() {
                                 {!isAtBottom && (
                                     <button
                                         onClick={() => scrollToBottom()}
-                                        className="absolute bottom-4 right-6 z-10 h-10 w-10 rounded-full bg-card border shadow-lg flex items-center justify-center hover:bg-accent transition-all duration-200 hover:scale-105"
+                                        className="absolute bottom-28 sm:bottom-32 right-6 z-10 h-10 w-10 rounded-full bg-card border shadow-lg flex items-center justify-center hover:bg-accent transition-all duration-200 hover:scale-105"
                                         title="Ir al último mensaje"
                                     >
                                         <ChevronDown className="h-5 w-5 text-muted-foreground" />
@@ -1374,24 +1386,24 @@ export default function InboxPage() {
                             {/* Window Timer */}
                             <WindowTimer expiresAt={selectedChat.sessionExpiresAt} />
 
-                            {/* Input Area */}
-                            <div className="p-4 border-t bg-card shrink-0">
+                            {/* Input Area (Floating Glass Pill on Desktop, Docked on Mobile) */}
+                            <div className="p-4 sm:p-6 sm:pb-8 sm:absolute sm:bottom-0 sm:left-0 sm:right-0 shrink-0 pointer-events-none">
                                 {isRecording ? (
-                                    <div className="flex items-center gap-3 max-w-3xl mx-auto">
-                                        <Button variant="ghost" size="icon" className="h-10 w-10 text-destructive hover:text-destructive" onClick={cancelRecording} title="Cancelar">
-                                            <X className="h-5 w-5" />
+                                    <div className="flex items-center gap-3 max-w-3xl mx-auto glass-input p-2 rounded-full pointer-events-auto">
+                                        <Button variant="ghost" size="icon" className="h-12 w-12 rounded-full text-destructive hover:text-destructive hover:bg-destructive/10 shrink-0" onClick={cancelRecording} title="Cancelar">
+                                            <X className="h-6 w-6" />
                                         </Button>
-                                        <div className="flex-1 flex items-center gap-3 px-4 py-2 bg-destructive/5 border border-destructive/20 rounded-xl">
+                                        <div className="flex-1 flex items-center justify-center gap-3 px-4 h-12 bg-destructive/5 rounded-full">
                                             <div className="h-3 w-3 rounded-full bg-destructive animate-pulse" />
-                                            <span className="text-sm font-medium text-destructive">Grabando...</span>
-                                            <span className="text-sm font-mono text-muted-foreground">{formatRecordingTime(recordingTime)}</span>
+                                            <span className="text-sm font-medium text-destructive">Grabando audio...</span>
+                                            <span className="text-sm font-mono text-muted-foreground hidden sm:inline">{formatRecordingTime(recordingTime)}</span>
                                         </div>
-                                        <Button size="icon" className="h-10 w-10 rounded-full" onClick={stopRecording} title="Enviar">
-                                            <Send className="h-4 w-4" />
+                                        <Button size="icon" className="h-12 w-12 rounded-full shrink-0" onClick={stopRecording} title="Enviar">
+                                            <Send className="h-5 w-5 ml-1" />
                                         </Button>
                                     </div>
                                 ) : (
-                                    <div className="flex items-end gap-2 max-w-3xl mx-auto">
+                                    <div className="flex items-end gap-2 max-w-3xl mx-auto glass-input p-2 rounded-3xl pointer-events-auto">
                                         <input ref={fileInputRef} type="file" className="hidden"
                                             accept="image/*,audio/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip,.rar"
                                             onChange={handleFileSelect}
@@ -1400,34 +1412,38 @@ export default function InboxPage() {
                                             accept="image/*"
                                             onChange={handleFileSelect}
                                         />
-                                        <Button variant="ghost" size="icon" className="h-10 w-10"
-                                            onClick={() => fileInputRef.current?.click()} disabled={isUploading} title="Adjuntar archivo">
-                                            {isUploading
-                                                ? <div className="h-5 w-5 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent" />
-                                                : <Paperclip className="h-5 w-5 text-muted-foreground" />}
-                                        </Button>
-                                        <Button variant="ghost" size="icon" className="h-10 w-10"
-                                            onClick={() => imageInputRef.current?.click()} disabled={isUploading} title="Enviar imagen">
-                                            <ImageIcon className="h-5 w-5 text-muted-foreground" />
-                                        </Button>
-                                        <div className="flex-1 bg-muted/30 rounded-xl border focus-within:ring-1 ring-primary p-2">
+                                        <div className="flex gap-1 pb-1 pl-1">
+                                            <Button variant="ghost" size="icon" className="h-10 w-10 shrink-0 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                                                onClick={() => fileInputRef.current?.click()} disabled={isUploading} title="Adjuntar archivo">
+                                                {isUploading
+                                                    ? <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                                                    : <Paperclip className="h-5 w-5" />}
+                                            </Button>
+                                            <Button variant="ghost" size="icon" className="h-10 w-10 shrink-0 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                                                onClick={() => imageInputRef.current?.click()} disabled={isUploading} title="Enviar imagen">
+                                                <ImageIcon className="h-5 w-5" />
+                                            </Button>
+                                        </div>
+                                        <div className="flex-1 bg-muted/20 rounded-2xl border-0 focus-within:bg-muted/30 focus-within:ring-1 ring-primary/50 p-1 mb-1 transition-all">
                                             <Input
                                                 placeholder={pendingFile ? "Agregar descripción..." : "Escribe un mensaje..."}
-                                                className="border-0 bg-transparent focus-visible:ring-0 px-2 h-auto max-h-32 min-h-[24px]"
+                                                className="border-0 bg-transparent focus-visible:ring-0 px-3 py-3 h-auto max-h-32 min-h-[44px] text-base"
                                                 value={inputText}
                                                 onChange={(e) => setInputText(e.target.value)}
                                                 onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSendMessage(); } }}
                                             />
                                         </div>
-                                        {(inputText.trim() || pendingFile) ? (
-                                            <Button size="icon" className="h-10 w-10 rounded-full animate-in zoom-in-50 duration-200" onClick={handleSendMessage}>
-                                                <Send className="h-4 w-4" />
-                                            </Button>
-                                        ) : (
-                                            <Button variant="ghost" size="icon" className="h-10 w-10" onClick={handleMicClick} title="Nota de voz">
-                                                <Mic className="h-5 w-5 text-muted-foreground" />
-                                            </Button>
-                                        )}
+                                        <div className="pb-1 pr-1 shrink-0">
+                                            {(inputText.trim() || pendingFile) ? (
+                                                <Button size="icon" className="h-12 w-12 rounded-full animate-in zoom-in-50 duration-200 shadow-premium" onClick={handleSendMessage}>
+                                                    <Send className="h-5 w-5 ml-0.5" />
+                                                </Button>
+                                            ) : (
+                                                <Button size="icon" className="h-12 w-12 rounded-full shrink-0 shadow-premium bg-green-500 hover:bg-green-600 text-white" onClick={handleMicClick} title="Nota de voz">
+                                                    <Mic className="h-5 w-5" />
+                                                </Button>
+                                            )}
+                                        </div>
                                     </div>
                                 )}
                             </div>
