@@ -288,7 +288,6 @@ export function BigCalendar({ initialEvents, onSelectSlot, onSelectEvent }: BigC
                     padding: 0 !important;
                     outline: none !important;
                     box-shadow: none !important;
-                    box-shadow: none !important;
                     width: 100% !important;
                     z-index: 10; 
                 }
@@ -301,7 +300,6 @@ export function BigCalendar({ initialEvents, onSelectSlot, onSelectEvent }: BigC
 
                 /* Theme Colors */
                 .rbc-today { background-color: hsl(var(--accent) / 0.3) !important; }
-                .rbc-off-range-bg { background-color: hsl(var(--muted) / 0.5) !important; }
                 
                 .rbc-header { 
                     padding: 8px; 
@@ -310,6 +308,7 @@ export function BigCalendar({ initialEvents, onSelectSlot, onSelectEvent }: BigC
                     color: hsl(var(--muted-foreground)); 
                     border-bottom: 1px solid hsl(var(--border)) !important; 
                 }
+                .rbc-header + .rbc-header { border-left: 1px solid hsl(var(--border)) !important; }
                 
                 .rbc-date-cell { 
                     padding: 4px; 
@@ -318,51 +317,47 @@ export function BigCalendar({ initialEvents, onSelectSlot, onSelectEvent }: BigC
                     color: hsl(var(--foreground)); 
                 }
                 
-                .rbc-day-bg + .rbc-day-bg { border-left: 1px solid hsl(var(--border)) !important; }
-                
+                /* ═══ MONTH VIEW BORDERS ═══ */
                 .rbc-month-view { 
                     border: 1px solid hsl(var(--border)) !important; 
                     border-radius: 0.5rem; 
                     overflow: hidden; 
-                    background-color: hsl(var(--card));
                 }
+                .rbc-month-row { border-top: 1px solid hsl(var(--border)) !important; }
+                .rbc-month-row:first-child { border-top: none !important; }
+                .rbc-day-bg + .rbc-day-bg { border-left: 1px solid hsl(var(--border)) !important; }
                 
+                /* ═══ WEEK / DAY VIEW BORDERS ═══ */
                 .rbc-time-view { 
                     border: 1px solid hsl(var(--border)) !important; 
                     border-radius: 0.5rem; 
-                    background-color: hsl(var(--card));
+                    overflow: hidden;
                 }
-                
+                .rbc-time-header { border-bottom: 1px solid hsl(var(--border)) !important; }
                 .rbc-time-header-content { border-left: 1px solid hsl(var(--border)) !important; }
-                .rbc-timeslot-group { border-bottom: 1px solid hsl(var(--border)) !important; }
-                
-                /* Grid Lines - Matching the reference image */
-                .rbc-day-slot .rbc-time-slot { 
-                    border-top: 1px dotted hsl(var(--border)) !important;
-                }
-                .rbc-timeslot-group { 
-                    border-bottom: 1px dotted hsl(var(--border)) !important; 
-                    min-height: 80px !important;
-                }
+                .rbc-time-content { border-top: 1px solid hsl(var(--border)) !important; }
                 .rbc-time-content > * + * > * { 
                     border-left: 1px solid hsl(var(--border)) !important;
+                }
+                
+                /* Time slot grid lines */
+                .rbc-timeslot-group { 
+                    border-bottom: 1px solid hsl(var(--border)) !important; 
+                    min-height: 80px !important;
+                }
+                .rbc-day-slot .rbc-time-slot { 
+                    border-top: 1px dotted hsl(var(--border) / 0.5) !important;
+                }
+                .rbc-time-gutter .rbc-timeslot-group { 
+                    border-bottom: 1px solid hsl(var(--border)) !important; 
+                    color: hsl(var(--muted-foreground));
                 }
                 
                 /* Hide default RBC label (e.g. "9:00 - 9:30") so our CustomEvent has space */
                 .rbc-event-label { display: none !important; }
                 
-                /* Hide current time indicator as requested */
-                
-                /* Hide current time indicator as requested */
+                /* Hide current time indicator */
                 .rbc-current-time-indicator { display: none !important; }
-                
-                .rbc-time-gutter .rbc-timeslot-group { 
-                    border-bottom: 1px dotted hsl(var(--border)) !important; 
-                    color: hsl(var(--muted-foreground));
-                }
-                
-                /* Month view row borders */
-                .rbc-month-row + .rbc-month-row { border-top: 1px solid hsl(var(--border)) !important; }
                 
             `}</style>
 
