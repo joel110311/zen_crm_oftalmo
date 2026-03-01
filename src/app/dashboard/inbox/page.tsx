@@ -5,8 +5,9 @@ import {
     Search, MoreVertical, Phone, Video, Paperclip, Send, Mic, X,
     FileText, Download, Square, Star, BellOff, Bell, Archive, Trash2,
     Info, Users, MessageSquare, ChevronRight, ChevronDown, Mail, Tag, Clock,
-    Eraser, Image as ImageIcon, Play, Pause, Bot, User as UserIcon
+    Eraser, Image as ImageIcon, Play, Pause, Bot, User as UserIcon, LayoutTemplate
 } from "lucide-react";
+import { TemplateSendModal } from "@/components/inbox/template-send-modal";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -443,13 +444,14 @@ function ConfirmModal({ title, description, onConfirm, onCancel, variant = "defa
 }
 
 // ──────────── Window Timer Component ────────────
-function WindowTimer({ expiresAt }: { expiresAt: string | null | undefined }) {
+function WindowTimer({ expiresAt, onWindowChange }: { expiresAt: string | null | undefined; onWindowChange?: (isOpen: boolean) => void }) {
     const [timeLeft, setTimeLeft] = useState<string>("");
     const [isOpen, setIsOpen] = useState(false);
 
     useEffect(() => {
         if (!expiresAt) {
             setIsOpen(false);
+            onWindowChange?.(false);
             return;
         }
 
@@ -460,21 +462,23 @@ function WindowTimer({ expiresAt }: { expiresAt: string | null | undefined }) {
 
             if (diff > 0) {
                 setIsOpen(true);
+                onWindowChange?.(true);
                 const hours = Math.floor(diff / (1000 * 60 * 60));
                 const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
                 setTimeLeft(`${hours}h ${minutes}m`);
             } else {
                 setIsOpen(false);
+                onWindowChange?.(false);
                 setTimeLeft("");
             }
         };
 
         updateTimer();
-        const interval = setInterval(updateTimer, 60000); // Update every minute
+        const interval = setInterval(updateTimer, 60000);
         return () => clearInterval(interval);
-    }, [expiresAt]);
+    }, [expiresAt, onWindowChange]);
 
-    if (!expiresAt) return null; // Don't show if never active
+    if (!expiresAt) return null;
 
     return (
         <div className={cn(
@@ -510,6 +514,12 @@ export default function InboxPage() {
     const [activeTab, setActiveTab] = useState<"all" | "favorites" | "groups">("all");
     const [confirmAction, setConfirmAction] = useState<{ type: string; title: string; desc: string } | null>(null);
     const [viewerMessageId, setViewerMessageId] = useState<string | null>(null);
+    const [isWindowOpen, setIsWindowOpen] = useState(true);
+    const [templateModalOpen, setTemplateModalOpen] = useState(false);
+
+    const handleWindowChange = useCallback((open: boolean) => {
+        setIsWindowOpen(open);
+    }, []);
 
     // Voice recording state
     const [isRecording, setIsRecording] = useState(false);
@@ -1347,69 +1357,92 @@ export default function InboxPage() {
                             )}
 
                             {/* Window Timer */}
-                            <WindowTimer expiresAt={selectedChat.sessionExpiresAt} />
+                            <WindowTimer expiresAt={selectedChat.sessionExpiresAt} onWindowChange={handleWindowChange} />
 
-                            {/* Input Area (Floating Glass Pill on Desktop, Docked on Mobile) */}
-                            <div className="p-4 sm:p-6 sm:pb-8 sm:absolute sm:bottom-0 sm:left-0 sm:right-0 shrink-0 pointer-events-none">
-                                {isRecording ? (
-                                    <div className="flex items-center gap-3 max-w-3xl mx-auto glass-input p-2 rounded-full pointer-events-auto">
-                                        <Button variant="ghost" size="icon" className="h-12 w-12 rounded-full text-destructive hover:text-destructive hover:bg-destructive/10 shrink-0" onClick={cancelRecording} title="Cancelar">
-                                            <X className="h-6 w-6" />
-                                        </Button>
-                                        <div className="flex-1 flex items-center justify-center gap-3 px-4 h-12 bg-destructive/5 rounded-full">
-                                            <div className="h-3 w-3 rounded-full bg-destructive animate-pulse" />
-                                            <span className="text-sm font-medium text-destructive">Grabando audio...</span>
-                                            <span className="text-sm font-mono text-muted-foreground hidden sm:inline">{formatRecordingTime(recordingTime)}</span>
-                                        </div>
-                                        <Button size="icon" className="h-12 w-12 rounded-full shrink-0" onClick={stopRecording} title="Enviar">
-                                            <Send className="h-5 w-5 ml-1" />
+                            {/* Input Area — Locked when 24h window is closed */}
+                            {selectedChat.sessionExpiresAt && !isWindowOpen ? (
+                                /* ═══ LOCKED: 24h window expired ═══ */
+                                <div className="shrink-0 space-y-0">
+                                    <p className="text-xs text-center text-muted-foreground px-6 py-3">
+                                        Solo puedes responder a esta conversación utilizando un mensaje plantilla debido a la{" "}
+                                        <span className="text-primary underline cursor-help" title="WhatsApp requiere que las empresas respondan dentro de las 24 horas posteriores al último mensaje del cliente.">
+                                            restricción de la ventana de mensajes de 24 horas
+                                        </span>
+                                    </p>
+                                    <div className="flex justify-center pb-4">
+                                        <Button
+                                            variant="outline"
+                                            className="rounded-full px-6 gap-2 border-border hover:bg-primary/5 hover:border-primary/30"
+                                            onClick={() => setTemplateModalOpen(true)}
+                                        >
+                                            <LayoutTemplate className="h-4 w-4" />
+                                            Mensaje de plantilla
                                         </Button>
                                     </div>
-                                ) : (
-                                    <div className="flex items-end gap-2 max-w-3xl mx-auto glass-input p-2 rounded-3xl pointer-events-auto">
-                                        <input ref={fileInputRef} type="file" className="hidden"
-                                            accept="image/*,audio/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip,.rar"
-                                            onChange={handleFileSelect}
-                                        />
-                                        <input ref={imageInputRef} type="file" className="hidden"
-                                            accept="image/*"
-                                            onChange={handleFileSelect}
-                                        />
-                                        <div className="flex gap-1 pb-1 pl-1">
-                                            <Button variant="ghost" size="icon" className="h-10 w-10 shrink-0 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted/50"
-                                                onClick={() => fileInputRef.current?.click()} disabled={isUploading} title="Adjuntar archivo">
-                                                {isUploading
-                                                    ? <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-                                                    : <Paperclip className="h-5 w-5" />}
+                                </div>
+                            ) : (
+                                /* ═══ UNLOCKED: Normal input area ═══ */
+                                <div className="p-4 sm:p-6 sm:pb-8 sm:absolute sm:bottom-0 sm:left-0 sm:right-0 shrink-0 pointer-events-none">
+                                    {isRecording ? (
+                                        <div className="flex items-center gap-3 max-w-3xl mx-auto glass-input p-2 rounded-full pointer-events-auto">
+                                            <Button variant="ghost" size="icon" className="h-12 w-12 rounded-full text-destructive hover:text-destructive hover:bg-destructive/10 shrink-0" onClick={cancelRecording} title="Cancelar">
+                                                <X className="h-6 w-6" />
                                             </Button>
-                                            <Button variant="ghost" size="icon" className="h-10 w-10 shrink-0 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted/50"
-                                                onClick={() => imageInputRef.current?.click()} disabled={isUploading} title="Enviar imagen">
-                                                <ImageIcon className="h-5 w-5" />
+                                            <div className="flex-1 flex items-center justify-center gap-3 px-4 h-12 bg-destructive/5 rounded-full">
+                                                <div className="h-3 w-3 rounded-full bg-destructive animate-pulse" />
+                                                <span className="text-sm font-medium text-destructive">Grabando audio...</span>
+                                                <span className="text-sm font-mono text-muted-foreground hidden sm:inline">{formatRecordingTime(recordingTime)}</span>
+                                            </div>
+                                            <Button size="icon" className="h-12 w-12 rounded-full shrink-0" onClick={stopRecording} title="Enviar">
+                                                <Send className="h-5 w-5 ml-1" />
                                             </Button>
                                         </div>
-                                        <div className="flex-1 bg-muted/20 rounded-2xl border-0 focus-within:bg-muted/30 focus-within:ring-1 ring-primary/50 p-1 mb-1 transition-all">
-                                            <Input
-                                                placeholder={pendingFile ? "Agregar descripción..." : "Escribe un mensaje..."}
-                                                className="border-0 bg-transparent focus-visible:ring-0 px-3 py-3 h-auto max-h-32 min-h-[44px] text-base"
-                                                value={inputText}
-                                                onChange={(e) => setInputText(e.target.value)}
-                                                onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSendMessage(); } }}
+                                    ) : (
+                                        <div className="flex items-end gap-2 max-w-3xl mx-auto glass-input p-2 rounded-3xl pointer-events-auto">
+                                            <input ref={fileInputRef} type="file" className="hidden"
+                                                accept="image/*,audio/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip,.rar"
+                                                onChange={handleFileSelect}
                                             />
-                                        </div>
-                                        <div className="pb-1 pr-1 shrink-0">
-                                            {(inputText.trim() || pendingFile) ? (
-                                                <Button size="icon" className="h-12 w-12 rounded-full animate-in zoom-in-50 duration-200 shadow-premium" onClick={handleSendMessage}>
-                                                    <Send className="h-5 w-5 ml-0.5" />
+                                            <input ref={imageInputRef} type="file" className="hidden"
+                                                accept="image/*"
+                                                onChange={handleFileSelect}
+                                            />
+                                            <div className="flex gap-1 pb-1 pl-1">
+                                                <Button variant="ghost" size="icon" className="h-10 w-10 shrink-0 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                                                    onClick={() => fileInputRef.current?.click()} disabled={isUploading} title="Adjuntar archivo">
+                                                    {isUploading
+                                                        ? <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                                                        : <Paperclip className="h-5 w-5" />}
                                                 </Button>
-                                            ) : (
-                                                <Button size="icon" className="h-12 w-12 rounded-full shrink-0 shadow-premium bg-green-500 hover:bg-green-600 text-white" onClick={handleMicClick} title="Nota de voz">
-                                                    <Mic className="h-5 w-5" />
+                                                <Button variant="ghost" size="icon" className="h-10 w-10 shrink-0 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                                                    onClick={() => imageInputRef.current?.click()} disabled={isUploading} title="Enviar imagen">
+                                                    <ImageIcon className="h-5 w-5" />
                                                 </Button>
-                                            )}
+                                            </div>
+                                            <div className="flex-1 bg-muted/20 rounded-2xl border-0 focus-within:bg-muted/30 focus-within:ring-1 ring-primary/50 p-1 mb-1 transition-all">
+                                                <Input
+                                                    placeholder={pendingFile ? "Agregar descripción..." : "Escribe un mensaje..."}
+                                                    className="border-0 bg-transparent focus-visible:ring-0 px-3 py-3 h-auto max-h-32 min-h-[44px] text-base"
+                                                    value={inputText}
+                                                    onChange={(e) => setInputText(e.target.value)}
+                                                    onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSendMessage(); } }}
+                                                />
+                                            </div>
+                                            <div className="pb-1 pr-1 shrink-0">
+                                                {(inputText.trim() || pendingFile) ? (
+                                                    <Button size="icon" className="h-12 w-12 rounded-full animate-in zoom-in-50 duration-200 shadow-premium" onClick={handleSendMessage}>
+                                                        <Send className="h-5 w-5 ml-0.5" />
+                                                    </Button>
+                                                ) : (
+                                                    <Button size="icon" className="h-12 w-12 rounded-full shrink-0 shadow-premium bg-green-500 hover:bg-green-600 text-white" onClick={handleMicClick} title="Nota de voz">
+                                                        <Mic className="h-5 w-5" />
+                                                    </Button>
+                                                )}
+                                            </div>
                                         </div>
-                                    </div>
-                                )}
-                            </div>
+                                    )}
+                                </div>
+                            )}
                         </>
                     ) : (
                         <div className="flex-1 flex items-center justify-center text-muted-foreground">
@@ -1435,6 +1468,27 @@ export default function InboxPage() {
                     />
                 )
             }
+
+            {/* Template Send Modal */}
+            {selectedChat && (
+                <TemplateSendModal
+                    open={templateModalOpen}
+                    onOpenChange={setTemplateModalOpen}
+                    contactPhone={selectedChat.contact?.phone || ""}
+                    contactName={selectedChat.contact?.name || ""}
+                    onSent={() => {
+                        // Refresh messages after sending a template
+                        if (selectedChat) {
+                            fetch(`/api/chat?conversationId=${selectedChat.id}`)
+                                .then(r => r.json())
+                                .then(data => {
+                                    if (data.messages) setMessages(data.messages);
+                                });
+                        }
+                    }}
+                />
+            )}
         </>
     );
 }
+
