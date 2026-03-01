@@ -142,9 +142,9 @@ export function AppointmentDialog({ open, onOpenChange, selectedEvent, selectedS
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="sm:max-w-[600px] bg-white">
+            <DialogContent className="sm:max-w-[600px] bg-card">
                 <DialogHeader className="pb-4 border-b">
-                    <DialogTitle className="text-xl font-semibold text-slate-800">
+                    <DialogTitle className="text-xl font-semibold text-foreground">
                         {selectedEvent ? "Editar Cita" : "Nueva Cita"}
                     </DialogTitle>
                 </DialogHeader>
@@ -159,7 +159,7 @@ export function AppointmentDialog({ open, onOpenChange, selectedEvent, selectedS
                                     variant="outline"
                                     role="combobox"
                                     aria-expanded={openCombobox}
-                                    className="w-full justify-between bg-white h-11"
+                                    className="w-full justify-between bg-background h-11"
                                 >
                                     {contactId
                                         ? contacts.find((c) => c.id === contactId)?.name || "Cliente seleccionado"
@@ -209,7 +209,7 @@ export function AppointmentDialog({ open, onOpenChange, selectedEvent, selectedS
                         <Input
                             value={title}
                             onChange={(e) => setTitle(e.target.value)}
-                            className="bg-white h-11"
+                            className="bg-background h-11"
                             placeholder="Ej. Demo de producto"
                         />
                     </div>
@@ -223,7 +223,7 @@ export function AppointmentDialog({ open, onOpenChange, selectedEvent, selectedS
                                     <Button
                                         variant={"outline"}
                                         className={cn(
-                                            "w-full justify-start text-left font-normal bg-white h-11",
+                                            "w-full justify-start text-left font-normal bg-background h-11",
                                             !date && "text-muted-foreground"
                                         )}
                                     >
@@ -244,12 +244,12 @@ export function AppointmentDialog({ open, onOpenChange, selectedEvent, selectedS
                         <div className="space-y-2">
                             <Label>Hora *</Label>
                             <div className="relative">
-                                <Clock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" />
+                                <Clock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                                 <Input
                                     type="time"
                                     value={time}
                                     onChange={(e) => setTime(e.target.value)}
-                                    className="pl-9 bg-white h-11"
+                                    className="pl-9 bg-background h-11"
                                 />
                             </div>
                         </div>
@@ -259,7 +259,7 @@ export function AppointmentDialog({ open, onOpenChange, selectedEvent, selectedS
                     <div className="space-y-2">
                         <Label>Duración (minutos)</Label>
                         <Select value={duration} onValueChange={setDuration}>
-                            <SelectTrigger className="bg-white h-11">
+                            <SelectTrigger className="bg-background h-11">
                                 <SelectValue placeholder="Seleccionar duración" />
                             </SelectTrigger>
                             <SelectContent>
@@ -279,13 +279,13 @@ export function AppointmentDialog({ open, onOpenChange, selectedEvent, selectedS
                         <Input // Or Textarea
                             value={notes}
                             onChange={(e) => setNotes(e.target.value)}
-                            className="bg-white h-11"
+                            className="bg-background h-11"
                             placeholder="Detalles adicionales..."
                         />
                     </div>
                 </div>
 
-                <DialogFooter className="flex justify-between sm:justify-between items-center bg-white p-4 -mx-6 -mb-6 border-t mt-4 rounded-b-lg">
+                <DialogFooter className="flex justify-between sm:justify-between items-center bg-card p-4 -mx-6 -mb-6 border-t mt-4 rounded-b-lg">
                     {selectedEvent ? (
                         <Button variant="ghost" className="text-red-500 hover:text-red-600 hover:bg-red-50" onClick={handleDelete} type="button">
                             Eliminar

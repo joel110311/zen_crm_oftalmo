@@ -266,8 +266,21 @@ export function BigCalendar({ initialEvents, onSelectSlot, onSelectEvent }: BigC
     return (
         <div className="h-full flex flex-col big-calendar-wrapper">
             <style jsx global>{`
-                .rbc-calendar { font-family: inherit; }
+                .rbc-calendar { font-family: inherit; color: hsl(var(--foreground)); }
                 .rbc-toolbar { margin-bottom: 1rem; }
+
+                /* Override RBC default white backgrounds for dark mode */
+                .rbc-month-view,
+                .rbc-time-view,
+                .rbc-day-bg,
+                .rbc-time-content,
+                .rbc-time-gutter,
+                .rbc-row-bg,
+                .rbc-month-row { background-color: hsl(var(--card)) !important; }
+
+                .rbc-off-range { color: hsl(var(--muted-foreground) / 0.5) !important; }
+                .rbc-off-range-bg { background-color: hsl(var(--muted) / 0.3) !important; }
+                .rbc-label { color: hsl(var(--muted-foreground)) !important; }
                 
                 .rbc-event { 
                     background-color: transparent !important; 
@@ -325,14 +338,14 @@ export function BigCalendar({ initialEvents, onSelectSlot, onSelectEvent }: BigC
                 
                 /* Grid Lines - Matching the reference image */
                 .rbc-day-slot .rbc-time-slot { 
-                    border-top: 1px dotted #cbd5e1 !important; /* Dotted slate-300 */
+                    border-top: 1px dotted hsl(var(--border)) !important;
                 }
                 .rbc-timeslot-group { 
-                    border-bottom: 1px dotted #cbd5e1 !important; 
-                    min-height: 80px !important; /* 1 hour = 80px. 30mins = 40px (perfect for 2 lines) */
+                    border-bottom: 1px dotted hsl(var(--border)) !important; 
+                    min-height: 80px !important;
                 }
                 .rbc-time-content > * + * > * { 
-                    border-left: 1px solid #e2e8f0 !important;
+                    border-left: 1px solid hsl(var(--border)) !important;
                 }
                 
                 /* Hide default RBC label (e.g. "9:00 - 9:30") so our CustomEvent has space */
@@ -344,7 +357,7 @@ export function BigCalendar({ initialEvents, onSelectSlot, onSelectEvent }: BigC
                 .rbc-current-time-indicator { display: none !important; }
                 
                 .rbc-time-gutter .rbc-timeslot-group { 
-                    border-bottom: 1px dotted #cbd5e1 !important; 
+                    border-bottom: 1px dotted hsl(var(--border)) !important; 
                     color: hsl(var(--muted-foreground));
                 }
                 
