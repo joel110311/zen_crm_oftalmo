@@ -147,6 +147,7 @@ export default function TemplatesPage() {
     const [phoneInput, setPhoneInput] = useState("");
     const [sending, setSending] = useState(false);
     const [sendResult, setSendResult] = useState<{ sent: number; failed: number; total: number } | null>(null);
+    const [variableValues, setVariableValues] = useState<Record<string, string>>({});
 
     // Create page
     const [showCreatePage, setShowCreatePage] = useState(false);
@@ -190,14 +191,51 @@ export default function TemplatesPage() {
     const rejected = templates.filter((t) => t.status === "REJECTED").length;
 
     /* ──── Send ──── */
+    const sendTemplateBody = selectedTemplate?.components?.find((c) => c.type === "BODY")?.text || "";
+    const sendTemplateHeader = selectedTemplate?.components?.find((c) => c.type === "HEADER")?.text || "";
+    const sendTemplateFooter = selectedTemplate?.components?.find((c) => c.type === "FOOTER")?.text || "";
+    const sendTemplateButtons = selectedTemplate?.components?.find((c) => c.type === "BUTTONS")?.buttons || [];
+    const sendAllVars = useMemo(() => {
+        if (!selectedTemplate) return [];
+        return [...new Set([...extractVariables(sendTemplateHeader), ...extractVariables(sendTemplateBody)])];
+    }, [selectedTemplate, sendTemplateHeader, sendTemplateBody]);
+
+    const sendPreviewBody = useMemo(() => {
+        let t = sendTemplateBody;
+        for (const [k, v] of Object.entries(variableValues)) { if (v) t = t.replaceAll(k, v); }
+        return t;
+    }, [sendTemplateBody, variableValues]);
+    const sendPreviewHeader = useMemo(() => {
+        let t = sendTemplateHeader;
+        for (const [k, v] of Object.entries(variableValues)) { if (v) t = t.replaceAll(k, v); }
+        return t;
+    }, [sendTemplateHeader, variableValues]);
+
     const handleSend = async () => {
         if (!selectedTemplate || !phoneInput.trim()) return;
         setSending(true); setSendResult(null);
         try {
             const phones = phoneInput.split(/[,\n]+/).map((p) => p.trim()).filter(Boolean);
+
+            // Build variable components for the API
+            const bodyVars = extractVariables(sendTemplateBody);
+            const apiComponents: Array<{ type: string; parameters: Array<{ type: string; text: string }> }> = [];
+            if (bodyVars.length > 0) {
+                apiComponents.push({
+                    type: "body",
+                    parameters: bodyVars.map((v) => ({ type: "text", text: variableValues[v] || v })),
+                });
+            }
+
             const res = await fetch("/api/templates/send", {
                 method: "POST", headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ templateName: selectedTemplate.name, language: selectedTemplate.language, recipients: phones }),
+                body: JSON.stringify({
+                    templateName: selectedTemplate.name,
+                    language: selectedTemplate.language,
+                    recipients: phones,
+                    components: apiComponents.length > 0 ? apiComponents : undefined,
+                    resolvedContent: sendPreviewBody,
+                }),
             });
             const data = await res.json();
             setSendResult({ sent: data.sent, failed: data.failed, total: data.total });
@@ -380,28 +418,71 @@ export default function TemplatesPage() {
                 </div>
             )}
 
-            {/* ═══ Send Modal ═══ */}
-            <Dialog open={sendOpen} onOpenChange={setSendOpen}>
-                <DialogContent className="sm:max-w-lg">
-                    <DialogHeader>
+            {/* ═══ Send Modal — Full Variable Config ═══ */}
+            <Dialog open={sendOpen} onOpenChange={(v) => { setSendOpen(v); if (!v) { setVariableValues({}); setSendResult(null); setPhoneInput(""); } }}>
+                <DialogContent className="sm:max-w-3xl max-h-[85vh] flex flex-col p-0 gap-0 overflow-hidden">
+                    <DialogHeader className="px-6 pt-5 pb-4 border-b shrink-0">
                         <DialogTitle className="flex items-center gap-2"><MessageSquare className="h-5 w-5 text-primary" /> Enviar plantilla</DialogTitle>
                         <DialogDescription>{selectedTemplate?.name} · {selectedTemplate?.language}</DialogDescription>
                     </DialogHeader>
-                    <div className="space-y-4 py-2">
-                        <div className="bg-muted/30 rounded-xl p-3 border text-sm">
-                            <p className="text-foreground/80">{selectedTemplate?.components?.find((c) => c.type === "BODY")?.text || "Sin contenido"}</p>
-                        </div>
-                        <div>
-                            <Label>Números de destino</Label>
-                            <Textarea placeholder={"+524771234567\n+524779876543"} value={phoneInput} onChange={(e) => setPhoneInput(e.target.value)} rows={4} className="resize-none mt-1.5" />
-                            <p className="text-xs text-muted-foreground mt-1">Formato internacional</p>
-                        </div>
-                        {sendResult && (
-                            <div className={`rounded-xl p-3 text-sm ${sendResult.failed > 0 ? "bg-amber-500/10 border border-amber-500/20" : "bg-emerald-500/10 border border-emerald-500/20"}`}>
-                                ✅ Enviados: {sendResult.sent} de {sendResult.total}{sendResult.failed > 0 && ` · ❌ Fallidos: ${sendResult.failed}`}
+                    <div className="flex-1 overflow-auto">
+                        <div className="flex flex-col sm:flex-row h-full">
+                            {/* Left: Live Preview */}
+                            <div className="sm:w-[45%] p-6 bg-muted/20 border-r flex flex-col">
+                                <div className="bg-card border rounded-2xl p-5 shadow-sm space-y-3 flex-1">
+                                    {sendPreviewHeader && <p className="font-bold text-sm text-foreground">{sendPreviewHeader}</p>}
+                                    <div className="text-sm text-foreground/90 whitespace-pre-wrap leading-relaxed">
+                                        {(() => {
+                                            const regex = /(\{\{[^}]+\}\})/g;
+                                            const parts = sendPreviewBody.split(regex);
+                                            return parts.map((part, i) => {
+                                                if (part.match(regex)) {
+                                                    return <span key={i} className="inline-block bg-primary/10 text-primary font-semibold px-1.5 py-0.5 rounded text-xs">{part}</span>;
+                                                }
+                                                return <span key={i}>{part}</span>;
+                                            });
+                                        })()}
+                                    </div>
+                                    {sendTemplateFooter && <p className="text-xs text-muted-foreground italic pt-1">{sendTemplateFooter}</p>}
+                                    {sendTemplateButtons.length > 0 && (
+                                        <div className="space-y-1.5 pt-2 border-t border-border/50">
+                                            {sendTemplateButtons.map((btn, i) => <div key={i} className="text-center text-sm text-primary font-medium py-1.5">↩ {btn.text}</div>)}
+                                        </div>
+                                    )}
+                                </div>
                             </div>
-                        )}
-                        <Button onClick={handleSend} disabled={sending || !phoneInput.trim()} className="w-full">
+
+                            {/* Right: Variables + Recipients */}
+                            <div className="sm:w-[55%] p-6 space-y-5 overflow-auto">
+                                {sendAllVars.length > 0 && (
+                                    <>
+                                        <h3 className="text-sm font-semibold text-foreground">Body</h3>
+                                        {sendAllVars.map((v) => (
+                                            <div key={v} className="space-y-2">
+                                                <Badge variant="outline" className="text-xs font-mono bg-primary/5 text-primary border-primary/20">{v}</Badge>
+                                                <Input placeholder="Por favor ingrese" value={variableValues[v] || ""} onChange={(e) => setVariableValues((prev) => ({ ...prev, [v]: e.target.value }))} />
+                                            </div>
+                                        ))}
+                                        <Separator />
+                                    </>
+                                )}
+                                <div>
+                                    <Label>Números de destino</Label>
+                                    <Textarea placeholder="+524771234567\n+524779876543" value={phoneInput} onChange={(e) => setPhoneInput(e.target.value)} rows={4} className="resize-none mt-1.5" />
+                                    <p className="text-xs text-muted-foreground mt-1">Formato internacional (uno por línea o separados por coma)</p>
+                                </div>
+                                {sendResult && (
+                                    <div className={`rounded-xl p-3 text-sm ${sendResult.failed > 0 ? "bg-amber-500/10 border border-amber-500/20" : "bg-emerald-500/10 border border-emerald-500/20"}`}>
+                                        ✅ Enviados: {sendResult.sent} de {sendResult.total}{sendResult.failed > 0 && ` · ❌ Fallidos: ${sendResult.failed}`}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                    {/* Bottom actions */}
+                    <div className="border-t px-6 py-4 flex justify-end gap-3 shrink-0">
+                        <Button variant="outline" onClick={() => setSendOpen(false)}>Cancelar</Button>
+                        <Button onClick={handleSend} disabled={sending || !phoneInput.trim() || (sendAllVars.length > 0 && sendAllVars.some((v) => !variableValues[v]?.trim()))}>
                             {sending ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Enviando...</> : <><Send className="h-4 w-4 mr-2" />Confirmar envío</>}
                         </Button>
                     </div>

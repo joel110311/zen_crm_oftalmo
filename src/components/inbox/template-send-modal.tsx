@@ -215,6 +215,7 @@ export function TemplateSendModal({
                     language: selectedTemplate.language,
                     recipients: [contactPhone],
                     components: components.length > 0 ? components : undefined,
+                    resolvedContent: previewBody,
                 }),
             });
 

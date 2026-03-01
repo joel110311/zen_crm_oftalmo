@@ -5,7 +5,7 @@ import { prisma } from "@/lib/db";
 // POST: Send a template message to one or many recipients
 export async function POST(req: NextRequest) {
     try {
-        const { templateName, language, components, recipients } = await req.json();
+        const { templateName, language, components, recipients, resolvedContent } = await req.json();
 
         if (!templateName || !language) {
             return NextResponse.json(
@@ -23,7 +23,10 @@ export async function POST(req: NextRequest) {
             );
         }
 
-        // Send to all recipients in parallel (with a concurrency limit)
+        // Build the message content for CRM storage
+        const messageContent = resolvedContent || `[Plantilla: ${templateName}]`;
+
+        // Send to all recipients in parallel
         const results = await Promise.allSettled(
             phones.map(async (phone: string) => {
                 const result = await sendWhatsAppTemplate(
@@ -55,14 +58,19 @@ export async function POST(req: NextRequest) {
                                 data: {
                                     conversationId: conversation.id,
                                     direction: "outbound",
-                                    content: `[Plantilla: ${templateName}]`,
+                                    content: messageContent,
                                     senderType: "human",
                                 },
                             });
 
+                            // Update conversation timestamp AND reopen 24h window
+                            // (WhatsApp templates reopen the messaging window)
                             await prisma.conversation.update({
                                 where: { id: conversation.id },
-                                data: { updatedAt: new Date() },
+                                data: {
+                                    updatedAt: new Date(),
+                                    sessionExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+                                },
                             });
                         }
                     }
