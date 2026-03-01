@@ -74,11 +74,11 @@
 }
 
 @utility bg-whatsapp-pattern {
-  /* WhatsApp Doodle Pattern logic */
-  background-image: var(--bg-whatsapp);
-  background-repeat: repeat;
-  background-size: 400px;
-  background-color: var(--background);
+  /* WhatsApp Doodle Pattern using actual images */
+  background-image: url('/images/chat-bg-light.png');
+  background-repeat: no-repeat;
+  background-size: cover;
+  background-position: center;
 }
 
 /* Chat bubble tails using CSS borders */
@@ -162,9 +162,6 @@
   --sidebar-accent-foreground: hsl(0 0% 100%);
   --sidebar-border: hsl(225 20% 22%);
   --sidebar-ring: hsl(221 83% 53%);
-
-  /* WhatsApp Base64 Pattern SVG - Light Mode */
-  --bg-whatsapp: url("data:image/svg+xml,%3Csvg width='100' height='100' viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M10 10A5 5 0 1 1 10 20A5 5 0 1 1 10 10ZM30 30A7 7 0 1 1 30 44A7 7 0 1 1 30 30ZM80 20L85 10L90 15L85 25Z' fill='%23000000' fill-opacity='0.04' fill-rule='evenodd'/%3E%3C/svg%3E");
 }
 
 /* Dark mode — the PRIMARY mode inspired by Nexus */
@@ -219,6 +216,11 @@
   --sidebar-accent-foreground: hsl(0 0% 100%);
   --sidebar-border: hsl(228 20% 18%);
   --sidebar-ring: hsl(221 83% 53%);
+}
+
+/* Dark mode background override for chat */
+.dark .bg-whatsapp-pattern {
+  background-image: url('/images/chat-bg-dark.png');
 }
 
 @layer base {

@@ -1182,30 +1182,6 @@ export default function InboxPage() {
                                     </button>
                                 </div>
                                 <div className="flex items-center gap-0.5 flex-shrink-0">
-                                    {/* Humano / IA Toggle */}
-                                    <div className="hidden sm:flex items-center gap-1 mr-1">
-                                        <button
-                                            onClick={() => performAction("toggleBot")}
-                                            className="relative flex items-center h-8 rounded-full p-0.5 transition-colors"
-                                            style={{ backgroundColor: selectedChat.botActive ? "rgba(37,99,235,0.1)" : "rgba(22,163,74,0.1)" }}
-                                            title={selectedChat.botActive ? "IA activa — click para cambiar a Humano" : "Humano activo — click para cambiar a IA"}
-                                        >
-                                            <span className={cn(
-                                                "flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold transition-all z-10",
-                                                !selectedChat.botActive ? "bg-green-600 text-white shadow-sm" : "text-muted-foreground"
-                                            )}>
-                                                <UserIcon className="h-3 w-3" />
-                                                Humano
-                                            </span>
-                                            <span className={cn(
-                                                "flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold transition-all z-10",
-                                                selectedChat.botActive ? "bg-blue-600 text-white shadow-sm" : "text-muted-foreground"
-                                            )}>
-                                                <Bot className="h-3 w-3" />
-                                                IA
-                                            </span>
-                                        </button>
-                                    </div>
                                     <Button variant="ghost" size="icon" className="hidden sm:inline-flex" onClick={() => setShowContactInfo(!showContactInfo)} title="Info del contacto">
                                         <Info className="h-4 w-4" />
                                     </Button>
@@ -1300,20 +1276,7 @@ export default function InboxPage() {
                                                             msg.direction === "outbound" ? "self-end items-end" : "self-start items-start"
                                                         )}
                                                     >
-                                                        {/* Sender type label (only show if it's the first message in a group to reduce clutter) */}
-                                                        {(idx === 0 || messages[idx - 1].direction !== msg.direction) && (
-                                                            <span className={cn(
-                                                                "flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-md mb-0.5",
-                                                                msg.direction === "outbound"
-                                                                    ? "text-green-600 bg-green-500/10"
-                                                                    : "text-blue-600 bg-blue-500/10"
-                                                            )}>
-                                                                {msg.direction === "outbound"
-                                                                    ? <><UserIcon className="h-2.5 w-2.5" /> Humano</>
-                                                                    : <><Bot className="h-2.5 w-2.5" /> IA</>
-                                                                }
-                                                            </span>
-                                                        )}
+
                                                         <div
                                                             className={cn(
                                                                 "rounded-2xl px-4 py-2 shadow-premium text-sm relative",
@@ -1459,17 +1422,19 @@ export default function InboxPage() {
                 {showContactInfo && selectedChat && (
                     <ContactInfoPanel conversation={selectedChat} onClose={() => setShowContactInfo(false)} />
                 )}
-            </div>
+            </div >
 
             {/* Image Viewer Lightbox */}
-            {viewerMessageId && selectedChat && (
-                <ImageViewer
-                    conversation={selectedChat}
-                    messages={messages}
-                    initialMessageId={viewerMessageId}
-                    onClose={() => setViewerMessageId(null)}
-                />
-            )}
+            {
+                viewerMessageId && selectedChat && (
+                    <ImageViewer
+                        conversation={selectedChat}
+                        messages={messages}
+                        initialMessageId={viewerMessageId}
+                        onClose={() => setViewerMessageId(null)}
+                    />
+                )
+            }
         </>
     );
 }
