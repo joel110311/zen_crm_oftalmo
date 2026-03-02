@@ -148,7 +148,7 @@ export async function removeContactTag(contactId: string, tag: string) {
         const contact = await prisma.contact.findUnique({ where: { id: contactId } });
         if (!contact) return { success: false, error: "Contact not found" };
 
-        const newTags = contact.tags.filter(t => t !== tag);
+        const newTags = contact.tags.filter((t: string) => t !== tag);
 
         await prisma.contact.update({
             where: { id: contactId },

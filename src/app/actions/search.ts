@@ -67,11 +67,11 @@ export async function searchGlobal(term: string): Promise<SearchResult> {
         ]);
 
         return {
-            contacts: contacts.map(c => ({
+            contacts: contacts.map((c: any) => ({
                 ...c,
                 avatar: undefined, // placeholder
             })),
-            deals: deals.map(d => ({
+            deals: deals.map((d: any) => ({
                 id: d.id,
                 title: d.title,
                 value: d.value,

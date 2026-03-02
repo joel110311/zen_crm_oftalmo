@@ -1,42 +1,44 @@
 /* ═══════════════════════════════════════════════════
    react-big-calendar theme overrides
-   Imported AFTER the library CSS to guarantee cascade order.
+   Uses .big-calendar-wrapper parent for higher specificity,
+   guaranteeing these styles always override the library defaults
+   regardless of CSS loading order.
    ═══════════════════════════════════════════════════ */
 
-.rbc-calendar {
+.big-calendar-wrapper .rbc-calendar {
     font-family: inherit;
     color: hsl(var(--foreground));
 }
 
-.rbc-toolbar {
+.big-calendar-wrapper .rbc-toolbar {
     margin-bottom: 1rem;
 }
 
 /* ── Background overrides for dark mode ── */
-.rbc-month-view,
-.rbc-time-view,
-.rbc-day-bg,
-.rbc-time-content,
-.rbc-time-gutter,
-.rbc-row-bg,
-.rbc-month-row {
+.big-calendar-wrapper .rbc-month-view,
+.big-calendar-wrapper .rbc-time-view,
+.big-calendar-wrapper .rbc-day-bg,
+.big-calendar-wrapper .rbc-time-content,
+.big-calendar-wrapper .rbc-time-gutter,
+.big-calendar-wrapper .rbc-row-bg,
+.big-calendar-wrapper .rbc-month-row {
     background-color: hsl(var(--card)) !important;
 }
 
-.rbc-off-range {
+.big-calendar-wrapper .rbc-off-range {
     color: hsl(var(--muted-foreground) / 0.5) !important;
 }
 
-.rbc-off-range-bg {
+.big-calendar-wrapper .rbc-off-range-bg {
     background-color: hsl(var(--muted) / 0.3) !important;
 }
 
-.rbc-label {
+.big-calendar-wrapper .rbc-label {
     color: hsl(var(--muted-foreground)) !important;
 }
 
 /* ── Events ── */
-.rbc-event {
+.big-calendar-wrapper .rbc-event {
     background-color: transparent !important;
     border: none !important;
     padding: 0 !important;
@@ -46,22 +48,22 @@
     z-index: 10;
 }
 
-.rbc-event-content {
+.big-calendar-wrapper .rbc-event-content {
     height: 100% !important;
     display: block !important;
     font-size: 11px;
 }
 
-.rbc-event:focus {
+.big-calendar-wrapper .rbc-event:focus {
     outline: none !important;
 }
 
 /* ── Theme Colors ── */
-.rbc-today {
+.big-calendar-wrapper .rbc-today {
     background-color: hsl(var(--accent) / 0.3) !important;
 }
 
-.rbc-header {
+.big-calendar-wrapper .rbc-header {
     padding: 8px;
     font-weight: 600;
     font-size: 0.875rem;
@@ -69,11 +71,11 @@
     border-bottom: 1px solid hsl(var(--border)) !important;
 }
 
-.rbc-header+.rbc-header {
+.big-calendar-wrapper .rbc-header+.rbc-header {
     border-left: 1px solid hsl(var(--border)) !important;
 }
 
-.rbc-date-cell {
+.big-calendar-wrapper .rbc-date-cell {
     padding: 4px;
     font-size: 0.875rem;
     font-weight: 500;
@@ -81,67 +83,67 @@
 }
 
 /* ═══ MONTH VIEW BORDERS ═══ */
-.rbc-month-view {
+.big-calendar-wrapper .rbc-month-view {
     border: 1px solid hsl(var(--border)) !important;
     border-radius: 0.5rem;
     overflow: hidden;
 }
 
-.rbc-month-row {
+.big-calendar-wrapper .rbc-month-row {
     border-top: 1px solid hsl(var(--border)) !important;
 }
 
-.rbc-month-row:first-child {
+.big-calendar-wrapper .rbc-month-row:first-child {
     border-top: none !important;
 }
 
-.rbc-day-bg+.rbc-day-bg {
+.big-calendar-wrapper .rbc-day-bg+.rbc-day-bg {
     border-left: 1px solid hsl(var(--border)) !important;
 }
 
 /* ═══ WEEK / DAY VIEW BORDERS ═══ */
-.rbc-time-view {
+.big-calendar-wrapper .rbc-time-view {
     border: 1px solid hsl(var(--border)) !important;
     border-radius: 0.5rem;
     overflow: hidden;
 }
 
-.rbc-time-header {
+.big-calendar-wrapper .rbc-time-header {
     border-bottom: 1px solid hsl(var(--border)) !important;
 }
 
-.rbc-time-header-content {
+.big-calendar-wrapper .rbc-time-header-content {
     border-left: 1px solid hsl(var(--border)) !important;
 }
 
-.rbc-time-content {
+.big-calendar-wrapper .rbc-time-content {
     border-top: 1px solid hsl(var(--border)) !important;
 }
 
-.rbc-time-content>*+*>* {
+.big-calendar-wrapper .rbc-time-content>*+*>* {
     border-left: 1px solid hsl(var(--border)) !important;
 }
 
 /* ── Time slot grid lines ── */
-.rbc-timeslot-group {
+.big-calendar-wrapper .rbc-timeslot-group {
     border-bottom: 1px solid hsl(var(--border)) !important;
     min-height: 80px !important;
 }
 
-.rbc-day-slot .rbc-time-slot {
+.big-calendar-wrapper .rbc-day-slot .rbc-time-slot {
     border-top: 1px dotted hsl(var(--border) / 0.5) !important;
 }
 
-.rbc-time-gutter .rbc-timeslot-group {
+.big-calendar-wrapper .rbc-time-gutter .rbc-timeslot-group {
     border-bottom: 1px solid hsl(var(--border)) !important;
     color: hsl(var(--muted-foreground));
 }
 
 /* ── Hide defaults ── */
-.rbc-event-label {
+.big-calendar-wrapper .rbc-event-label {
     display: none !important;
 }
 
-.rbc-current-time-indicator {
+.big-calendar-wrapper .rbc-current-time-indicator {
     display: none !important;
 }
