@@ -345,8 +345,7 @@ body {
 /* Events */
 .big-calendar-wrapper .rbc-event {
   background-color: transparent !important;
-  border-width: 0 !important;
-  border-style: none !important;
+  border: none !important;
   padding: 0 !important;
   outline: none !important;
   box-shadow: none !important;
@@ -374,15 +373,11 @@ body {
   font-weight: 600;
   font-size: 0.875rem;
   color: var(--muted-foreground);
-  border-bottom-width: 1px !important;
-  border-bottom-style: solid !important;
-  border-bottom-color: var(--border) !important;
+  border-bottom: 1px solid var(--border) !important;
 }
 
 .big-calendar-wrapper .rbc-header+.rbc-header {
-  border-left-width: 1px !important;
-  border-left-style: solid !important;
-  border-left-color: var(--border) !important;
+  border-left: 1px solid var(--border) !important;
 }
 
 .big-calendar-wrapper .rbc-date-cell {
@@ -394,89 +389,67 @@ body {
 
 /* MONTH VIEW BORDERS */
 .big-calendar-wrapper .rbc-month-view {
-  border-width: 1px !important;
-  border-style: solid !important;
-  border-color: var(--border) !important;
+  border: 1px solid var(--border) !important;
   border-radius: 0.5rem;
   overflow: hidden;
 }
 
 .big-calendar-wrapper .rbc-month-row {
-  border-top-width: 1px !important;
-  border-top-style: solid !important;
-  border-top-color: var(--border) !important;
+  border-top: 1px solid var(--border) !important;
 }
 
 .big-calendar-wrapper .rbc-month-row:first-child {
-  border-top-width: 0 !important;
+  border-top: none !important;
 }
 
 .big-calendar-wrapper .rbc-day-bg+.rbc-day-bg {
-  border-left-width: 1px !important;
-  border-left-style: solid !important;
-  border-left-color: var(--border) !important;
+  border-left: 1px solid var(--border) !important;
 }
 
 /* WEEK / DAY VIEW BORDERS */
 .big-calendar-wrapper .rbc-time-view {
-  border-width: 1px !important;
-  border-style: solid !important;
-  border-color: var(--border) !important;
+  border: 1px solid var(--border) !important;
   border-radius: 0.5rem;
   overflow: hidden;
 }
 
 .big-calendar-wrapper .rbc-time-header {
-  border-bottom-width: 1px !important;
-  border-bottom-style: solid !important;
-  border-bottom-color: var(--border) !important;
+  border-bottom: 1px solid var(--border) !important;
 }
 
 .big-calendar-wrapper .rbc-time-header-content {
-  border-left-width: 1px !important;
-  border-left-style: solid !important;
-  border-left-color: var(--border) !important;
+  border-left: 1px solid var(--border) !important;
 }
 
 .big-calendar-wrapper .rbc-time-content {
-  border-top-width: 1px !important;
-  border-top-style: solid !important;
-  border-top-color: var(--border) !important;
+  border-top: 1px solid var(--border) !important;
 }
 
 .big-calendar-wrapper .rbc-time-content>*+*>* {
-  border-left-width: 1px !important;
-  border-left-style: solid !important;
-  border-left-color: var(--border) !important;
+  border-left: 1px solid var(--border) !important;
 }
 
 /* Time slot grid lines */
 .big-calendar-wrapper .rbc-timeslot-group {
-  border-bottom-width: 1px !important;
-  border-bottom-style: solid !important;
-  border-bottom-color: var(--border) !important;
+  border-bottom: 1px solid var(--border) !important;
   min-height: 80px !important;
 }
 
 .big-calendar-wrapper .rbc-day-slot .rbc-time-slot {
-  border-top-width: 1px !important;
-  border-top-style: dotted !important;
-  border-top-color: var(--border) !important;
-  opacity: 0.5;
+  border-top: 1px solid var(--border) !important;
+}
+
+.big-calendar-wrapper .rbc-day-slot .rbc-time-slot:first-child {
+  border-top: none !important;
 }
 
 .big-calendar-wrapper .rbc-time-gutter .rbc-timeslot-group {
-  border-bottom-width: 1px !important;
-  border-bottom-style: solid !important;
-  border-bottom-color: var(--border) !important;
+  border-bottom: 1px solid var(--border) !important;
   color: var(--muted-foreground);
 }
 
 /* Hide defaults */
-.big-calendar-wrapper .rbc-event-label {
-  display: none !important;
-}
-
+.big-calendar-wrapper .rbc-event-label,
 .big-calendar-wrapper .rbc-current-time-indicator {
   display: none !important;
 }
