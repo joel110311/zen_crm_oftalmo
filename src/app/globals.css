@@ -369,11 +369,16 @@ body {
 }
 
 .big-calendar-wrapper .rbc-header {
-  padding: 8px;
+  padding: 8px 4px;
+  /* Reduced vertical padding */
   font-weight: 600;
   font-size: 0.875rem;
   color: var(--muted-foreground);
   border-bottom: 1px solid var(--border) !important;
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
 }
 
 .big-calendar-wrapper .rbc-header+.rbc-header {
@@ -385,6 +390,11 @@ body {
   font-size: 0.875rem;
   font-weight: 500;
   color: var(--foreground);
+}
+
+/* Hide the all-day row that the user found useless */
+.big-calendar-wrapper .rbc-allday-cell {
+  display: none !important;
 }
 
 /* MONTH VIEW BORDERS */
