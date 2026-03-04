@@ -69,6 +69,19 @@ function formatPhone(phone: string | null | undefined): string {
     return `+${cleaned}`;
 }
 
+// Deterministic color for avatar based on name
+const AVATAR_COLORS = [
+    "bg-blue-500", "bg-emerald-500", "bg-violet-500", "bg-amber-500",
+    "bg-rose-500", "bg-cyan-500", "bg-pink-500", "bg-teal-500",
+    "bg-indigo-500", "bg-orange-500", "bg-lime-600", "bg-fuchsia-500",
+];
+function getAvatarColor(name: string | null | undefined): string {
+    if (!name) return "bg-muted-foreground";
+    let hash = 0;
+    for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
+    return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
+}
+
 function getLastMessagePreview(conv: Conversation): string {
     const msg = conv.messages[0];
     if (!msg) return "Sin mensajes";
@@ -1053,7 +1066,7 @@ export default function InboxPage() {
             <div className="flex h-[calc(100dvh-3.5rem-2rem)] md:h-full bg-card border rounded-lg overflow-hidden shadow-sm"
                 style={{ contain: "layout size" }}>
                 {/* ──── Sidebar ──── */}
-                <div className={cn("w-full md:w-80 2xl:w-96 border-r flex flex-col bg-muted/10", selectedChat ? "hidden md:flex" : "flex")}>
+                <div className={cn("w-full md:w-72 2xl:w-80 border-r flex flex-col bg-muted/10", selectedChat ? "hidden md:flex" : "flex")}>
                     <div className="p-4 border-b space-y-3">
                         <div className="flex items-center justify-between">
                             <h2 className="font-semibold text-lg">Chats</h2>
@@ -1121,32 +1134,32 @@ export default function InboxPage() {
                                         });
                                     }}
                                     className={cn(
-                                        "flex items-center gap-3 p-4 text-left hover:bg-accent/50 transition-colors",
+                                        "flex items-center gap-2.5 px-3 py-2.5 text-left hover:bg-accent/50 transition-colors",
                                         selectedChat?.id === chat.id && "bg-accent"
                                     )}
                                 >
-                                    <div className="relative">
-                                        <Avatar className="h-10 w-10">
-                                            <AvatarFallback>
-                                                {chat.isGroup ? <Users className="h-5 w-5" /> : chat.contact?.name?.charAt(0) || "?"}
+                                    <div className="relative flex-shrink-0">
+                                        <Avatar className="h-9 w-9">
+                                            <AvatarFallback className={cn(getAvatarColor(chat.contact?.name), "text-white font-semibold text-sm")}>
+                                                {chat.isGroup ? <Users className="h-4 w-4" /> : (chat.contact?.name?.charAt(0)?.toUpperCase() || "?")}
                                             </AvatarFallback>
                                         </Avatar>
                                         {chat.isFavorite && (
-                                            <Star className="absolute -top-0.5 -right-0.5 h-3.5 w-3.5 text-yellow-500 fill-yellow-500" />
+                                            <Star className="absolute -top-0.5 -right-0.5 h-3 w-3 text-yellow-500 fill-yellow-500" />
                                         )}
                                     </div>
-                                    <div className="flex-1 overflow-hidden">
+                                    <div className="flex-1 overflow-hidden min-w-0">
                                         <div className="flex items-center justify-between">
-                                            <span className="font-medium truncate flex items-center gap-1">
+                                            <span className="font-medium text-sm truncate flex items-center gap-1">
                                                 {chat.contact?.name || "Desconocido"}
                                                 {chat.isMuted && <BellOff className="h-3 w-3 text-muted-foreground" />}
                                             </span>
-                                            <div className="flex flex-col items-end gap-1 ml-2">
-                                                <span className="text-xs text-muted-foreground whitespace-nowrap">
+                                            <div className="flex flex-col items-end gap-0.5 ml-2 flex-shrink-0">
+                                                <span className="text-[11px] text-muted-foreground whitespace-nowrap">
                                                     {new Date(chat.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                                 </span>
                                                 {unreadCounts[chat.id] > 0 && (
-                                                    <span className="flex items-center justify-center min-w-[20px] h-5 rounded-full bg-primary text-primary-foreground text-[11px] font-bold px-1.5">
+                                                    <span className="flex items-center justify-center min-w-[18px] h-[18px] rounded-full bg-primary text-primary-foreground text-[10px] font-bold px-1">
                                                         {unreadCounts[chat.id]}
                                                     </span>
                                                 )}
@@ -1155,7 +1168,7 @@ export default function InboxPage() {
                                         {chat.contact?.phone && (
                                             <p className="text-[11px] text-muted-foreground/80 truncate">{formatPhone(chat.contact.phone)}</p>
                                         )}
-                                        <p className="text-xs text-muted-foreground truncate mt-0.5">
+                                        <p className="text-xs text-muted-foreground truncate">
                                             {getLastMessagePreview(chat)}
                                         </p>
                                     </div>
