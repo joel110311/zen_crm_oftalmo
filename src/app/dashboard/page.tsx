@@ -191,9 +191,16 @@ export default async function DashboardPage() {
 
                 {/* Vertical Bar Chart */}
                 <Card className="xl:col-span-7 border border-border/60 shadow-sm rounded-xl">
-                    <CardHeader className="pb-4">
-                        <CardTitle className="text-lg font-bold">Distribución del Pipeline</CardTitle>
-                        <CardDescription>Valor por etapa</CardDescription>
+                    <CardHeader className="flex flex-row items-center justify-between pb-4">
+                        <div>
+                            <CardTitle className="text-lg font-bold">Distribución del Pipeline</CardTitle>
+                            <CardDescription>Valor por etapa</CardDescription>
+                        </div>
+                        <Button variant="ghost" size="sm" className="h-8 text-sm text-primary font-medium" asChild>
+                            <Link href="/dashboard/pipeline">
+                                Ver Pipeline <ArrowRight className="ml-1 h-3 w-3" />
+                            </Link>
+                        </Button>
                     </CardHeader>
                     <CardContent>
                         <div className="flex gap-0">
@@ -214,18 +221,17 @@ export default async function DashboardPage() {
                                 ))}
                                 <div className="relative flex items-end justify-around h-full gap-1 px-1">
                                     {stageData.map((stage) => {
-                                        const heightPct = Math.max((stage.value / niceMax) * 100, 3);
+                                        const barHeight = Math.max(Math.round((stage.value / niceMax) * 180), 4);
                                         return (
-                                            <div key={stage.name} className="flex flex-col items-center flex-1 min-w-0 z-10">
+                                            <div key={stage.name} className="flex flex-col items-center justify-end flex-1 min-w-0 z-10 h-full">
                                                 <span className="text-[10px] font-bold text-foreground mb-1 whitespace-nowrap">
                                                     ${stage.value.toLocaleString("es-MX")}
                                                 </span>
                                                 <div
-                                                    className="w-full max-w-[44px] rounded-t-md transition-all duration-700 ease-out"
+                                                    className="w-full max-w-[44px] rounded-t-md"
                                                     style={{
-                                                        height: `${heightPct}%`,
+                                                        height: barHeight,
                                                         backgroundColor: stage.color,
-                                                        minHeight: 6,
                                                     }}
                                                 />
                                             </div>
@@ -309,154 +315,87 @@ export default async function DashboardPage() {
                 </Card>
             </div>
 
-            {/* ── Row 3: Pipeline Status Table + Upcoming Appointments ── */}
-            <div className="grid gap-4 grid-cols-1 xl:grid-cols-12">
+            {/* ── Row 3: Activity + Appointments ── */}
+            <div className="grid gap-4 grid-cols-1 xl:grid-cols-2">
 
-                {/* Pipeline Status Table */}
-                <Card className="xl:col-span-7 border border-border/60 shadow-sm rounded-xl">
-                    <CardHeader className="flex flex-row items-center justify-between pb-4">
-                        <div>
-                            <CardTitle className="text-lg font-bold">Estado del Pipeline</CardTitle>
-                            <CardDescription>Progreso por etapa</CardDescription>
-                        </div>
-                        <Button variant="ghost" size="sm" className="h-8 text-sm text-primary font-medium" asChild>
+                {/* Activity Feed */}
+                <Card className="border border-border/60 shadow-sm rounded-xl">
+                    <CardHeader className="flex flex-row items-center justify-between pb-2">
+                        <CardTitle className="text-lg font-bold">Actividad Reciente</CardTitle>
+                        <Button variant="ghost" size="sm" className="h-8 text-xs text-primary font-medium" asChild>
                             <Link href="/dashboard/pipeline">
-                                Ver Pipeline <ArrowRight className="ml-1 h-3 w-3" />
+                                Ver todo <ArrowRight className="ml-1 h-3 w-3" />
                             </Link>
                         </Button>
                     </CardHeader>
-                    <CardContent>
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-sm">
-                                <thead>
-                                    <tr className="border-b border-border/50">
-                                        <th className="text-left py-2.5 px-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Etapa</th>
-                                        <th className="text-center py-2.5 px-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Deals</th>
-                                        <th className="text-left py-2.5 px-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Progreso</th>
-                                        <th className="text-right py-2.5 px-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Valor</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {stageData.map((stage) => {
-                                        const progressPct = totalDealsForDonut > 0 ? Math.round((stage.count / totalDealsForDonut) * 100) : 0;
-                                        return (
-                                            <tr key={stage.id} className="border-b border-border/30 last:border-0">
-                                                <td className="py-3 px-2">
-                                                    <div className="flex items-center gap-2">
-                                                        <div className="h-2.5 w-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: stage.color }} />
-                                                        <span className="font-medium text-foreground truncate">{stage.name}</span>
-                                                    </div>
-                                                </td>
-                                                <td className="py-3 px-2 text-center font-bold text-foreground">{stage.count}</td>
-                                                <td className="py-3 px-2">
-                                                    <div className="flex items-center gap-2">
-                                                        <div className="h-2 flex-1 bg-muted/40 rounded-full overflow-hidden max-w-[120px]">
-                                                            <div
-                                                                className="h-full rounded-full transition-all duration-500"
-                                                                style={{
-                                                                    width: `${Math.max(progressPct, 2)}%`,
-                                                                    backgroundColor: stage.color,
-                                                                }}
-                                                            />
-                                                        </div>
-                                                        <span className="text-xs text-muted-foreground w-8">{progressPct}%</span>
-                                                    </div>
-                                                </td>
-                                                <td className="py-3 px-2 text-right font-bold text-foreground whitespace-nowrap">
-                                                    ${stage.value.toLocaleString("es-MX")}
-                                                </td>
-                                            </tr>
-                                        );
-                                    })}
-                                </tbody>
-                            </table>
-                        </div>
+                    <CardContent className="pt-0">
+                        {stats.recentDeals.length === 0 ? (
+                            <div className="text-center py-6 text-muted-foreground text-sm">
+                                No hay actividad reciente.
+                            </div>
+                        ) : (
+                            <div className="divide-y divide-border/40">
+                                {stats.recentDeals.map((deal) => (
+                                    <div key={deal.id} className="flex items-center gap-3 py-2.5">
+                                        <div
+                                            className="h-8 w-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
+                                            style={{
+                                                backgroundColor: deal.stage.color + "15",
+                                                color: deal.stage.color,
+                                            }}
+                                        >
+                                            {(deal.contact?.name || deal.title).charAt(0).toUpperCase()}
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <p className="text-sm font-semibold truncate text-foreground leading-snug">
+                                                {deal.contact?.name || deal.title}
+                                            </p>
+                                            <p className="text-xs text-muted-foreground truncate">
+                                                {deal.stage.name} • <span className="font-medium text-foreground">${deal.value.toLocaleString("es-MX")}</span>
+                                            </p>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
                     </CardContent>
                 </Card>
 
-                {/* Right Column: Activity + Appointments */}
-                <div className="xl:col-span-5 flex flex-col gap-4">
-
-                    {/* Activity Feed */}
-                    <Card className="border border-border/60 shadow-sm flex-1 rounded-xl">
-                        <CardHeader className="flex flex-row items-center justify-between pb-3">
-                            <CardTitle className="text-lg font-bold">Actividad Reciente</CardTitle>
-                            <Button variant="ghost" size="sm" className="h-8 text-xs text-primary font-medium" asChild>
-                                <Link href="/dashboard/pipeline">
-                                    Ver todo <ArrowRight className="ml-1 h-3 w-3" />
-                                </Link>
-                            </Button>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="space-y-4">
-                                {stats.recentDeals.length === 0 ? (
-                                    <div className="text-center py-6 text-muted-foreground text-sm">
-                                        No hay actividad reciente.
+                {/* Upcoming Appointments */}
+                <Card className="border border-border/60 shadow-sm rounded-xl">
+                    <CardHeader className="pb-2">
+                        <CardTitle className="text-lg font-bold flex items-center gap-2">
+                            <Calendar className="h-4 w-4 text-primary" />
+                            Próximas Citas
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent className="pt-0">
+                        {stats.upcomingAppointments.length === 0 ? (
+                            <p className="text-sm text-muted-foreground py-2">No tienes citas próximas.</p>
+                        ) : (
+                            <div className="divide-y divide-border/40">
+                                {stats.upcomingAppointments.map((apt) => (
+                                    <div key={apt.id} className="flex items-center gap-3 py-2.5">
+                                        <div className="bg-primary/10 text-primary h-8 w-8 rounded-lg flex items-center justify-center flex-shrink-0">
+                                            <span className="text-xs font-bold">
+                                                {new Date(apt.startTime).getDate()}
+                                            </span>
+                                        </div>
+                                        <div className="min-w-0 flex-1">
+                                            <p className="text-sm font-semibold text-foreground truncate">
+                                                {apt.title}
+                                            </p>
+                                            <p className="text-xs text-muted-foreground">
+                                                {new Date(apt.startTime).toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" })}
+                                                {apt.contact?.name ? ` • ${apt.contact.name}` : ""}
+                                            </p>
+                                        </div>
                                     </div>
-                                ) : (
-                                    stats.recentDeals.map((deal) => (
-                                        <div key={deal.id} className="flex items-center gap-3">
-                                            <div
-                                                className="h-9 w-9 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0"
-                                                style={{
-                                                    backgroundColor: deal.stage.color + "15",
-                                                    color: deal.stage.color,
-                                                    border: `1px solid ${deal.stage.color}30`
-                                                }}
-                                            >
-                                                {(deal.contact?.name || deal.title).charAt(0).toUpperCase()}
-                                            </div>
-                                            <div className="flex-1 min-w-0">
-                                                <p className="text-sm font-semibold truncate text-foreground leading-snug">
-                                                    {deal.contact?.name || deal.title}
-                                                </p>
-                                                <p className="text-xs text-muted-foreground truncate">
-                                                    {deal.stage.name} • <span className="font-medium text-foreground">${deal.value.toLocaleString("es-MX")}</span>
-                                                </p>
-                                            </div>
-                                        </div>
-                                    ))
-                                )}
+                                ))}
                             </div>
-                        </CardContent>
-                    </Card>
-
-                    {/* Upcoming Appointments */}
-                    <Card className="border border-border/60 shadow-sm rounded-xl">
-                        <CardHeader className="pb-3">
-                            <CardTitle className="text-lg font-bold flex items-center gap-2">
-                                <Calendar className="h-4 w-4 text-primary" />
-                                Próximas Citas
-                            </CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            {stats.upcomingAppointments.length === 0 ? (
-                                <p className="text-sm text-muted-foreground py-2">No tienes citas próximas.</p>
-                            ) : (
-                                <div className="space-y-2.5">
-                                    {stats.upcomingAppointments.map((apt) => (
-                                        <div key={apt.id} className="flex items-center gap-3 p-2.5 rounded-lg bg-muted/20 border border-border/40 hover:bg-muted/40 transition-colors">
-                                            <div className="bg-primary/10 text-primary h-9 w-9 rounded-lg flex items-center justify-center flex-shrink-0">
-                                                <span className="text-sm font-bold">
-                                                    {new Date(apt.startTime).getDate()}
-                                                </span>
-                                            </div>
-                                            <div className="min-w-0 flex-1">
-                                                <p className="text-sm font-semibold text-foreground truncate">
-                                                    {apt.title}
-                                                </p>
-                                                <p className="text-xs text-muted-foreground">
-                                                    {new Date(apt.startTime).toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" })}
-                                                    {apt.contact?.name ? ` • ${apt.contact.name}` : ""}
-                                                </p>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                        </CardContent>
-                    </Card>
-                </div>
+                        )}
+                    </CardContent>
+                </Card>
             </div>
         </div>
     );
