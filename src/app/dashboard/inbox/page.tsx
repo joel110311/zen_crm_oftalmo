@@ -1540,7 +1540,7 @@ export default function InboxPage() {
                                                 <span className="text-sm font-medium text-destructive">Grabando audio...</span>
                                                 <span className="text-sm font-mono text-muted-foreground hidden sm:inline">{formatRecordingTime(recordingTime)}</span>
                                             </div>
-                                            <Button size="icon" className="h-12 w-12 rounded-full shrink-0" onClick={stopRecording} title="Enviar">
+                                            <Button size="icon" className="h-12 w-12 rounded-full shrink-0 bg-green-500 hover:bg-green-600 text-white" onClick={stopRecording} title="Enviar">
                                                 <Send className="h-5 w-5 ml-1" />
                                             </Button>
                                         </div>
@@ -1577,7 +1577,7 @@ export default function InboxPage() {
                                             </div>
                                             <div className="pb-1 pr-1 shrink-0">
                                                 {(inputText.trim() || pendingFile) ? (
-                                                    <Button size="icon" className="h-12 w-12 rounded-full animate-in zoom-in-50 duration-200 shadow-premium" onClick={handleSendMessage}>
+                                                    <Button size="icon" className="h-12 w-12 rounded-full animate-in zoom-in-50 duration-200 shadow-premium bg-green-500 hover:bg-green-600 text-white" onClick={handleSendMessage}>
                                                         <Send className="h-5 w-5 ml-0.5" />
                                                     </Button>
                                                 ) : (

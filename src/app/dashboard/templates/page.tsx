@@ -612,7 +612,7 @@ function CreateTemplatePage({ onBack }: { onBack: () => void }) {
             useCase: ["Actualización de Envío"],
             components: [
                 { type: "HEADER", format: "TEXT", text: "Confirmación de pedido" },
-                { type: "BODY", text: "Hola {{1}}, tu pedido #{{2}} ha sido confirmado exitosamente. Te notificaremos cuando esté en camino. ¡Gracias por tu compra!" },
+                { type: "BODY", text: "Hola {{1}},\n\nTu pedido #{{2}} ha sido confirmado exitosamente.\nTe notificaremos cuando esté en camino.\n\n¡Gracias por tu compra!" },
                 { type: "FOOTER", text: "Zen CRM" },
                 { type: "BUTTONS", buttons: [{ type: "QUICK_REPLY", text: "Ver estado" }] },
             ],
@@ -622,7 +622,7 @@ function CreateTemplatePage({ onBack }: { onBack: () => void }) {
             useCase: ["Actualización de Cita"],
             components: [
                 { type: "HEADER", format: "TEXT", text: "Recordatorio de cita" },
-                { type: "BODY", text: "Hola {{1}}, te recordamos que tu cita está programada para el {{2}} a las {{3}}. Por favor confirma tu asistencia." },
+                { type: "BODY", text: "Hola {{1}},\n\nTe recordamos que tu cita está programada para el {{2}} a las {{3}}.\n\nPor favor confirma tu asistencia." },
                 { type: "FOOTER", text: "Si necesitas reagendar, contáctanos." },
                 { type: "BUTTONS", buttons: [{ type: "QUICK_REPLY", text: "Confirmar" }, { type: "QUICK_REPLY", text: "Reagendar" }] },
             ],
@@ -632,7 +632,7 @@ function CreateTemplatePage({ onBack }: { onBack: () => void }) {
             useCase: [],
             components: [
                 { type: "HEADER", format: "TEXT", text: "¡Bienvenido/a!" },
-                { type: "BODY", text: "¡Hola {{1}}! Te damos la bienvenida. Estamos encantados de tenerte con nosotros. Explora nuestros productos y servicios." },
+                { type: "BODY", text: "¡Hola {{1}}!\n\nTe damos la bienvenida. Estamos encantados de tenerte con nosotros.\n\nExplora nuestros productos y servicios." },
                 { type: "FOOTER", text: "Zen CRM" },
                 { type: "BUTTONS", buttons: [{ type: "QUICK_REPLY", text: "Ver catálogo" }] },
             ],
@@ -641,7 +641,7 @@ function CreateTemplatePage({ onBack }: { onBack: () => void }) {
             name: "actualizacion_envio", category: "UTILITY", industry: ["E-commerce"],
             useCase: ["Actualización de Envío"],
             components: [
-                { type: "BODY", text: "Hola {{1}}, tu paquete con guía {{2}} está en camino. Llegará aproximadamente el {{3}}. Puedes rastrear tu envío en cualquier momento." },
+                { type: "BODY", text: "Hola {{1}},\n\nTu paquete con guía {{2}} está en camino.\nLlegará aproximadamente el {{3}}.\n\nPuedes rastrear tu envío en cualquier momento." },
                 { type: "BUTTONS", buttons: [{ type: "QUICK_REPLY", text: "Rastrear envío" }] },
             ],
         },
@@ -650,7 +650,7 @@ function CreateTemplatePage({ onBack }: { onBack: () => void }) {
             useCase: [],
             components: [
                 { type: "HEADER", format: "TEXT", text: "🎉 Oferta especial" },
-                { type: "BODY", text: "{{1}}, tenemos un descuento especial de {{2}}% solo para ti. Válido hasta el {{3}}. ¡No te lo pierdas!" },
+                { type: "BODY", text: "{{1}},\n\nTenemos un descuento especial de {{2}}% solo para ti.\nVálido hasta el {{3}}.\n\n¡No te lo pierdas!" },
                 { type: "FOOTER", text: "Sujeto a disponibilidad." },
                 { type: "BUTTONS", buttons: [{ type: "QUICK_REPLY", text: "Ver ofertas" }] },
             ],
@@ -659,7 +659,7 @@ function CreateTemplatePage({ onBack }: { onBack: () => void }) {
             name: "verificacion_cuenta", category: "AUTHENTICATION", industry: [],
             useCase: ["Actualización de Cuenta"],
             components: [
-                { type: "BODY", text: "Tu código de verificación es: {{1}}. No compartas este código con nadie. Expira en 10 minutos." },
+                { type: "BODY", text: "Tu código de verificación es: {{1}}\n\nNo compartas este código con nadie.\nExpira en 10 minutos." },
             ],
         },
         {
@@ -667,7 +667,7 @@ function CreateTemplatePage({ onBack }: { onBack: () => void }) {
             useCase: [],
             components: [
                 { type: "HEADER", format: "TEXT", text: "Tu opinión nos importa" },
-                { type: "BODY", text: "Hola {{1}}, queremos conocer tu opinión sobre nuestro servicio. ¿Podrías tomarte un momento para responder nuestra encuesta?" },
+                { type: "BODY", text: "Hola {{1}},\n\nQueremos conocer tu opinión sobre nuestro servicio.\n\n¿Podrías tomarte un momento para responder nuestra encuesta?" },
                 { type: "BUTTONS", buttons: [{ type: "QUICK_REPLY", text: "Responder encuesta" }, { type: "QUICK_REPLY", text: "Ahora no" }] },
             ],
         },
@@ -676,7 +676,7 @@ function CreateTemplatePage({ onBack }: { onBack: () => void }) {
             useCase: ["Actualización de Pago"],
             components: [
                 { type: "HEADER", format: "TEXT", text: "Pago recibido" },
-                { type: "BODY", text: "Hemos recibido tu pago de ${{1}} MXN el día {{2}}. Tu referencia es {{3}}. Gracias por tu puntualidad." },
+                { type: "BODY", text: "Hemos recibido tu pago de ${{1}} MXN el día {{2}}.\nTu referencia es {{3}}.\n\nGracias por tu puntualidad." },
                 { type: "FOOTER", text: "Zen CRM - Pagos" },
             ],
         },
@@ -684,7 +684,7 @@ function CreateTemplatePage({ onBack }: { onBack: () => void }) {
             name: "actualizacion_cuenta", category: "UTILITY", industry: [],
             useCase: ["Actualización de Cuenta"],
             components: [
-                { type: "BODY", text: "Hola {{1}}, tu cuenta ha sido actualizada correctamente. Los cambios ya están reflejados en tu perfil." },
+                { type: "BODY", text: "Hola {{1}},\n\nTu cuenta ha sido actualizada correctamente.\nLos cambios ya están reflejados en tu perfil." },
             ],
         },
         {
@@ -692,7 +692,7 @@ function CreateTemplatePage({ onBack }: { onBack: () => void }) {
             useCase: [],
             components: [
                 { type: "HEADER", format: "TEXT", text: "📅 Invitación especial" },
-                { type: "BODY", text: "{{1}}, te invitamos a nuestro evento \"{{2}}\" el día {{3}}. ¡Será una experiencia increíble!" },
+                { type: "BODY", text: "{{1}},\n\nTe invitamos a nuestro evento \"{{2}}\" el día {{3}}.\n\n¡Será una experiencia increíble!" },
                 { type: "BUTTONS", buttons: [{ type: "QUICK_REPLY", text: "Confirmar asistencia" }, { type: "QUICK_REPLY", text: "Más información" }] },
             ],
         },
@@ -701,7 +701,7 @@ function CreateTemplatePage({ onBack }: { onBack: () => void }) {
             useCase: ["Resolución de Problemas"],
             components: [
                 { type: "HEADER", format: "TEXT", text: "Ticket de soporte" },
-                { type: "BODY", text: "Tu ticket #{{1}} ha sido creado exitosamente. Nuestro equipo lo revisará en las próximas {{2}} horas. Te mantendremos informado." },
+                { type: "BODY", text: "Tu ticket #{{1}} ha sido creado exitosamente.\n\nNuestro equipo lo revisará en las próximas {{2}} horas.\nTe mantendremos informado." },
                 { type: "FOOTER", text: "Soporte técnico" },
             ],
         },
@@ -709,7 +709,7 @@ function CreateTemplatePage({ onBack }: { onBack: () => void }) {
             name: "cobro_recordatorio", category: "UTILITY", industry: ["Servicios Financieros"],
             useCase: ["Actualización de Pago"],
             components: [
-                { type: "BODY", text: "Hola {{1}}, te recordamos que tienes un saldo pendiente de ${{2}} MXN con fecha límite {{3}}. Realiza tu pago para evitar cargos adicionales." },
+                { type: "BODY", text: "Hola {{1}},\n\nTe recordamos que tienes un saldo pendiente de ${{2}} MXN con fecha límite {{3}}.\n\nRealiza tu pago para evitar cargos adicionales." },
                 { type: "BUTTONS", buttons: [{ type: "QUICK_REPLY", text: "Pagar ahora" }, { type: "QUICK_REPLY", text: "Ya pagué" }] },
             ],
         },
