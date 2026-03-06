@@ -33,6 +33,11 @@ async function startup() {
             ALTER TABLE "Message" ADD COLUMN IF NOT EXISTS "senderType" TEXT
         `).catch(() => { });
 
+        // Add reaction column to Message if missing
+        await pool.query(`
+            ALTER TABLE "Message" ADD COLUMN IF NOT EXISTS "reaction" TEXT
+        `).catch(() => { });
+
         console.log("[Startup] ✓ Schema up to date");
 
         // ── 2. Auto-seed if empty ──

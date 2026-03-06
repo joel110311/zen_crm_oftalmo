@@ -56,6 +56,7 @@ import {
     Wifi,
     Battery,
     Signal,
+    Eye,
 } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 
@@ -604,26 +605,322 @@ function CreateTemplatePage({ onBack }: { onBack: () => void }) {
         }
     };
 
-    /* ═══ Step 1: Method ═══ */
+    /* ═══ Predefined template library ═══ */
+    const PREDEFINED_TEMPLATES = [
+        {
+            name: "confirmacion_pedido", category: "UTILITY", industry: ["E-commerce"],
+            useCase: ["Actualización de Envío"],
+            components: [
+                { type: "HEADER", format: "TEXT", text: "Confirmación de pedido" },
+                { type: "BODY", text: "Hola {{1}}, tu pedido #{{2}} ha sido confirmado exitosamente. Te notificaremos cuando esté en camino. ¡Gracias por tu compra!" },
+                { type: "FOOTER", text: "Zen CRM" },
+                { type: "BUTTONS", buttons: [{ type: "QUICK_REPLY", text: "Ver estado" }] },
+            ],
+        },
+        {
+            name: "recordatorio_cita", category: "UTILITY", industry: ["Salud"],
+            useCase: ["Actualización de Cita"],
+            components: [
+                { type: "HEADER", format: "TEXT", text: "Recordatorio de cita" },
+                { type: "BODY", text: "Hola {{1}}, te recordamos que tu cita está programada para el {{2}} a las {{3}}. Por favor confirma tu asistencia." },
+                { type: "FOOTER", text: "Si necesitas reagendar, contáctanos." },
+                { type: "BUTTONS", buttons: [{ type: "QUICK_REPLY", text: "Confirmar" }, { type: "QUICK_REPLY", text: "Reagendar" }] },
+            ],
+        },
+        {
+            name: "bienvenida_cliente", category: "MARKETING", industry: [],
+            useCase: [],
+            components: [
+                { type: "HEADER", format: "TEXT", text: "¡Bienvenido/a!" },
+                { type: "BODY", text: "¡Hola {{1}}! Te damos la bienvenida. Estamos encantados de tenerte con nosotros. Explora nuestros productos y servicios." },
+                { type: "FOOTER", text: "Zen CRM" },
+                { type: "BUTTONS", buttons: [{ type: "QUICK_REPLY", text: "Ver catálogo" }] },
+            ],
+        },
+        {
+            name: "actualizacion_envio", category: "UTILITY", industry: ["E-commerce"],
+            useCase: ["Actualización de Envío"],
+            components: [
+                { type: "BODY", text: "Hola {{1}}, tu paquete con guía {{2}} está en camino. Llegará aproximadamente el {{3}}. Puedes rastrear tu envío en cualquier momento." },
+                { type: "BUTTONS", buttons: [{ type: "QUICK_REPLY", text: "Rastrear envío" }] },
+            ],
+        },
+        {
+            name: "promocion_descuento", category: "MARKETING", industry: ["E-commerce", "Restaurantes"],
+            useCase: [],
+            components: [
+                { type: "HEADER", format: "TEXT", text: "🎉 Oferta especial" },
+                { type: "BODY", text: "{{1}}, tenemos un descuento especial de {{2}}% solo para ti. Válido hasta el {{3}}. ¡No te lo pierdas!" },
+                { type: "FOOTER", text: "Sujeto a disponibilidad." },
+                { type: "BUTTONS", buttons: [{ type: "QUICK_REPLY", text: "Ver ofertas" }] },
+            ],
+        },
+        {
+            name: "verificacion_cuenta", category: "AUTHENTICATION", industry: [],
+            useCase: ["Actualización de Cuenta"],
+            components: [
+                { type: "BODY", text: "Tu código de verificación es: {{1}}. No compartas este código con nadie. Expira en 10 minutos." },
+            ],
+        },
+        {
+            name: "encuesta_satisfaccion", category: "MARKETING", industry: [],
+            useCase: [],
+            components: [
+                { type: "HEADER", format: "TEXT", text: "Tu opinión nos importa" },
+                { type: "BODY", text: "Hola {{1}}, queremos conocer tu opinión sobre nuestro servicio. ¿Podrías tomarte un momento para responder nuestra encuesta?" },
+                { type: "BUTTONS", buttons: [{ type: "QUICK_REPLY", text: "Responder encuesta" }, { type: "QUICK_REPLY", text: "Ahora no" }] },
+            ],
+        },
+        {
+            name: "confirmacion_pago", category: "UTILITY", industry: ["Servicios Financieros"],
+            useCase: ["Actualización de Pago"],
+            components: [
+                { type: "HEADER", format: "TEXT", text: "Pago recibido" },
+                { type: "BODY", text: "Hemos recibido tu pago de ${{1}} MXN el día {{2}}. Tu referencia es {{3}}. Gracias por tu puntualidad." },
+                { type: "FOOTER", text: "Zen CRM - Pagos" },
+            ],
+        },
+        {
+            name: "actualizacion_cuenta", category: "UTILITY", industry: [],
+            useCase: ["Actualización de Cuenta"],
+            components: [
+                { type: "BODY", text: "Hola {{1}}, tu cuenta ha sido actualizada correctamente. Los cambios ya están reflejados en tu perfil." },
+            ],
+        },
+        {
+            name: "invitacion_evento", category: "MARKETING", industry: ["Educación"],
+            useCase: [],
+            components: [
+                { type: "HEADER", format: "TEXT", text: "📅 Invitación especial" },
+                { type: "BODY", text: "{{1}}, te invitamos a nuestro evento \"{{2}}\" el día {{3}}. ¡Será una experiencia increíble!" },
+                { type: "BUTTONS", buttons: [{ type: "QUICK_REPLY", text: "Confirmar asistencia" }, { type: "QUICK_REPLY", text: "Más información" }] },
+            ],
+        },
+        {
+            name: "soporte_ticket", category: "UTILITY", industry: ["Telecomunicaciones"],
+            useCase: ["Resolución de Problemas"],
+            components: [
+                { type: "HEADER", format: "TEXT", text: "Ticket de soporte" },
+                { type: "BODY", text: "Tu ticket #{{1}} ha sido creado exitosamente. Nuestro equipo lo revisará en las próximas {{2}} horas. Te mantendremos informado." },
+                { type: "FOOTER", text: "Soporte técnico" },
+            ],
+        },
+        {
+            name: "cobro_recordatorio", category: "UTILITY", industry: ["Servicios Financieros"],
+            useCase: ["Actualización de Pago"],
+            components: [
+                { type: "BODY", text: "Hola {{1}}, te recordamos que tienes un saldo pendiente de ${{2}} MXN con fecha límite {{3}}. Realiza tu pago para evitar cargos adicionales." },
+                { type: "BUTTONS", buttons: [{ type: "QUICK_REPLY", text: "Pagar ahora" }, { type: "QUICK_REPLY", text: "Ya pagué" }] },
+            ],
+        },
+    ];
+
+    const INDUSTRIES = ["E-commerce", "Servicios Financieros", "Telecomunicaciones", "Salud", "Educación", "Restaurantes"];
+    const USE_CASES = ["Actualización de Cuenta", "Actualización de Pago", "Actualización de Envío", "Resolución de Problemas", "Actualización de Cita", "Confirmación de Compra"];
+    const CATEGORIES_LIST = [
+        { value: "all", label: "Todas las plantillas" },
+        { value: "UTILITY", label: "Utilidad" },
+        { value: "AUTHENTICATION", label: "Autenticación" },
+        { value: "MARKETING", label: "Marketing" },
+    ];
+
+    const [selectedPredefined, setSelectedPredefined] = useState<number | null>(null);
+    const [libSearch, setLibSearch] = useState("");
+    const [libCategory, setLibCategory] = useState("all");
+    const [libIndustries, setLibIndustries] = useState<string[]>([]);
+    const [libUseCases, setLibUseCases] = useState<string[]>([]);
+
+    const filteredPredefined = useMemo(() => {
+        return PREDEFINED_TEMPLATES.filter((t) => {
+            if (libSearch && !t.name.includes(libSearch.toLowerCase()) &&
+                !t.components.some(c => c.text?.toLowerCase().includes(libSearch.toLowerCase()))) return false;
+            if (libCategory !== "all" && t.category !== libCategory) return false;
+            if (libIndustries.length > 0 && !libIndustries.some(i => t.industry.includes(i))) return false;
+            if (libUseCases.length > 0 && !libUseCases.some(u => t.useCase.includes(u))) return false;
+            return true;
+        });
+    }, [libSearch, libCategory, libIndustries, libUseCases]);
+
+    const toggleArray = (arr: string[], val: string) =>
+        arr.includes(val) ? arr.filter(v => v !== val) : [...arr, val];
+
+    const handleUseTemplate = (tplIdx: number) => {
+        const tpl = PREDEFINED_TEMPLATES[tplIdx];
+        const h = tpl.components.find(c => c.type === "HEADER");
+        const b = tpl.components.find(c => c.type === "BODY");
+        const f = tpl.components.find(c => c.type === "FOOTER");
+        const btns = tpl.components.find(c => c.type === "BUTTONS");
+        setName(tpl.name);
+        setCategory(tpl.category);
+        if (h?.text) { setHeaderType("text"); setHeaderText(h.text); }
+        if (b?.text) setBodyText(b.text);
+        if (f?.text) setFooterText(f.text);
+        if (btns?.buttons) setButtons(btns.buttons.map(btn => ({ type: btn.type, text: btn.text })));
+        setStep("editor");
+    };
+
+    /* ═══ Step 1: Template Library ═══ */
     if (step === "method") {
+        const sel = selectedPredefined !== null ? PREDEFINED_TEMPLATES[selectedPredefined] : null;
+        const selHeader = sel?.components.find(c => c.type === "HEADER")?.text || "";
+        const selBody = sel?.components.find(c => c.type === "BODY")?.text || "";
+        const selFooter = sel?.components.find(c => c.type === "FOOTER")?.text || "";
+        const selButtons = sel?.components.find(c => c.type === "BUTTONS")?.buttons || [];
+        const selVars = sel ? [...new Set([...extractVariables(selHeader), ...extractVariables(selBody)])] : [];
+
         return (
-            <div className="space-y-6">
+            <div className="space-y-4">
                 <div className="flex items-center gap-3">
                     <Button variant="ghost" size="icon" onClick={onBack}><ArrowLeft className="h-5 w-5" /></Button>
                     <h1 className="text-xl font-bold text-foreground">Agregar plantilla</h1>
                 </div>
                 <Separator />
-                <div className="max-w-3xl mx-auto space-y-8 py-4">
-                    <div>
-                        <h2 className="text-lg font-semibold text-foreground mb-4">Método de construcción</h2>
-                        <button
-                            onClick={() => setStep("editor")}
-                            className="w-full max-w-md bg-card border-2 border-border hover:border-primary/40 rounded-xl p-6 text-left transition-all hover:shadow-md group"
-                        >
-                            <FileEdit className="h-8 w-8 text-primary mb-3 group-hover:scale-110 transition-transform" />
-                            <p className="font-semibold text-foreground text-lg">Comienza desde cero</p>
-                            <p className="text-sm text-muted-foreground mt-1">Comienza con un creador en blanco</p>
-                        </button>
+
+                <div className="flex gap-6 min-h-[calc(100vh-220px)]">
+                    {/* ── LEFT: Filters ── */}
+                    <div className="w-[260px] shrink-0 space-y-5 pr-4 border-r overflow-y-auto">
+                        <div className="relative">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                            <Input
+                                placeholder="Buscar plantillas..."
+                                className="pl-9 h-9"
+                                value={libSearch}
+                                onChange={(e) => setLibSearch(e.target.value)}
+                            />
+                        </div>
+
+                        <div>
+                            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Categoría</p>
+                            <div className="space-y-1">
+                                {CATEGORIES_LIST.map((cat) => (
+                                    <button
+                                        key={cat.value}
+                                        onClick={() => setLibCategory(cat.value)}
+                                        className={`w-full text-left px-3 py-1.5 rounded-lg text-sm flex items-center gap-2 transition-colors ${libCategory === cat.value ? "bg-primary/10 text-primary font-semibold" : "text-foreground/80 hover:bg-muted"}`}
+                                    >
+                                        <span className={`h-2 w-2 rounded-full shrink-0 ${libCategory === cat.value ? "bg-primary" : "bg-muted-foreground/40"}`} />
+                                        {cat.label}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div>
+                            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Industria</p>
+                            <div className="space-y-1">
+                                {INDUSTRIES.map((ind) => (
+                                    <label key={ind} className="flex items-center gap-2 px-3 py-1 text-sm cursor-pointer hover:bg-muted/50 rounded-lg">
+                                        <input
+                                            type="checkbox"
+                                            className="h-3.5 w-3.5 rounded border-border accent-primary"
+                                            checked={libIndustries.includes(ind)}
+                                            onChange={() => setLibIndustries(prev => toggleArray(prev, ind))}
+                                        />
+                                        {ind}
+                                    </label>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div>
+                            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Casos de uso</p>
+                            <div className="space-y-1">
+                                {USE_CASES.map((uc) => (
+                                    <label key={uc} className="flex items-center gap-2 px-3 py-1 text-sm cursor-pointer hover:bg-muted/50 rounded-lg">
+                                        <input
+                                            type="checkbox"
+                                            className="h-3.5 w-3.5 rounded border-border accent-primary"
+                                            checked={libUseCases.includes(uc)}
+                                            onChange={() => setLibUseCases(prev => toggleArray(prev, uc))}
+                                        />
+                                        {uc}
+                                    </label>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="space-y-2 pt-2">
+                            <Button className="w-full gap-2" onClick={() => setStep("editor")}>
+                                <Plus className="h-4 w-4" /> Crear Plantilla
+                            </Button>
+                            <Button variant="outline" className="w-full gap-2" onClick={onBack}>
+                                <RefreshCw className="h-4 w-4" /> Sincronizar
+                            </Button>
+                        </div>
+                    </div>
+
+                    {/* ── CENTER: Template Grid ── */}
+                    <div className="flex-1 min-w-0 overflow-y-auto">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+                            {filteredPredefined.map((tpl, idx) => {
+                                const realIdx = PREDEFINED_TEMPLATES.indexOf(tpl);
+                                const body = tpl.components.find(c => c.type === "BODY")?.text || "";
+                                return (
+                                    <button
+                                        key={tpl.name}
+                                        onClick={() => setSelectedPredefined(realIdx)}
+                                        className={`text-left p-4 rounded-xl border-2 transition-all hover:shadow-md ${selectedPredefined === realIdx
+                                            ? "border-primary bg-primary/5 shadow-md"
+                                            : "border-border bg-card hover:border-primary/30"
+                                            }`}
+                                    >
+                                        <div className="flex items-center gap-2 mb-2">
+                                            <p className="text-sm font-semibold text-foreground truncate flex-1">{tpl.name}</p>
+                                            <Badge variant="outline" className="text-[10px] shrink-0">{categoryLabel(tpl.category)}</Badge>
+                                        </div>
+                                        <p className="text-xs text-muted-foreground line-clamp-3">{body}</p>
+                                        {tpl.industry.length > 0 && (
+                                            <div className="flex gap-1 flex-wrap mt-2">
+                                                {tpl.industry.map(i => (
+                                                    <span key={i} className="text-[10px] px-1.5 py-0.5 rounded-full bg-secondary text-secondary-foreground">{i}</span>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </button>
+                                );
+                            })}
+                            {filteredPredefined.length === 0 && (
+                                <div className="col-span-full text-center py-12 text-muted-foreground">
+                                    <FileEdit className="h-10 w-10 mx-auto mb-3 opacity-50" />
+                                    <p className="text-sm">No se encontraron plantillas con estos filtros</p>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* ── RIGHT: WhatsApp Preview ── */}
+                    <div className="w-[340px] shrink-0 pl-4 border-l">
+                        {sel ? (
+                            <div className="sticky top-0 space-y-4">
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <p className="text-sm font-bold text-foreground">{sel.name}</p>
+                                        <Badge variant="outline" className="text-[10px] mt-1">Ejemplo</Badge>
+                                    </div>
+                                    <Badge className="bg-muted text-muted-foreground text-[10px]">{sel.category === "UTILITY" ? "Utilidad" : sel.category === "MARKETING" ? "Marketing" : "Autenticación"}</Badge>
+                                </div>
+                                <PhonePreview
+                                    header={selHeader}
+                                    body={selBody}
+                                    footer={selFooter}
+                                    buttons={selButtons}
+                                    variables={selVars}
+                                    variableSamples={{}}
+                                />
+                                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                                    <span>{categoryLabel(sel.category)}</span>
+                                    <span>ES</span>
+                                </div>
+                                <Button className="w-full gap-2" onClick={() => handleUseTemplate(PREDEFINED_TEMPLATES.indexOf(sel))}>
+                                    Usar esta plantilla
+                                </Button>
+                            </div>
+                        ) : (
+                            <div className="flex flex-col items-center justify-center h-full text-center text-muted-foreground gap-3">
+                                <Eye className="h-10 w-10 opacity-40" />
+                                <p className="text-sm">Selecciona una plantilla para ver la vista previa</p>
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>
