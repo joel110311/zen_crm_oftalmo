@@ -568,6 +568,12 @@ export default function InboxPage() {
     const [isWindowOpen, setIsWindowOpen] = useState(true);
     const [templateModalOpen, setTemplateModalOpen] = useState(false);
 
+    // Reply, React & Forward state
+    const [replyingTo, setReplyingTo] = useState<Message | null>(null);
+    const [reactions, setReactions] = useState<Record<string, string>>({}); // msgId -> emoji
+    const [emojiPickerMsgId, setEmojiPickerMsgId] = useState<string | null>(null);
+    const [forwardMsg, setForwardMsg] = useState<Message | null>(null);
+
     const handleWindowChange = useCallback((open: boolean) => {
         setIsWindowOpen(open);
     }, []);
@@ -1066,22 +1072,30 @@ export default function InboxPage() {
         if (pendingFile) {
             await sendMediaMessage(pendingFile.url, pendingFile.mediaCategory, pendingFile.fileName, pendingFile.mimeType, inputText.trim() || undefined);
             setInputText("");
+            setReplyingTo(null);
             return;
         }
         if (!inputText.trim() || !selectedChat) return;
+        // Build content with optional reply quote
+        let fullContent = inputText;
+        if (replyingTo) {
+            const quotedSnippet = (replyingTo.content || "").slice(0, 100);
+            fullContent = `> ${quotedSnippet}\n\n${inputText}`;
+        }
         const optimistic: Message = {
-            id: "temp-" + Date.now(), content: inputText,
+            id: "temp-" + Date.now(), content: fullContent,
             senderId: "me", direction: "outbound", createdAt: new Date(), type: "text",
         };
         setMessages(prev => [...prev, optimistic]);
         setInputText("");
+        setReplyingTo(null);
         // Always scroll to bottom when user sends a message
         setTimeout(() => scrollToBottom("smooth"), 100);
         try {
             const res = await fetch("/api/send-message", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ conversationId: selectedChat.id, content: optimistic.content, direction: "outbound" }),
+                body: JSON.stringify({ conversationId: selectedChat.id, content: fullContent, direction: "outbound" }),
             });
             if (!res.ok) throw new Error("Failed");
             const msgRes = await fetch(`/api/chat?conversationId=${selectedChat.id}`);
@@ -1089,6 +1103,21 @@ export default function InboxPage() {
         } catch (error) {
             console.error("sendMessage error:", error);
         }
+    };
+
+    // ──── Forward Message ────
+    const handleForward = async (targetConvId: string) => {
+        if (!forwardMsg) return;
+        try {
+            await fetch("/api/send-message", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ conversationId: targetConvId, content: forwardMsg.content, direction: "outbound" }),
+            });
+        } catch (error) {
+            console.error("Forward error:", error);
+        }
+        setForwardMsg(null);
     };
 
     return (
@@ -1322,6 +1351,16 @@ export default function InboxPage() {
                                                             )}
                                                         >
                                                             <MediaContent msg={msg} onImageClick={setViewerMessageId} />
+                                                            {/* Emoji reaction display */}
+                                                            {reactions[msg.id] && (
+                                                                <span
+                                                                    className="absolute -bottom-3 right-2 text-base bg-card border border-border/40 rounded-full px-1 shadow-sm cursor-pointer hover:scale-110 transition-transform"
+                                                                    onClick={() => setReactions(prev => { const n = { ...prev }; delete n[msg.id]; return n; })}
+                                                                    title="Quitar reacción"
+                                                                >
+                                                                    {reactions[msg.id]}
+                                                                </span>
+                                                            )}
                                                             <p className={cn(
                                                                 "text-[10px] mt-1 text-right font-medium",
                                                                 msg.direction === "outbound" ? "text-foreground/50" : "text-muted-foreground"
@@ -1330,29 +1369,58 @@ export default function InboxPage() {
                                                             </p>
                                                         </div>
                                                         {/* Context menu on hover */}
-                                                        <DropdownMenu>
-                                                            <DropdownMenuTrigger asChild>
-                                                                <button className="self-start mt-1 opacity-0 group-hover/msg:opacity-100 transition-opacity h-6 w-6 flex items-center justify-center rounded-full hover:bg-muted/60 shrink-0">
-                                                                    <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
-                                                                </button>
-                                                            </DropdownMenuTrigger>
-                                                            <DropdownMenuContent align={msg.direction === "outbound" ? "end" : "start"} className="w-44">
-                                                                <DropdownMenuItem className="gap-2 text-sm">
-                                                                    <Reply className="h-4 w-4" /> Responder
-                                                                </DropdownMenuItem>
-                                                                <DropdownMenuItem className="gap-2 text-sm" onClick={() => {
-                                                                    navigator.clipboard.writeText(msg.content || "");
-                                                                }}>
-                                                                    <Copy className="h-4 w-4" /> Copiar
-                                                                </DropdownMenuItem>
-                                                                <DropdownMenuItem className="gap-2 text-sm">
-                                                                    <SmilePlus className="h-4 w-4" /> Reaccionar
-                                                                </DropdownMenuItem>
-                                                                <DropdownMenuItem className="gap-2 text-sm">
-                                                                    <Forward className="h-4 w-4" /> Reenviar
-                                                                </DropdownMenuItem>
-                                                            </DropdownMenuContent>
-                                                        </DropdownMenu>
+                                                        <div className="relative">
+                                                            <DropdownMenu onOpenChange={(open) => { if (!open) setEmojiPickerMsgId(null); }}>
+                                                                <DropdownMenuTrigger asChild>
+                                                                    <button className="self-start mt-1 opacity-0 group-hover/msg:opacity-100 transition-opacity h-6 w-6 flex items-center justify-center rounded-full hover:bg-muted/60 shrink-0">
+                                                                        <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+                                                                    </button>
+                                                                </DropdownMenuTrigger>
+                                                                <DropdownMenuContent align={msg.direction === "outbound" ? "end" : "start"} className="w-44">
+                                                                    <DropdownMenuItem className="gap-2 text-sm" onClick={() => {
+                                                                        setReplyingTo(msg);
+                                                                    }}>
+                                                                        <Reply className="h-4 w-4" /> Responder
+                                                                    </DropdownMenuItem>
+                                                                    <DropdownMenuItem className="gap-2 text-sm" onClick={() => {
+                                                                        navigator.clipboard.writeText(msg.content || "");
+                                                                    }}>
+                                                                        <Copy className="h-4 w-4" /> Copiar
+                                                                    </DropdownMenuItem>
+                                                                    <DropdownMenuItem className="gap-2 text-sm" onClick={(e) => {
+                                                                        e.preventDefault();
+                                                                        setEmojiPickerMsgId(msg.id);
+                                                                    }}>
+                                                                        <SmilePlus className="h-4 w-4" /> Reaccionar
+                                                                    </DropdownMenuItem>
+                                                                    <DropdownMenuItem className="gap-2 text-sm" onClick={() => {
+                                                                        setForwardMsg(msg);
+                                                                    }}>
+                                                                        <Forward className="h-4 w-4" /> Reenviar
+                                                                    </DropdownMenuItem>
+                                                                </DropdownMenuContent>
+                                                            </DropdownMenu>
+                                                            {/* Emoji picker popup */}
+                                                            {emojiPickerMsgId === msg.id && (
+                                                                <div className={cn(
+                                                                    "absolute z-50 bg-card border border-border/60 rounded-full shadow-lg px-2 py-1 flex gap-1 animate-in zoom-in-50 duration-150",
+                                                                    msg.direction === "outbound" ? "right-0 top-8" : "left-0 top-8"
+                                                                )}>
+                                                                    {["👍", "❤️", "😂", "😮", "😢", "🙏"].map((emoji) => (
+                                                                        <button
+                                                                            key={emoji}
+                                                                            className="text-xl hover:scale-125 transition-transform p-0.5"
+                                                                            onClick={() => {
+                                                                                setReactions(prev => ({ ...prev, [msg.id]: emoji }));
+                                                                                setEmojiPickerMsgId(null);
+                                                                            }}
+                                                                        >
+                                                                            {emoji}
+                                                                        </button>
+                                                                    ))}
+                                                                </div>
+                                                            )}
+                                                        </div>
                                                     </div>
                                                 </React.Fragment>
                                             );
@@ -1427,6 +1495,22 @@ export default function InboxPage() {
                             ) : (
                                 /* ═══ UNLOCKED: Normal input area ═══ */
                                 <div className="p-4 sm:p-6 sm:pb-8 sm:absolute sm:bottom-0 sm:left-0 sm:right-0 shrink-0 pointer-events-none">
+                                    {/* Reply quote bar */}
+                                    {replyingTo && (
+                                        <div className="px-4 sm:px-6 sm:absolute sm:bottom-[72px] sm:left-0 sm:right-0 z-10">
+                                            <div className="max-w-3xl mx-auto flex items-center gap-2 px-4 py-2 rounded-t-xl bg-muted/60 border border-b-0 border-border/40">
+                                                <div className="w-1 h-8 rounded-full bg-primary shrink-0" />
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="text-xs font-semibold text-primary">Respondiendo</p>
+                                                    <p className="text-xs text-muted-foreground truncate">{replyingTo.content?.slice(0, 80)}</p>
+                                                </div>
+                                                <button className="shrink-0 p-1 rounded hover:bg-muted" onClick={() => setReplyingTo(null)}>
+                                                    <X className="h-3.5 w-3.5 text-muted-foreground" />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+
                                     {isRecording ? (
                                         <div className="flex items-center gap-3 max-w-3xl mx-auto glass-input p-2 rounded-full pointer-events-auto">
                                             <Button variant="ghost" size="icon" className="h-12 w-12 rounded-full text-destructive hover:text-destructive hover:bg-destructive/10 shrink-0" onClick={cancelRecording} title="Cancelar">
@@ -1531,6 +1615,51 @@ export default function InboxPage() {
                         }
                     }}
                 />
+            )}
+
+            {/* Forward Message Dialog */}
+            {forwardMsg && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setForwardMsg(null)}>
+                    <div className="bg-card border rounded-2xl shadow-2xl w-full max-w-sm mx-4 animate-in zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center justify-between px-5 py-4 border-b">
+                            <h3 className="text-base font-semibold">Reenviar mensaje</h3>
+                            <button className="p-1 rounded hover:bg-muted" onClick={() => setForwardMsg(null)}>
+                                <X className="h-4 w-4" />
+                            </button>
+                        </div>
+                        <div className="px-3 py-2 border-b">
+                            <div className="px-3 py-2 rounded-lg bg-muted/40 text-xs text-muted-foreground line-clamp-2">
+                                {forwardMsg.content?.slice(0, 120)}
+                            </div>
+                        </div>
+                        <ScrollArea className="max-h-64">
+                            <div className="py-1">
+                                {conversations
+                                    .filter(c => c.id !== selectedChat?.id)
+                                    .map(conv => (
+                                        <button
+                                            key={conv.id}
+                                            className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-muted/50 transition-colors text-left"
+                                            onClick={() => handleForward(conv.id)}
+                                        >
+                                            <Avatar className="h-9 w-9 shrink-0">
+                                                <AvatarFallback className={cn("text-white text-sm font-bold", getAvatarColor(conv.contact?.name))}>
+                                                    {(conv.contact?.name || "?").charAt(0).toUpperCase()}
+                                                </AvatarFallback>
+                                            </Avatar>
+                                            <div className="min-w-0 flex-1">
+                                                <p className="text-sm font-medium truncate">{conv.contact?.name || "Desconocido"}</p>
+                                                <p className="text-xs text-muted-foreground truncate">{conv.contact?.phone || ""}</p>
+                                            </div>
+                                        </button>
+                                    ))}
+                                {conversations.filter(c => c.id !== selectedChat?.id).length === 0 && (
+                                    <p className="text-sm text-muted-foreground text-center py-6">No hay otras conversaciones</p>
+                                )}
+                            </div>
+                        </ScrollArea>
+                    </div>
+                </div>
             )}
         </>
     );
