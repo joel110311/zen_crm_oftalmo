@@ -21,7 +21,6 @@ interface TagData {
 }
 
 export function DealDetailPanel({ deal, onClose, onUpdate, onDelete }: DealDetailPanelProps) {
-    const [isEditing, setIsEditing] = useState(false);
     const [editTitle, setEditTitle] = useState(deal.title);
     const [editValue, setEditValue] = useState(deal.value.toString());
     const [editNotes, setEditNotes] = useState(deal.notes || "");
@@ -73,7 +72,6 @@ export function DealDetailPanel({ deal, onClose, onUpdate, onDelete }: DealDetai
                     notes: editNotes,
                     priority: editPriority,
                 });
-                setIsEditing(false);
             }
         });
     };
@@ -159,27 +157,15 @@ export function DealDetailPanel({ deal, onClose, onUpdate, onDelete }: DealDetai
                         Detalle del Lead
                     </h2>
                     <div className="flex items-center gap-2">
-                        {!isEditing ? (
-                            <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => setIsEditing(true)}
-                                className="h-8"
-                            >
-                                <Pencil className="h-3.5 w-3.5 mr-1" />
-                                Editar
-                            </Button>
-                        ) : (
-                            <Button
-                                size="sm"
-                                onClick={handleSave}
-                                disabled={isPending}
-                                className="h-8 bg-primary text-primary-foreground hover:bg-primary/90"
-                            >
-                                <Save className="h-3.5 w-3.5 mr-1" />
-                                Guardar
-                            </Button>
-                        )}
+                        <Button
+                            size="sm"
+                            onClick={handleSave}
+                            disabled={isPending}
+                            className="h-8 bg-primary text-primary-foreground hover:bg-primary/90"
+                        >
+                            <Save className="h-3.5 w-3.5 mr-1" />
+                            Guardar
+                        </Button>
                         <Button
                             size="sm"
                             variant="ghost"
@@ -194,50 +180,37 @@ export function DealDetailPanel({ deal, onClose, onUpdate, onDelete }: DealDetai
                 <div className="px-6 py-5 space-y-6">
                     {/* Title & Value */}
                     <div>
-                        {isEditing ? (
-                            <div className="space-y-3">
-                                <div>
-                                    <label className="text-xs font-medium text-muted-foreground">Título</label>
-                                    <Input
-                                        value={editTitle}
-                                        onChange={(e) => setEditTitle(e.target.value)}
-                                        className="mt-1"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="text-xs font-medium text-muted-foreground">Valor ($)</label>
-                                    <Input
-                                        type="number"
-                                        value={editValue}
-                                        onChange={(e) => setEditValue(e.target.value)}
-                                        className="mt-1"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="text-xs font-medium text-muted-foreground">Prioridad</label>
-                                    <select
-                                        value={editPriority}
-                                        onChange={(e) => setEditPriority(e.target.value)}
-                                        className="mt-1 w-full h-9 px-3 text-sm rounded-md border border-border bg-background text-foreground"
-                                    >
-                                        <option value="low">Baja</option>
-                                        <option value="medium">Media</option>
-                                        <option value="high">Alta</option>
-                                    </select>
-                                </div>
+                        <div className="space-y-3">
+                            <div>
+                                <label className="text-xs font-medium text-muted-foreground">Título</label>
+                                <Input
+                                    value={editTitle}
+                                    onChange={(e) => setEditTitle(e.target.value)}
+                                    className="mt-1"
+                                />
                             </div>
-                        ) : (
-                            <>
-                                <h3 className="text-xl font-bold text-foreground">
-                                    {deal.title}
-                                </h3>
-                                {deal.value > 0 && (
-                                    <p className="text-2xl font-bold mt-1 text-primary">
-                                        ${deal.value.toLocaleString("es-MX")}
-                                    </p>
-                                )}
-                            </>
-                        )}
+                            <div>
+                                <label className="text-xs font-medium text-muted-foreground">Valor ($)</label>
+                                <Input
+                                    type="number"
+                                    value={editValue}
+                                    onChange={(e) => setEditValue(e.target.value)}
+                                    className="mt-1"
+                                />
+                            </div>
+                            <div>
+                                <label className="text-xs font-medium text-muted-foreground">Prioridad</label>
+                                <select
+                                    value={editPriority}
+                                    onChange={(e) => setEditPriority(e.target.value)}
+                                    className="mt-1 w-full h-9 px-3 text-sm rounded-md border border-border bg-background text-foreground"
+                                >
+                                    <option value="low">Baja</option>
+                                    <option value="medium">Media</option>
+                                    <option value="high">Alta</option>
+                                </select>
+                            </div>
+                        </div>
                     </div>
 
                     {/* Stage */}
@@ -411,18 +384,12 @@ export function DealDetailPanel({ deal, onClose, onUpdate, onDelete }: DealDetai
                         <h4 className="text-sm font-semibold mb-2 text-foreground">
                             Notas
                         </h4>
-                        {isEditing ? (
-                            <textarea
-                                value={editNotes}
-                                onChange={(e) => setEditNotes(e.target.value)}
-                                className="w-full h-24 p-3 text-sm rounded-xl resize-none border border-border bg-background text-foreground"
-                                placeholder="Agregar notas sobre este lead..."
-                            />
-                        ) : (
-                            <div className={`p-3 rounded-xl text-sm min-h-[60px] bg-secondary border border-border ${deal.notes ? "text-foreground/80" : "text-muted-foreground"}`}>
-                                {deal.notes || "Sin notas"}
-                            </div>
-                        )}
+                        <textarea
+                            value={editNotes}
+                            onChange={(e) => setEditNotes(e.target.value)}
+                            className="w-full h-24 p-3 text-sm rounded-xl resize-none border border-border bg-background text-foreground"
+                            placeholder="Agregar notas sobre este lead..."
+                        />
                     </div>
 
                     {/* Metadata */}
