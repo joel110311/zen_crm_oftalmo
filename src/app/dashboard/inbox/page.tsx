@@ -5,7 +5,8 @@ import {
     Search, MoreVertical, Phone, Video, Paperclip, Send, Mic, X,
     FileText, Download, Square, Star, BellOff, Bell, Archive, Trash2,
     Info, Users, MessageSquare, ChevronRight, ChevronDown, Mail, Tag, Clock,
-    Eraser, Image as ImageIcon, Play, Pause, Bot, User as UserIcon, LayoutTemplate
+    Eraser, Image as ImageIcon, Play, Pause, Bot, User as UserIcon, LayoutTemplate,
+    Reply, Copy, SmilePlus, Forward
 } from "lucide-react";
 import { TemplateSendModal } from "@/components/inbox/template-send-modal";
 import { Input } from "@/components/ui/input";
@@ -56,6 +57,43 @@ export type Conversation = {
     sessionExpiresAt?: string | null;
 };
 
+// ──────────── WhatsApp Text Formatter ────────────
+function formatWhatsAppText(text: string): React.ReactNode {
+    if (!text) return null;
+    // Split by newlines first to preserve line breaks
+    const lines = text.split('\n');
+    return lines.map((line, lineIdx) => {
+        // Parse inline formatting: *bold*, _italic_, ~strikethrough~
+        const parts: React.ReactNode[] = [];
+        let remaining = line;
+        let partKey = 0;
+        const regex = /(\*([^*]+)\*)|(_([^_]+)_)|(~([^~]+)~)/g;
+        let lastIndex = 0;
+        let match;
+        while ((match = regex.exec(remaining)) !== null) {
+            if (match.index > lastIndex) {
+                parts.push(<React.Fragment key={partKey++}>{remaining.slice(lastIndex, match.index)}</React.Fragment>);
+            }
+            if (match[1]) {
+                parts.push(<strong key={partKey++}>{match[2]}</strong>);
+            } else if (match[3]) {
+                parts.push(<em key={partKey++}>{match[4]}</em>);
+            } else if (match[5]) {
+                parts.push(<s key={partKey++}>{match[6]}</s>);
+            }
+            lastIndex = match.index + match[0].length;
+        }
+        if (lastIndex < remaining.length) {
+            parts.push(<React.Fragment key={partKey++}>{remaining.slice(lastIndex)}</React.Fragment>);
+        }
+        return (
+            <React.Fragment key={lineIdx}>
+                {parts.length > 0 ? parts : line}
+                {lineIdx < lines.length - 1 && <br />}
+            </React.Fragment>
+        );
+    });
+}
 // ──────────── Helpers ────────────
 function formatPhone(phone: string | null | undefined): string {
     if (!phone) return "";
@@ -263,7 +301,7 @@ function MediaContent({ msg, onImageClick }: { msg: Message, onImageClick?: (msg
                     loading="lazy"
                 />
                 {msg.content && !["[Imagen]", "[Sticker]", "[image]"].includes(msg.content) && (
-                    <p className="text-sm">{msg.content}</p>
+                    <p className="text-sm whitespace-pre-wrap">{formatWhatsAppText(msg.content)}</p>
                 )}
             </div>
         );
@@ -279,7 +317,7 @@ function MediaContent({ msg, onImageClick }: { msg: Message, onImageClick?: (msg
                 <video controls className="max-w-[280px] rounded-lg" preload="metadata">
                     <source src={cleanUrl} type={msg.mediaType || "video/mp4"} />
                 </video>
-                {msg.content && msg.content !== "[Video]" && <p className="text-sm">{msg.content}</p>}
+                {msg.content && msg.content !== "[Video]" && <p className="text-sm whitespace-pre-wrap">{formatWhatsAppText(msg.content)}</p>}
             </div>
         );
     }
@@ -307,7 +345,7 @@ function MediaContent({ msg, onImageClick }: { msg: Message, onImageClick?: (msg
         );
     }
 
-    return <p>{msg.content}</p>;
+    return <p className="whitespace-pre-wrap">{formatWhatsAppText(msg.content)}</p>;
 }
 
 // ──────────── Mic Permission Banner ────────────
@@ -1229,7 +1267,7 @@ export default function InboxPage() {
                                 <div
                                     ref={messagesContainerRef}
                                     onScroll={handleMessagesScroll}
-                                    className="h-full overflow-y-auto p-4 sm:px-8 bg-whatsapp-pattern"
+                                    className="h-full overflow-y-auto p-4 sm:px-8 bg-background"
                                     style={{ scrollBehavior: "auto" }}
                                 >
                                     {/* Extra padding at bottom to account for the floating input area on desktop */}
@@ -1265,33 +1303,56 @@ export default function InboxPage() {
                                                     )}
                                                     <div
                                                         className={cn(
-                                                            "flex flex-col gap-0.5 max-w-[85%] sm:max-w-[80%] 2xl:max-w-[70%]",
-                                                            msg.direction === "outbound" ? "self-end items-end" : "self-start items-start"
+                                                            "flex gap-0.5 max-w-[85%] sm:max-w-[80%] 2xl:max-w-[70%] group/msg",
+                                                            msg.direction === "outbound" ? "self-end flex-row-reverse" : "self-start flex-row"
                                                         )}
                                                     >
-
+                                                        {/* Bubble */}
                                                         <div
                                                             className={cn(
-                                                                "rounded-2xl px-4 py-2 shadow-premium text-sm relative",
+                                                                "rounded-2xl px-4 py-2 text-sm relative",
                                                                 msg.direction === "outbound"
-                                                                    ? "bg-primary text-primary-foreground"
-                                                                    : "bg-card border-white/5",
-                                                                // Apply tails and specific rounding only to the very first message of a contiguous group
+                                                                    ? "bg-[#d9fdd3] dark:bg-[#005c4b] text-foreground"
+                                                                    : "bg-card border border-border/40 text-foreground",
                                                                 (idx === 0 || messages[idx - 1].direction !== msg.direction)
                                                                     ? msg.direction === "outbound"
-                                                                        ? "rounded-tr-sm chat-bubble-tail-right" // Tail right
-                                                                        : "rounded-tl-sm chat-bubble-tail-left"  // Tail left
-                                                                    : "" // Middle messages stay fully rounded
+                                                                        ? "rounded-tr-sm"
+                                                                        : "rounded-tl-sm"
+                                                                    : ""
                                                             )}
                                                         >
                                                             <MediaContent msg={msg} onImageClick={setViewerMessageId} />
                                                             <p className={cn(
                                                                 "text-[10px] mt-1 text-right font-medium",
-                                                                msg.direction === "outbound" ? "text-primary-foreground/70" : "text-muted-foreground"
+                                                                msg.direction === "outbound" ? "text-foreground/50" : "text-muted-foreground"
                                                             )}>
                                                                 {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                                             </p>
                                                         </div>
+                                                        {/* Context menu on hover */}
+                                                        <DropdownMenu>
+                                                            <DropdownMenuTrigger asChild>
+                                                                <button className="self-start mt-1 opacity-0 group-hover/msg:opacity-100 transition-opacity h-6 w-6 flex items-center justify-center rounded-full hover:bg-muted/60 shrink-0">
+                                                                    <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+                                                                </button>
+                                                            </DropdownMenuTrigger>
+                                                            <DropdownMenuContent align={msg.direction === "outbound" ? "end" : "start"} className="w-44">
+                                                                <DropdownMenuItem className="gap-2 text-sm">
+                                                                    <Reply className="h-4 w-4" /> Responder
+                                                                </DropdownMenuItem>
+                                                                <DropdownMenuItem className="gap-2 text-sm" onClick={() => {
+                                                                    navigator.clipboard.writeText(msg.content || "");
+                                                                }}>
+                                                                    <Copy className="h-4 w-4" /> Copiar
+                                                                </DropdownMenuItem>
+                                                                <DropdownMenuItem className="gap-2 text-sm">
+                                                                    <SmilePlus className="h-4 w-4" /> Reaccionar
+                                                                </DropdownMenuItem>
+                                                                <DropdownMenuItem className="gap-2 text-sm">
+                                                                    <Forward className="h-4 w-4" /> Reenviar
+                                                                </DropdownMenuItem>
+                                                            </DropdownMenuContent>
+                                                        </DropdownMenu>
                                                     </div>
                                                 </React.Fragment>
                                             );
