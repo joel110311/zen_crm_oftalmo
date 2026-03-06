@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo, useRef } from "react";
+import React, { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -724,7 +724,7 @@ function CreateTemplatePage({ onBack }: { onBack: () => void }) {
         { value: "MARKETING", label: "Marketing" },
     ];
 
-    const [selectedPredefined, setSelectedPredefined] = useState<number | null>(null);
+    const [selectedPredefined, setSelectedPredefined] = useState<string | null>(null);
     const [libSearch, setLibSearch] = useState("");
     const [libCategory, setLibCategory] = useState("all");
     const [libIndustries, setLibIndustries] = useState<string[]>([]);
@@ -761,7 +761,7 @@ function CreateTemplatePage({ onBack }: { onBack: () => void }) {
 
     /* ═══ Step 1: Template Library ═══ */
     if (step === "method") {
-        const sel = selectedPredefined !== null ? PREDEFINED_TEMPLATES[selectedPredefined] : null;
+        const sel = selectedPredefined !== null ? PREDEFINED_TEMPLATES.find(t => t.name === selectedPredefined) || null : null;
         const selHeader = sel?.components.find(c => c.type === "HEADER")?.text || "";
         const selBody = sel?.components.find(c => c.type === "BODY")?.text || "";
         const selFooter = sel?.components.find(c => c.type === "FOOTER")?.text || "";
@@ -852,30 +852,44 @@ function CreateTemplatePage({ onBack }: { onBack: () => void }) {
                     {/* ── CENTER: Template Grid ── */}
                     <div className="flex-1 min-w-0 overflow-y-auto">
                         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
-                            {filteredPredefined.map((tpl, idx) => {
-                                const realIdx = PREDEFINED_TEMPLATES.indexOf(tpl);
+                            {filteredPredefined.map((tpl) => {
+                                const header = tpl.components.find(c => c.type === "HEADER")?.text || "";
                                 const body = tpl.components.find(c => c.type === "BODY")?.text || "";
+                                const footer = tpl.components.find(c => c.type === "FOOTER")?.text || "";
+                                const btns = tpl.components.find(c => c.type === "BUTTONS")?.buttons || [];
                                 return (
                                     <button
                                         key={tpl.name}
-                                        onClick={() => setSelectedPredefined(realIdx)}
-                                        className={`text-left p-4 rounded-xl border-2 transition-all hover:shadow-md ${selectedPredefined === realIdx
-                                            ? "border-primary bg-primary/5 shadow-md"
-                                            : "border-border bg-card hover:border-primary/30"
+                                        onClick={() => setSelectedPredefined(tpl.name)}
+                                        className={`text-left rounded-xl border-2 transition-all hover:shadow-md overflow-hidden ${selectedPredefined === tpl.name
+                                            ? "border-primary shadow-md"
+                                            : "border-border hover:border-primary/30"
                                             }`}
                                     >
-                                        <div className="flex items-center gap-2 mb-2">
-                                            <p className="text-sm font-semibold text-foreground truncate flex-1">{tpl.name}</p>
-                                            <Badge variant="outline" className="text-[10px] shrink-0">{categoryLabel(tpl.category)}</Badge>
-                                        </div>
-                                        <p className="text-xs text-muted-foreground line-clamp-3">{body}</p>
-                                        {tpl.industry.length > 0 && (
-                                            <div className="flex gap-1 flex-wrap mt-2">
-                                                {tpl.industry.map(i => (
-                                                    <span key={i} className="text-[10px] px-1.5 py-0.5 rounded-full bg-secondary text-secondary-foreground">{i}</span>
-                                                ))}
+                                        {/* WhatsApp-style bubble card */}
+                                        <div className="bg-[#ECE5DD]/40 dark:bg-[#0B141A]/40 p-3 min-h-[160px] flex flex-col justify-end">
+                                            <div className="bg-white dark:bg-[#1F2C34] rounded-lg p-3 shadow-sm space-y-1">
+                                                {header && <p className="text-[11px] font-bold text-gray-900 dark:text-gray-100">{header}</p>}
+                                                <p className="text-[11px] text-gray-700 dark:text-gray-300 leading-relaxed line-clamp-5 whitespace-pre-wrap">{body}</p>
+                                                {footer && (
+                                                    <>
+                                                        <p className="text-[10px] text-gray-500 dark:text-gray-400">{footer}</p>
+                                                    </>
+                                                )}
+                                                <p className="text-[9px] text-gray-400 text-right">6:16 PM</p>
+                                                {btns.length > 0 && (
+                                                    <div className="border-t border-gray-200 dark:border-gray-700 pt-1 space-y-0.5">
+                                                        {btns.filter(b => b.text.trim()).slice(0, 2).map((btn, bi) => (
+                                                            <p key={bi} className="text-center text-[10px] text-teal-600 dark:text-teal-400 font-medium">↩ {btn.text}</p>
+                                                        ))}
+                                                    </div>
+                                                )}
                                             </div>
-                                        )}
+                                        </div>
+                                        {/* Template name bar */}
+                                        <div className="px-3 py-2 bg-card border-t">
+                                            <p className="text-xs text-muted-foreground truncate">{tpl.name}</p>
+                                        </div>
                                     </button>
                                 );
                             })}
@@ -911,7 +925,7 @@ function CreateTemplatePage({ onBack }: { onBack: () => void }) {
                                     <span>{categoryLabel(sel.category)}</span>
                                     <span>ES</span>
                                 </div>
-                                <Button className="w-full gap-2" onClick={() => handleUseTemplate(PREDEFINED_TEMPLATES.indexOf(sel))}>
+                                <Button className="w-full gap-2" onClick={() => { if (sel) handleUseTemplate(PREDEFINED_TEMPLATES.findIndex(t => t.name === sel.name)); }}>
                                     Usar esta plantilla
                                 </Button>
                             </div>
@@ -1196,8 +1210,40 @@ function PhonePreview({
                     </span>
                 );
             }
-            // Handle WhatsApp formatting
-            return <span key={i}>{part}</span>;
+            // Handle WhatsApp formatting: *bold* _italic_ ~strike~ and newlines
+            const formatted = part
+                .split('\n')
+                .map((line, li, arr) => {
+                    // Process formatting within each line
+                    const segments: React.ReactNode[] = [];
+                    // Match *bold*, _italic_, ~strikethrough~ patterns
+                    const fmtRegex = /(\*[^*]+\*)|(~[^~]+~)|(_[^_]+_)/g;
+                    let lastIdx = 0;
+                    let match;
+                    while ((match = fmtRegex.exec(line)) !== null) {
+                        if (match.index > lastIdx) {
+                            segments.push(line.slice(lastIdx, match.index));
+                        }
+                        const m = match[0];
+                        const inner = m.slice(1, -1);
+                        if (m.startsWith('*')) {
+                            segments.push(<strong key={`${i}-${li}-b-${match.index}`}>{inner}</strong>);
+                        } else if (m.startsWith('_')) {
+                            segments.push(<em key={`${i}-${li}-i-${match.index}`}>{inner}</em>);
+                        } else if (m.startsWith('~')) {
+                            segments.push(<s key={`${i}-${li}-s-${match.index}`}>{inner}</s>);
+                        }
+                        lastIdx = match.index + m.length;
+                    }
+                    if (lastIdx < line.length) segments.push(line.slice(lastIdx));
+                    return (
+                        <React.Fragment key={`${i}-line-${li}`}>
+                            {segments.length > 0 ? segments : line}
+                            {li < arr.length - 1 && <br />}
+                        </React.Fragment>
+                    );
+                });
+            return <span key={i}>{formatted}</span>;
         });
     };
 
