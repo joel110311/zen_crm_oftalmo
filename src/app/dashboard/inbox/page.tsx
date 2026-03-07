@@ -718,17 +718,49 @@ export default function InboxPage() {
     // ──── Fetch messages ────
     useEffect(() => {
         if (!selectedChat) return;
-        const fetchMessages = async () => {
+
+        // Reset messages state when chat changes to avoid showing old data
+        setMessages([]);
+        let lastMessageDate: string | null = null;
+        let isFetching = false;
+
+        const fetchMessages = async (isInitial = false) => {
+            if (isFetching) return;
+            isFetching = true;
             try {
-                const response = await fetch(`/api/chat?conversationId=${selectedChat.id}`);
-                const data = await response.json();
-                setMessages(data);
+                const url = new URL("/api/chat", window.location.origin);
+                url.searchParams.append("conversationId", selectedChat.id);
+                if (!isInitial && lastMessageDate) {
+                    url.searchParams.append("since", lastMessageDate);
+                }
+
+                const response = await fetch(url.toString());
+                const newMessages = await response.json();
+
+                if (newMessages.length > 0) {
+                    lastMessageDate = newMessages[newMessages.length - 1].createdAt;
+
+                    if (isInitial) {
+                        setMessages(newMessages);
+                    } else {
+                        // Only append genuinely new messages
+                        setMessages((prev) => {
+                            const existingIds = new Set(prev.map(m => m.id));
+                            const uniqueNew = newMessages.filter((m: any) => !existingIds.has(m.id));
+                            if (uniqueNew.length === 0) return prev;
+                            return [...prev, ...uniqueNew];
+                        });
+                    }
+                }
             } catch (error) {
                 console.error("Failed to fetch messages:", error);
+            } finally {
+                isFetching = false;
             }
         };
-        fetchMessages();
-        const interval = setInterval(fetchMessages, 2000);
+
+        fetchMessages(true);
+        const interval = setInterval(() => fetchMessages(false), 2000);
         return () => clearInterval(interval);
     }, [selectedChat?.id]);
 

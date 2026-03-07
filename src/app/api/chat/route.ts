@@ -7,14 +7,23 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const conversationId = searchParams.get("conversationId");
 
+    const since = searchParams.get("since");
+
     try {
         if (conversationId) {
             // Get messages for a specific conversation
+            const whereClause: any = { conversationId };
+            if (since) {
+                whereClause.createdAt = { gt: new Date(since) };
+            }
+
             const messages = await prisma.message.findMany({
-                where: { conversationId },
-                orderBy: { createdAt: "asc" },
+                where: whereClause,
+                orderBy: { createdAt: "desc" }, // Get newest first
+                take: since ? undefined : 75, // Limit initial load to 75
             });
-            return NextResponse.json(messages);
+            // Reverse so they are chronological for UI
+            return NextResponse.json(messages.reverse());
         } else {
             // Get all conversations with last message
             const conversations = await prisma.conversation.findMany({
@@ -26,6 +35,7 @@ export async function GET(request: NextRequest) {
                     },
                 },
                 orderBy: { updatedAt: "desc" },
+                take: 100, // Limit to 100 most recent conversations
             });
 
             // Transform for frontend
