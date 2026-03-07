@@ -242,26 +242,37 @@ export async function getPipelineData() {
             }),
         ]);
 
-        // Fetch last message for each deal's contact
-        const dealsWithMessage = await Promise.all(
-            deals.map(async (deal: any) => {
-                let lastMessage: string | null = null;
-                if (deal.contactId) {
-                    const conv = await prisma.conversation.findFirst({
-                        where: { contactId: deal.contactId },
-                        include: {
-                            messages: {
-                                where: { direction: "inbound" },
-                                orderBy: { createdAt: "desc" },
-                                take: 1,
-                            },
-                        },
-                    });
-                    lastMessage = conv?.messages?.[0]?.content || null;
-                }
-                return { ...deal, lastMessage };
-            })
-        );
+        // --- N+1 Optimization ---
+        // Extract all unique contact IDs from the deals
+        const contactIds = [...new Set(deals.map((d: any) => d.contactId).filter(Boolean))] as string[];
+
+        // Fetch all relevant conversations & their latest message in ONE single query
+        const conversations = await prisma.conversation.findMany({
+            where: {
+                contactId: { in: contactIds },
+            },
+            include: {
+                messages: {
+                    where: { direction: "inbound" },
+                    orderBy: { createdAt: "desc" },
+                    take: 1,
+                },
+            },
+        });
+
+        // Create a fast lookup map: contactId -> lastMessage
+        const lastMessageMap = new Map<string, string | null>();
+        for (const conv of conversations) {
+            if (conv.messages && conv.messages.length > 0) {
+                lastMessageMap.set(conv.contactId, conv.messages[0].content);
+            }
+        }
+
+        // Apply the map to the deals in memory
+        const dealsWithMessage = deals.map((deal: any) => {
+            const lastMessage = deal.contactId ? (lastMessageMap.get(deal.contactId) || null) : null;
+            return { ...deal, lastMessage };
+        });
 
         return { stages, deals: dealsWithMessage };
     } catch (error) {
