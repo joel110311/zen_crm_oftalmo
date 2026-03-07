@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
+import { useSearchParams } from "next/navigation";
 import {
     Search, MoreVertical, Phone, Video, Paperclip, Send, Mic, X,
     FileText, Download, Square, Star, BellOff, Bell, Archive, Trash2,
@@ -554,6 +555,7 @@ function WindowTimer({ expiresAt, onWindowChange }: { expiresAt: string | null |
 
 // ──────────── Main Inbox Page ────────────
 export default function InboxPage() {
+    const searchParams = useSearchParams();
     const [conversations, setConversations] = useState<Conversation[]>([]);
     const [selectedChat, setSelectedChat] = useState<Conversation | null>(null);
     const [messages, setMessages] = useState<Message[]>([]);
@@ -702,6 +704,17 @@ export default function InboxPage() {
                 // Only auto-select a chat on the VERY FIRST load
                 if (isFirstFetchRef.current) {
                     isFirstFetchRef.current = false;
+
+                    // Check if we were navigated here with a ?phone= param (from Pipeline)
+                    const phoneParam = searchParams.get("phone");
+                    if (phoneParam && transformed.length > 0) {
+                        const match = transformed.find(c => c.contact?.phone?.includes(phoneParam.slice(-10)));
+                        if (match) {
+                            setSelectedChat(match);
+                            return;
+                        }
+                    }
+
                     if (!currentId && transformed.length > 0) {
                         setSelectedChat(transformed[0]);
                     }

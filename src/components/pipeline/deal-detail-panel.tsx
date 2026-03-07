@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useTransition, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { X, Phone, Mail, Building2, MessageSquare, Calendar, Pencil, Trash2, Save, Plus, Tag as TagIcon } from "lucide-react";
@@ -21,6 +22,7 @@ interface TagData {
 }
 
 export function DealDetailPanel({ deal, onClose, onUpdate, onDelete }: DealDetailPanelProps) {
+    const router = useRouter();
     const [editTitle, setEditTitle] = useState(deal.title);
     const [editValue, setEditValue] = useState(deal.value.toString());
     const [editNotes, setEditNotes] = useState(deal.notes || "");
@@ -247,15 +249,13 @@ export function DealDetailPanel({ deal, onClose, onUpdate, onDelete }: DealDetai
                                 <div className="flex items-center gap-2">
                                     <Phone className="h-4 w-4 text-muted-foreground" />
                                     <span className="text-sm text-foreground/80">+{deal.contact.phone}</span>
-                                    <a
-                                        href={`https://wa.me/${deal.contact.phone}`}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="ml-auto text-xs font-medium px-2 py-1 rounded bg-[#25D366]/10 text-[#25D366]"
+                                    <button
+                                        onClick={() => router.push(`/dashboard/inbox?phone=${deal.contact!.phone}`)}
+                                        className="ml-auto text-xs font-medium px-2 py-1 rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors cursor-pointer"
                                     >
                                         <MessageSquare className="h-3 w-3 inline mr-1" />
-                                        WhatsApp
-                                    </a>
+                                        Ir al Chat
+                                    </button>
                                 </div>
                             )}
 
