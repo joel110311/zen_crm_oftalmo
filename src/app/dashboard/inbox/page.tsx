@@ -1431,7 +1431,7 @@ export default function InboxPage() {
                                                         {/* Bubble */}
                                                         <div
                                                             className={cn(
-                                                                "rounded-2xl px-4 py-2 text-sm relative",
+                                                                "rounded-2xl px-4 py-2 text-sm relative break-all overflow-hidden",
                                                                 msg.direction === "outbound"
                                                                     ? "bg-[#d9fdd3] dark:bg-[#005c4b] text-foreground"
                                                                     : "bg-card border border-border/40 text-foreground",

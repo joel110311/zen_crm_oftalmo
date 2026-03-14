@@ -8,6 +8,11 @@ export async function GET(req: NextRequest) {
     const token = searchParams.get("hub.verify_token");
     const challenge = searchParams.get("hub.challenge");
 
+    // ECH Guard 1: missing params
+    if (!mode || !token || !challenge) {
+        return new NextResponse("Bad Request: Missing hub params", { status: 400 });
+    }
+
     const VERIFY_TOKEN = process.env.META_VERIFY_TOKEN;
 
     if (mode === "subscribe" && token === VERIFY_TOKEN) {
@@ -31,6 +36,13 @@ export async function POST(req: NextRequest) {
         if (body.type === "whatsapp.inbound_message.received" && body.whatsappInboundMessage) {
             const msg = body.whatsappInboundMessage;
             const from = msg.from?.replace(/\D/g, "") || ""; // Remove non-digits like + sign
+            
+            // ECH Guard 2: Missing sender
+            if (!from) {
+                console.warn("[YCloud] Dropped message: missing or empty sender phone");
+                return new NextResponse("OK: Empty Sender Dropped", { status: 200 });
+            }
+            
             const customerName = msg.customerProfile?.name;
 
             // Determine message type and content
@@ -76,15 +88,22 @@ export async function POST(req: NextRequest) {
 
             console.log(`[YCloud] Received ${messageType} from ${from} (${customerName}): ${text}`);
 
-            // Store the message in database with media info
-            await processInboundMessage(from, text, customerName, {
-                type: messageType,
-                mediaUrl,
-                mediaType,
-                mediaFileName,
-            });
+            // ECH Guard 3: Prevent unhandled DB error crash turning into repeated 500s 
+            // from YCloud causing spam
+            try {
+                // Store the message in database with media info
+                await processInboundMessage(from, text, customerName, {
+                    type: messageType,
+                    mediaUrl,
+                    mediaType,
+                    mediaFileName,
+                });
+                console.log("[YCloud] Message stored successfully!");
+            } catch (dbError) {
+                console.error("[YCloud] Database error storing message:", dbError);
+                // Return 200 even on DB failure to ack the webhook, avoiding unlimited retry spam
+            }
 
-            console.log("[YCloud] Message stored successfully!");
             return new NextResponse("EVENT_RECEIVED", { status: 200 });
         }
 
@@ -103,6 +122,12 @@ export async function POST(req: NextRequest) {
         if (body.type === "whatsapp.smb.message.echoes" && body.whatsappInboundMessage) {
             const msg = body.whatsappInboundMessage;
             const to = msg.to?.replace(/\D/g, "") || msg.from?.replace(/\D/g, "") || "";
+
+            // ECH Guard 4: Missing target in echo
+            if (!to) {
+                console.log("[YCloud] Echo dropped: Unresolvable destination");
+                return new NextResponse("EVENT_RECEIVED", { status: 200 });
+            }
 
             console.log(`[YCloud] Message echo: outbound to ${to}`);
 
@@ -148,23 +173,28 @@ export async function POST(req: NextRequest) {
                         });
 
                         if (!recentDuplicate) {
-                            await prisma.message.create({
-                                data: {
-                                    conversationId: conversation.id,
-                                    content: text,
-                                    direction: "outbound",
-                                    status: "sent",
-                                    type: messageType,
-                                    senderType: "bot", // Sent by external system (n8n)
-                                },
-                            });
+                            try {
+                                await prisma.message.create({
+                                    data: {
+                                        conversationId: conversation.id,
+                                        content: text,
+                                        direction: "outbound",
+                                        status: "sent",
+                                        type: messageType,
+                                        senderType: "bot", // Sent by external system (n8n)
+                                    },
+                                });
 
-                            await prisma.conversation.update({
-                                where: { id: conversation.id },
-                                data: { updatedAt: new Date() },
-                            });
+                                await prisma.conversation.update({
+                                    where: { id: conversation.id },
+                                    data: { updatedAt: new Date() },
+                                });
 
-                            console.log(`[YCloud] Echo stored as outbound message for ${contact.name}`);
+                                console.log(`[YCloud] Echo stored as outbound message for ${contact.name}`);
+                            } catch (error) {
+                                // ECH Guard 5: Prevent race condition crash if conversation is deleted/locked mid-flight
+                                console.error("[YCloud] Race condition or database error storing echo:", error);
+                            }
                         } else {
                             console.log(`[YCloud] Echo skipped (duplicate of CRM-sent message)`);
                         }
