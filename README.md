@@ -39,6 +39,7 @@ Para despliegue SaaS por cliente, la recomendacion es:
 Usa `docker-compose.zen-crm.yml`.
 
 Para Portainer, toma como base las variables de `portainer.env.example`.
+Si quieres un stack ya orientado a un subdominio de ejemplo, usa tambien `portainer-stack.example.yml`.
 
 ### Variables requeridas
 
@@ -68,6 +69,8 @@ Para Portainer, toma como base las variables de `portainer.env.example`.
 - `GEMINI_API_KEY`
 - `ALLOW_ENV_AI_FALLBACK`
 - `TZ`
+- `STARTUP_DB_MAX_ATTEMPTS`
+- `STARTUP_DB_RETRY_MS`
 
 ### Arranque
 
@@ -83,6 +86,7 @@ docker compose -f docker-compose.zen-crm.yml up -d
 4. asigna un `APP_DOMAIN` unico por cliente, por ejemplo `crm.cliente.com`
 5. asigna un `STACK_SLUG` unico por cliente, por ejemplo `zencrm-cliente-a`
 6. deja `ALLOW_ENV_AI_FALLBACK=false` para que el CRM no use claves IA del servidor
+7. si tu Swarm tarda en levantar PostgreSQL, deja los retries de startup tal como vienen
 
 Con esto evitas choques de routers/servicios de Traefik al desplegar varias instancias.
 
@@ -115,6 +119,16 @@ Ejemplo:
 ```bash
 curl https://crm.cliente.com/api/health
 ```
+
+## Nota sobre el primer arranque en Swarm
+
+El contenedor del CRM ahora espera a que PostgreSQL este disponible antes de sembrar:
+
+- usuario inicial
+- pipeline base
+- configuracion minima
+
+Si la base tarda en responder, el contenedor reintentara y, si aun no puede conectar, saldra con error para que `restart_policy` lo vuelva a levantar.
 
 ## Base limpia para clientes nuevos
 

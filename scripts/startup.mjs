@@ -8,6 +8,8 @@ const DEFAULT_INITIAL_ADMIN_NAME = "Owner";
 const DEFAULT_INITIAL_ADMIN_PASSWORD = "ChangeMe123!";
 const DEFAULT_WHATSAPP_INSTANCE_NAME =
     process.env.WHATSAPP_INSTANCE_NAME?.trim() || "zen-crm";
+const STARTUP_DB_MAX_ATTEMPTS = Number.parseInt(process.env.STARTUP_DB_MAX_ATTEMPTS || "20", 10);
+const STARTUP_DB_RETRY_MS = Number.parseInt(process.env.STARTUP_DB_RETRY_MS || "5000", 10);
 
 function readEnv(name, fallback = "") {
     const value = process.env[name];
@@ -32,6 +34,38 @@ async function runSafeQuery(pool, query, params = []) {
     return pool.query(query, params).catch(() => {});
 }
 
+function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitForDatabase(pool) {
+    let lastError = null;
+
+    for (let attempt = 1; attempt <= STARTUP_DB_MAX_ATTEMPTS; attempt += 1) {
+        try {
+            await pool.query("SELECT 1");
+            if (attempt > 1) {
+                console.log(`[Startup] Database ready after ${attempt} attempts.`);
+            }
+            return;
+        } catch (error) {
+            lastError = error;
+            const message = error instanceof Error ? error.message : String(error);
+            console.warn(
+                `[Startup] Database not ready (attempt ${attempt}/${STARTUP_DB_MAX_ATTEMPTS}): ${message}`,
+            );
+
+            if (attempt < STARTUP_DB_MAX_ATTEMPTS) {
+                await sleep(STARTUP_DB_RETRY_MS);
+            }
+        }
+    }
+
+    throw lastError instanceof Error
+        ? lastError
+        : new Error("Database unavailable after startup retries.");
+}
+
 async function startup() {
     if (!DATABASE_URL) {
         console.warn("[Startup] No DATABASE_URL, skipping DB setup.");
@@ -41,6 +75,7 @@ async function startup() {
     const pool = new Pool({ connectionString: DATABASE_URL });
 
     try {
+        await waitForDatabase(pool);
         console.log("[Startup] Checking schema...");
 
         await runSafeQuery(
@@ -515,12 +550,17 @@ async function startup() {
         }
     } catch (error) {
         console.error("[Startup] Error:", error instanceof Error ? error.message : error);
+        throw error;
     } finally {
-        await pool.end();
+        await pool.end().catch(() => {});
     }
 }
 
-await startup();
-
-console.log("[Startup] Starting Next.js server...");
-import("./server.js");
+try {
+    await startup();
+    console.log("[Startup] Starting Next.js server...");
+    import("./server.js");
+} catch (error) {
+    console.error("[Startup] Fatal startup failure:", error instanceof Error ? error.message : error);
+    process.exit(1);
+}
