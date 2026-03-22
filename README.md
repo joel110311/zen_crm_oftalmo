@@ -47,6 +47,7 @@ Si quieres el flujo mas facil posible de copiar/pegar en Portainer, usa `portain
 - `POSTGRES_DB`
 - `POSTGRES_PASSWORD`
 - `WUZAPI_ADMIN_TOKEN`
+- `WUZAPI_DB_PASSWORD`
 - `WUZAPI_GLOBAL_ENCRYPTION_KEY`
 - `WUZAPI_GLOBAL_HMAC_KEY`
 - `AUTH_SECRET`
@@ -105,12 +106,16 @@ Ese archivo ya incluye:
 
 - app
 - base de datos
+- base de datos dedicada para WuzAPI
 - gateway de WhatsApp
 - router Traefik con `tls=true`
 - healthcheck
 - reintentos de arranque contra PostgreSQL
 - volumenes persistentes
 - labels de Traefik
+
+Importante:
+- Zen CRM y WuzAPI usan bases separadas dentro del stack. Esto evita conflictos de esquema y problemas con las migraciones internas del gateway.
 
 ## Primer acceso
 
