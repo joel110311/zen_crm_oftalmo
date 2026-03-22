@@ -1,6 +1,7 @@
 import { Pool } from "pg";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
+import { spawn } from "node:child_process";
 
 const DATABASE_URL = process.env.DATABASE_URL;
 const DEFAULT_INITIAL_ADMIN_EMAIL = "owner@zencrm.local";
@@ -66,6 +67,37 @@ async function waitForDatabase(pool) {
         : new Error("Database unavailable after startup retries.");
 }
 
+async function runPrismaDbPush() {
+    console.log("[Startup] Running Prisma db push...");
+
+    await new Promise((resolve, reject) => {
+        const child = spawn(
+            "node",
+            [
+                "./node_modules/prisma/build/index.js",
+                "db",
+                "push",
+                "--accept-data-loss",
+                "--schema",
+                "./prisma/schema.prisma",
+            ],
+            {
+                stdio: "inherit",
+                env: process.env,
+            },
+        );
+
+        child.on("error", reject);
+        child.on("exit", (code) => {
+            if (code === 0) {
+                resolve(undefined);
+                return;
+            }
+            reject(new Error(`Prisma db push failed with exit code ${code}`));
+        });
+    });
+}
+
 async function startup() {
     if (!DATABASE_URL) {
         console.warn("[Startup] No DATABASE_URL, skipping DB setup.");
@@ -76,6 +108,7 @@ async function startup() {
 
     try {
         await waitForDatabase(pool);
+        await runPrismaDbPush();
         console.log("[Startup] Checking schema...");
 
         await runSafeQuery(

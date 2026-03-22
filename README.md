@@ -147,6 +147,7 @@ El contenedor del CRM ahora espera a que PostgreSQL este disponible antes de sem
 - usuario inicial
 - pipeline base
 - configuracion minima
+- esquema Prisma principal
 
 Si la base tarda en responder, el contenedor reintentara y, si aun no puede conectar, saldra con error para que `restart_policy` lo vuelva a levantar.
 

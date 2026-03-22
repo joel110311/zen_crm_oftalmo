@@ -56,6 +56,7 @@ COPY --from=builder /app/prisma.config.ts ./
 COPY --from=builder /app/prisma.config.js ./
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
+COPY --from=builder /app/node_modules/prisma ./node_modules/prisma
 COPY --from=builder /app/node_modules/dotenv ./node_modules/dotenv
 # Startup script dependencies (pg + bcryptjs for auto-seed)
 COPY --from=builder /app/node_modules/bcryptjs ./node_modules/bcryptjs
