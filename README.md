@@ -38,6 +38,8 @@ Para despliegue SaaS por cliente, la recomendacion es:
 
 Usa `docker-compose.zen-crm.yml`.
 
+Para Portainer, toma como base las variables de `portainer.env.example`.
+
 ### Variables requeridas
 
 - `POSTGRES_DB`
@@ -48,6 +50,7 @@ Usa `docker-compose.zen-crm.yml`.
 - `AUTH_URL`
 - `APP_BASE_URL`
 - `WHATSAPP_WEBHOOK_BASE_URL`
+- `APP_DOMAIN`
 - `INITIAL_ADMIN_EMAIL`
 - `INITIAL_ADMIN_PASSWORD`
 
@@ -56,6 +59,11 @@ Usa `docker-compose.zen-crm.yml`.
 - `INITIAL_ADMIN_NAME`
 - `WUZAPI_USER_TOKEN`
 - `WHATSAPP_INSTANCE_NAME`
+- `SESSION_DEVICE_NAME`
+- `TRAEFIK_NETWORK`
+- `TRAEFIK_ENTRYPOINT`
+- `TRAEFIK_CERTRESOLVER`
+- `STACK_SLUG`
 - `OPENAI_API_KEY`
 - `GEMINI_API_KEY`
 - `ALLOW_ENV_AI_FALLBACK`
@@ -66,6 +74,17 @@ Usa `docker-compose.zen-crm.yml`.
 ```bash
 docker compose -f docker-compose.zen-crm.yml up -d
 ```
+
+### Recomendacion para Portainer
+
+1. crea un stack nuevo
+2. pega el contenido de `docker-compose.zen-crm.yml`
+3. carga las variables de `portainer.env.example` adaptadas al cliente
+4. asigna un `APP_DOMAIN` unico por cliente, por ejemplo `crm.cliente.com`
+5. asigna un `STACK_SLUG` unico por cliente, por ejemplo `zencrm-cliente-a`
+6. deja `ALLOW_ENV_AI_FALLBACK=false` para que el CRM no use claves IA del servidor
+
+Con esto evitas choques de routers/servicios de Traefik al desplegar varias instancias.
 
 ## Primer acceso
 
@@ -83,6 +102,19 @@ Luego:
 4. conecta por QR
 5. ve a `Configuracion > IA`
 6. guarda la clave del cliente
+
+## Healthcheck
+
+El stack expone un endpoint de salud en `/api/health`, usado por Docker para verificar que:
+
+- la app responde
+- Prisma puede consultar la base
+
+Ejemplo:
+
+```bash
+curl https://crm.cliente.com/api/health
+```
 
 ## Base limpia para clientes nuevos
 

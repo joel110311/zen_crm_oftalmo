@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   zen-crm:
     image: ghcr.io/joel110311/zen_crm_go:latest
@@ -24,23 +22,35 @@ services:
       - PORT=3000
       - HOSTNAME=0.0.0.0
     networks:
-      - SociosNet
+      - traefik-public
     volumes:
       - zen_crm_uploads:/app/public/uploads
     depends_on:
       - zen-crm-db
       - whatsapp-gateway
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/api/health').then((res)=>process.exit(res.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
     deploy:
       replicas: 1
       restart_policy:
         condition: on-failure
       labels:
         - "traefik.enable=true"
-        - "traefik.http.routers.zen-crm.rule=Host(`crm.logicapp.net`)"
-        - "traefik.http.routers.zen-crm.entrypoints=websecure"
-        - "traefik.http.routers.zen-crm.tls.certresolver=letsencryptresolver"
-        - "traefik.http.services.zen-crm.loadbalancer.server.port=3000"
-        - "traefik.docker.network=SociosNet"
+        - "traefik.http.routers.${STACK_SLUG:-zen-crm}.rule=Host(`${APP_DOMAIN}`)"
+        - "traefik.http.routers.${STACK_SLUG:-zen-crm}.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}"
+        - "traefik.http.routers.${STACK_SLUG:-zen-crm}.tls.certresolver=${TRAEFIK_CERTRESOLVER:-letsencryptresolver}"
+        - "traefik.http.services.${STACK_SLUG:-zen-crm}.loadbalancer.server.port=3000"
+        - "traefik.docker.network=${TRAEFIK_NETWORK:-SociosNet}"
 
   whatsapp-gateway:
     image: asternic/wuzapi:latest
@@ -57,7 +67,7 @@ services:
       - WEBHOOK_FORMAT=json
       - SESSION_DEVICE_NAME=${SESSION_DEVICE_NAME:-Zen CRM}
     networks:
-      - SociosNet
+      - traefik-public
     deploy:
       replicas: 1
       restart_policy:
@@ -73,7 +83,13 @@ services:
     volumes:
       - zen_crm_db_data:/var/lib/postgresql/data
     networks:
-      - SociosNet
+      - traefik-public
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U zencrm -d ${POSTGRES_DB}"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
     deploy:
       replicas: 1
       restart_policy:
@@ -88,5 +104,6 @@ volumes:
   zen_crm_uploads:
 
 networks:
-  SociosNet:
+  traefik-public:
     external: true
+    name: ${TRAEFIK_NETWORK:-SociosNet}
