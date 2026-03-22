@@ -18,6 +18,7 @@ model User {
   updatedAt DateTime @updatedAt
   
   appointments Appointment[]
+  assignedConversations Conversation[] @relation("ConversationAssignee")
 }
 
 enum Role {
@@ -47,6 +48,8 @@ model Conversation {
   id         String    @id @default(cuid())
   contactId  String
   contact    Contact   @relation(fields: [contactId], references: [id])
+  assignedUserId String?
+  assignedUser User?   @relation("ConversationAssignee", fields: [assignedUserId], references: [id])
   status     String    @default("active") // active, closed, archived
   isMuted    Boolean   @default(false)
   isFavorite Boolean   @default(false)
@@ -61,6 +64,7 @@ model Conversation {
 
   @@index([updatedAt(sort: Desc)])
   @@index([contactId])
+  @@index([assignedUserId])
 }
 
 model Message {
@@ -75,10 +79,12 @@ model Message {
   mediaUrl       String?      // URL to media file
   mediaType      String?      // MIME type (image/jpeg, audio/ogg, etc.)
   mediaFileName  String?      // Original filename for documents
+  providerMessageId String?   // Native WhatsApp/WuzAPI message id
   reaction       String?      // Emoji reaction (e.g., '👍', '❤️')
   createdAt      DateTime     @default(now())
 
   @@index([conversationId, createdAt(sort: Desc)])
+  @@index([providerMessageId])
 }
 
 model Appointment {
@@ -88,6 +94,8 @@ model Appointment {
   endTime   DateTime
   status    String   @default("scheduled") // scheduled, completed, cancelled
   notes     String?
+  googleEventId String? @unique
+  googleEventUpdatedAt DateTime?
   
   contactId String?
   contact   Contact? @relation(fields: [contactId], references: [id])
@@ -112,6 +120,42 @@ model Document {
   updatedAt DateTime @updatedAt
 }
 
+model KnowledgeSource {
+  id         String           @id @default(cuid())
+  title      String
+  type       String
+  status     String           @default("pending") // pending, processing, ready, failed
+  sourceUri  String?
+  rawContent String?
+  mimeType   String?
+  error      String?
+  chunkCount Int              @default(0)
+  metadata   Json?
+  syncedAt   DateTime?
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+
+  chunks     KnowledgeChunk[]
+
+  @@index([type, status])
+  @@index([updatedAt(sort: Desc)])
+}
+
+model KnowledgeChunk {
+  id         String          @id @default(cuid())
+  sourceId   String
+  source     KnowledgeSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  title      String?
+  content    String
+  chunkIndex Int
+  tokenCount Int?
+  metadata   Json?
+  embedding  Unsupported("vector(1536)")?
+  createdAt  DateTime        @default(now())
+
+  @@index([sourceId, chunkIndex])
+}
+
 model Template {
   id        String   @id @default(cuid())
   name      String
@@ -119,9 +163,23 @@ model Template {
   category  String?
   language  String   @default("es")
   status    String   @default("approved")
+  type      String   @default("text") // text, image, document
+  mediaUrl  String?
+  mediaType String?
+  mediaFileName String?
+  shortcut  String?  @unique
+  variables Json?
+  isFavorite Boolean @default(false)
+  isActive  Boolean  @default(true)
+  sortOrder Int      @default(0)
+  usageCount Int     @default(0)
+  lastUsedAt DateTime?
   
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([isActive, category])
+  @@index([isFavorite, updatedAt(sort: Desc)])
 }
 
 model PipelineStage {
@@ -153,9 +211,41 @@ model Deal {
   createdAt  DateTime      @default(now())
   updatedAt  DateTime      @updatedAt
   dealTags   DealTag[]
+  intelligence LeadIntelligence?
 
   @@index([stageId])
   @@index([contactId])
+}
+
+model LeadIntelligence {
+  id                  String   @id @default(cuid())
+  dealId              String   @unique
+  deal                Deal     @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  score               Int      @default(0)
+  interestStatus      String   @default("nuevo") // nuevo, interesado, calificado
+  currentStep         String   @default("inicio") // inicio, interes, captura_nombre, captura_email, calificado
+  stepProgress        Int      @default(0)
+  pendingCaptureField String?  // name | email
+  nameCaptured        Boolean  @default(false)
+  emailCaptured       Boolean  @default(false)
+  nameDeclined        Boolean  @default(false)
+  emailDeclined       Boolean  @default(false)
+  capturedName        String?
+  capturedEmail       String?
+  askedForNameAt      DateTime?
+  askedForEmailAt     DateTime?
+  capturedNameAt      DateTime?
+  capturedEmailAt     DateTime?
+  interestDetectedAt  DateTime?
+  lastScoredAt        DateTime?
+  sameDayInboundCount Int      @default(0)
+  lastSummary         String?
+  signals             Json?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@index([interestStatus])
+  @@index([score])
 }
 
 model Tag {
@@ -192,11 +282,39 @@ model DealTag {
 model SystemSettings {
   id              String   @id @default(cuid())
   openaiApiKey    String?
+  openaiModel     String?  @default("gpt-4o-mini")
   geminiApiKey    String?
   ycloudApiKey    String?
   ycloudPhoneId   String?
+  whatsappBaseUrl String?
+  whatsappAdminToken String?
+  whatsappUserToken String?
+  whatsappInstanceName String? @default("zen-crm")
   isBotEnabled    Boolean  @default(false)
   n8nWebhookUrl   String?
+  agentName       String?  @default("Asistente Zen")
+  agentPrompt     String?
+  agentTemperature Float   @default(0.3)
+  knowledgeTopK   Int      @default(6)
+  autoReplyDelayMs Int     @default(1200)
+  businessHoursStart String @default("09:00")
+  businessHoursEnd String   @default("18:00")
+  businessTimeZone String   @default("America/Mexico_City")
+  businessWeeklySchedule Json?
+  appointmentDurationMinutes Int @default(30)
+  googleClientId String?
+  googleClientSecret String?
+  googleCalendarId String? @default("primary")
+  googleAccessToken String?
+  googleRefreshToken String?
+  googleTokenExpiresAt DateTime?
+  googleConnectedEmail String?
+  googleSyncToken String?
+  googleLastSyncedAt DateTime?
+  leadScoringEnabled Boolean @default(true)
+  captureLeadName Boolean @default(false)
+  captureLeadEmail Boolean @default(false)
+  leadInterestThreshold Int @default(45)
   updatedAt       DateTime @updatedAt
 }
 

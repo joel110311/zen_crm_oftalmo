@@ -53,22 +53,29 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
                 token.name = user.name;
             }
 
-            // Belt-and-suspenders: if token still has no name, resolve it now
-            // This handles old JWT cookies from before this fix was deployed
-            if (!token.name) {
+            // Keep session claims synced with DB so profile/role edits show up after re-login.
+            if (token.id) {
                 if (token.id) {
                     try {
                         const dbUser = await prisma.user.findUnique({
                             where: { id: token.id as string },
-                            select: { name: true, email: true },
+                            select: { name: true, email: true, role: true },
                         });
-                        token.name = dbUser?.name || dbUser?.email || (token.email as string) || "Usuario";
+
+                        if (dbUser) {
+                            token.name = dbUser.name || dbUser.email || (token.email as string) || "Usuario";
+                            token.role = dbUser.role;
+                        } else if (!token.name) {
+                            token.name = (token.email as string) || "Usuario";
+                        }
                     } catch {
-                        token.name = (token.email as string) || "Usuario";
+                        if (!token.name) {
+                            token.name = (token.email as string) || "Usuario";
+                        }
                     }
-                } else {
-                    token.name = (token.email as string) || "Usuario";
                 }
+            } else if (!token.name) {
+                token.name = (token.email as string) || "Usuario";
             }
 
             return token;

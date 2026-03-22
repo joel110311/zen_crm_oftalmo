@@ -13,12 +13,12 @@ import {
     Calendar,
     Settings,
     BrainCircuit,
+    LayoutTemplate,
     LogOut,
     Menu,
     X,
     Shield,
-    ShieldCheck,
-    LayoutTemplate
+    ShieldCheck
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { ZenLogo } from "@/components/icons/zen-logo";
@@ -30,7 +30,7 @@ const sidebarNavItems = [
     { title: "Contactos", href: "/dashboard/contacts", icon: Users },
     { title: "Pipeline", href: "/dashboard/pipeline", icon: KanbanSquare },
     { title: "Chats", href: "/dashboard/inbox", icon: MessageSquare },
-    { title: "Plantillas", href: "/dashboard/templates", icon: LayoutTemplate },
+    { title: "Plantillas", href: "/dashboard/templates", icon: LayoutTemplate, superadminOnly: true },
     { title: "Calendario", href: "/dashboard/calendar", icon: Calendar },
     { title: "Cerebro IA", href: "/dashboard/brain", icon: BrainCircuit, superadminOnly: true },
     { title: "Configuración", href: "/dashboard/settings", icon: Settings },

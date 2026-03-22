@@ -1,0 +1,494 @@
+import crypto from "crypto";
+import { prisma } from "@/lib/db";
+import { getSystemSettingsOrDefaults } from "@/lib/system-settings";
+
+type WuzapiUser = {
+    id?: string | number;
+    name?: string;
+    token?: string;
+    webhook?: string;
+    events?: string;
+    jid?: string;
+    connected?: boolean;
+    qrcode?: string;
+};
+
+type WuzapiConfig = {
+    baseUrl: string;
+    adminToken: string;
+    userToken: string;
+    instanceName: string;
+};
+
+type WuzapiRequestMode = "admin" | "user";
+
+type SendMediaParams = {
+    phone: string;
+    mediaCategory: "image" | "audio" | "video" | "document";
+    dataUrl: string;
+    caption?: string;
+    fileName?: string;
+    mimeType?: string;
+};
+
+type DownloadMediaKind = "image" | "audio" | "video" | "document" | "sticker";
+
+type DownloadMediaParams = {
+    Url: string;
+    DirectPath?: string;
+    MediaKey: string;
+    Mimetype: string;
+    FileEncSHA256?: string;
+    FileSHA256: string;
+    FileLength: number;
+};
+
+const WUZAPI_RETRYABLE_SEND_ERRORS = [
+    "cannot start a transaction within a transaction",
+    "failed to save cached sessions",
+];
+
+let wuzapiRecoveryPromise: Promise<void> | null = null;
+
+export class WuzapiConfigError extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = "WuzapiConfigError";
+    }
+}
+
+function normalizeBaseUrl(value: string) {
+    return value.trim().replace(/\/+$/, "");
+}
+
+function unwrapResponse<T>(payload: unknown): T {
+    if (payload && typeof payload === "object" && "data" in payload) {
+        return (payload as { data: T }).data;
+    }
+    return payload as T;
+}
+
+function sanitizePhone(phone: string) {
+    return phone.replace(/\D/g, "");
+}
+
+function sleep(ms: number) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function buildWebhookUrl(appBaseUrl?: string) {
+    const baseUrl = (
+        process.env.WHATSAPP_WEBHOOK_BASE_URL ||
+        process.env.APP_BASE_URL ||
+        appBaseUrl ||
+        process.env.AUTH_URL ||
+        process.env.NEXT_PUBLIC_APP_URL ||
+        ""
+    ).trim();
+
+    if (!baseUrl) {
+        throw new WuzapiConfigError(
+            'No pude resolver la URL publica del CRM. Define `AUTH_URL` o guarda la URL publica antes de preparar el canal de WhatsApp.',
+        );
+    }
+
+    return `${baseUrl.replace(/\/+$/, "")}/api/webhook`;
+}
+
+export async function getWuzapiConfig(): Promise<WuzapiConfig> {
+    const settings = await getSystemSettingsOrDefaults();
+    const baseUrl = normalizeBaseUrl(settings.whatsappBaseUrl || "");
+    const adminToken = (settings.whatsappAdminToken || "").trim();
+    const userToken = (settings.whatsappUserToken || "").trim();
+    const instanceName = (settings.whatsappInstanceName || "zen-crm").trim() || "zen-crm";
+
+    if (!baseUrl) {
+        throw new WuzapiConfigError("Falta configurar la URL base del servicio de WhatsApp.");
+    }
+    if (!userToken) {
+        throw new WuzapiConfigError("Falta configurar el token del canal de WhatsApp.");
+    }
+
+    return { baseUrl, adminToken, userToken, instanceName };
+}
+
+async function requestWuzapi<T>(
+    mode: WuzapiRequestMode,
+    path: string,
+    init?: RequestInit,
+): Promise<T> {
+    const config = await getWuzapiConfig();
+    const url = `${config.baseUrl}${path.startsWith("/") ? path : `/${path}`}`;
+    const headers = new Headers(init?.headers || {});
+
+    if (mode === "admin") {
+        if (!config.adminToken) {
+            throw new WuzapiConfigError("Falta configurar el token maestro del servicio de WhatsApp.");
+        }
+        headers.set("Authorization", config.adminToken);
+    } else {
+        headers.set("Token", config.userToken);
+    }
+
+    if (init?.body && !headers.has("Content-Type")) {
+        headers.set("Content-Type", "application/json");
+    }
+
+    const response = await fetch(url, {
+        ...init,
+        headers,
+        cache: "no-store",
+    });
+
+    const rawBody = await response.text();
+    let parsed: unknown = {};
+    if (rawBody) {
+        try {
+            parsed = JSON.parse(rawBody);
+        } catch {
+            parsed = rawBody;
+        }
+    }
+
+    if (!response.ok) {
+        const errorMessage =
+            typeof parsed === "string"
+                ? parsed
+                : (parsed as { error?: string; message?: string })?.message ||
+                  (parsed as { error?: string })?.error ||
+                  `El servicio de WhatsApp devolvio ${response.status}`;
+        throw new Error(errorMessage);
+    }
+
+    return unwrapResponse<T>(parsed);
+}
+
+function isRetryableWuzapiSendError(error: unknown) {
+    const message = error instanceof Error ? error.message.toLowerCase() : "";
+    return WUZAPI_RETRYABLE_SEND_ERRORS.some((fragment) => message.includes(fragment));
+}
+
+async function retryWuzapiSend<T>(operation: () => Promise<T>) {
+    const maxAttempts = 4;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+        try {
+            return await operation();
+        } catch (error) {
+            if (!isRetryableWuzapiSendError(error) || attempt === maxAttempts) {
+                throw error;
+            }
+
+            if (attempt === 1) {
+                try {
+                    await recoverWuzapiSession();
+                } catch (recoveryError) {
+                    console.error("[WuzAPI] Soft recovery failed", recoveryError);
+                }
+            }
+
+            const waitMs = attempt === 1 ? 3200 : attempt * 1200;
+            console.warn(
+                `[WuzAPI] Retryable send error detected. Retrying in ${waitMs}ms (attempt ${attempt + 1}/${maxAttempts})`,
+                error,
+            );
+            await sleep(waitMs);
+        }
+    }
+
+    throw new Error("WuzAPI send retry exhausted unexpectedly");
+}
+
+export async function provisionWuzapiInstance(appBaseUrl?: string) {
+    const config = await getWuzapiConfig();
+    const webhookUrl = buildWebhookUrl(appBaseUrl);
+    const users = await requestWuzapi<WuzapiUser[]>("admin", "/admin/users", { method: "GET" });
+    const existingUser = users.find(
+        (user) => user.token === config.userToken || user.name === config.instanceName,
+    );
+
+    if (!existingUser) {
+        await requestWuzapi<{ id: string | number }>("admin", "/admin/users", {
+            method: "POST",
+            body: JSON.stringify({
+                name: config.instanceName,
+                token: config.userToken,
+                webhook: webhookUrl,
+                events: "Message",
+            }),
+        });
+    } else if (existingUser.id) {
+        await requestWuzapi<unknown>("admin", `/admin/users/${existingUser.id}`, {
+            method: "PUT",
+            body: JSON.stringify({
+                name: config.instanceName,
+                token: config.userToken,
+                webhook: webhookUrl,
+                events: "Message",
+            }),
+        }).catch(() => {
+            // Older WuzAPI builds do not expose update via admin; webhook will be refreshed below.
+        });
+    }
+
+    await requestWuzapi<unknown>("user", "/webhook", {
+        method: "POST",
+        body: JSON.stringify({
+            webhookURL: webhookUrl,
+        }),
+    });
+
+    return {
+        instanceName: config.instanceName,
+        webhookUrl,
+    };
+}
+
+export async function getWuzapiSessionStatus() {
+    return requestWuzapi<{
+        connected?: boolean;
+        loggedIn?: boolean;
+        jid?: string;
+        qrcode?: string;
+        webhook?: string;
+        events?: string;
+        name?: string;
+    }>("user", "/session/status", { method: "GET" });
+}
+
+export async function connectWuzapiSession() {
+    return requestWuzapi<{
+        details?: string;
+        events?: string;
+        webhook?: string;
+    }>("user", "/session/connect", {
+        method: "POST",
+        body: JSON.stringify({
+            Subscribe: ["Message"],
+            Immediate: false,
+        }),
+    });
+}
+
+export async function disconnectWuzapiSession() {
+    return requestWuzapi<{
+        Details?: string;
+        details?: string;
+    }>("user", "/session/disconnect", {
+        method: "POST",
+        body: JSON.stringify({}),
+    });
+}
+
+export async function getWuzapiQrCode() {
+    return requestWuzapi<{ QRCode?: string }>("user", "/session/qr", { method: "GET" });
+}
+
+export async function logoutWuzapiSession() {
+    return requestWuzapi<unknown>("user", "/session/logout", { method: "POST" });
+}
+
+async function performWuzapiRecovery() {
+    const currentStatus = await getWuzapiSessionStatus().catch(() => null);
+
+    if (!currentStatus?.loggedIn) {
+        throw new Error("No se puede autocurar el canal porque la sesion ya no esta vinculada.");
+    }
+
+    if (currentStatus.connected) {
+        await disconnectWuzapiSession().catch((error) => {
+            console.warn("[WuzAPI] Soft disconnect failed during recovery", error);
+        });
+        await sleep(1200);
+    }
+
+    await connectWuzapiSession();
+    await sleep(2500);
+
+    const recoveredStatus = await getWuzapiSessionStatus().catch(() => null);
+    if (recoveredStatus && recoveredStatus.connected === false) {
+        throw new Error("El canal no logro reconectarse despues de la autocuracion.");
+    }
+}
+
+async function recoverWuzapiSession() {
+    if (!wuzapiRecoveryPromise) {
+        wuzapiRecoveryPromise = (async () => {
+            try {
+                console.warn("[WuzAPI] Attempting soft recovery via disconnect/connect");
+                await performWuzapiRecovery();
+                console.warn("[WuzAPI] Soft recovery completed");
+            } finally {
+                wuzapiRecoveryPromise = null;
+            }
+        })();
+    }
+
+    return wuzapiRecoveryPromise;
+}
+
+export async function deleteWuzapiInstance() {
+    const config = await getWuzapiConfig();
+    const users = await requestWuzapi<WuzapiUser[]>("admin", "/admin/users", { method: "GET" });
+    const existingUser = users.find(
+        (user) => user.token === config.userToken || user.name === config.instanceName,
+    );
+
+    await logoutWuzapiSession().catch(() => {
+        // Continue even if the session is already offline.
+    });
+
+    if (existingUser?.id) {
+        await requestWuzapi<unknown>("admin", `/admin/users/${existingUser.id}`, {
+            method: "DELETE",
+        });
+    }
+
+    const settings = await prisma.systemSettings.findFirst();
+    if (settings) {
+        await prisma.systemSettings.update({
+            where: { id: settings.id },
+            data: {
+                whatsappUserToken: null,
+            },
+        });
+    }
+
+    return { deleted: true };
+}
+
+export async function sendWuzapiTextMessage(phone: string, body: string) {
+    return retryWuzapiSend(() =>
+        requestWuzapi<{ Id?: string; Timestamp?: string | number }>("user", "/chat/send/text", {
+            method: "POST",
+            body: JSON.stringify({
+                Phone: sanitizePhone(phone),
+                Body: body,
+            }),
+        }),
+    );
+}
+
+export async function sendWuzapiReaction(params: {
+    phone: string;
+    reaction: string;
+    providerMessageId: string;
+    ownMessage?: boolean;
+}) {
+    const phone = sanitizePhone(params.phone);
+    const messageId = params.ownMessage ? `me:${params.providerMessageId}` : params.providerMessageId;
+
+    return retryWuzapiSend(() =>
+        requestWuzapi<{ Details?: string }>("user", "/chat/react", {
+            method: "POST",
+            body: JSON.stringify({
+                Phone: phone,
+                Body: params.reaction,
+                Id: messageId,
+            }),
+        }),
+    );
+}
+
+export async function sendWuzapiMediaMessage(params: SendMediaParams) {
+    const phone = sanitizePhone(params.phone);
+
+    if (params.mediaCategory === "image") {
+        return retryWuzapiSend(() =>
+            requestWuzapi<{ Id?: string }>("user", "/chat/send/image", {
+                method: "POST",
+                body: JSON.stringify({
+                    Phone: phone,
+                    Caption: params.caption || "",
+                    Image: params.dataUrl,
+                    MimeType: params.mimeType,
+                }),
+            }),
+        );
+    }
+
+    if (params.mediaCategory === "audio") {
+        return retryWuzapiSend(() =>
+            requestWuzapi<{ Id?: string }>("user", "/chat/send/audio", {
+                method: "POST",
+                body: JSON.stringify({
+                    Phone: phone,
+                    Audio: params.dataUrl,
+                    Caption: params.caption || "",
+                    MimeType: params.mimeType,
+                    PTT: true,
+                }),
+            }),
+        );
+    }
+
+    if (params.mediaCategory === "video") {
+        return retryWuzapiSend(() =>
+            requestWuzapi<{ Id?: string }>("user", "/chat/send/video", {
+                method: "POST",
+                body: JSON.stringify({
+                    Phone: phone,
+                    Caption: params.caption || "",
+                    Video: params.dataUrl,
+                    MimeType: params.mimeType,
+                }),
+            }),
+        );
+    }
+
+    const [, encodedContent = ""] = params.dataUrl.split(",", 2);
+    const documentDataUrl = `data:application/octet-stream;base64,${encodedContent}`;
+
+    return retryWuzapiSend(() =>
+        requestWuzapi<{ Id?: string }>("user", "/chat/send/document", {
+            method: "POST",
+            body: JSON.stringify({
+                Phone: phone,
+                Caption: params.caption || "",
+                FileName: params.fileName || "archivo",
+                MimeType: params.mimeType || "application/octet-stream",
+                Document: documentDataUrl,
+            }),
+        }),
+    );
+}
+
+export async function downloadWuzapiMedia(kind: DownloadMediaKind, payload: DownloadMediaParams) {
+    const endpointByKind: Record<DownloadMediaKind, string> = {
+        image: "/chat/downloadimage",
+        audio: "/chat/downloadaudio",
+        video: "/chat/downloadvideo",
+        document: "/chat/downloaddocument",
+        sticker: "/chat/downloadsticker",
+    };
+
+    return requestWuzapi<{ Data?: string; Mimetype?: string }>("user", endpointByKind[kind], {
+        method: "POST",
+        body: JSON.stringify(payload),
+    });
+}
+
+export async function ensureWuzapiUserToken() {
+    const settings = await prisma.systemSettings.findFirst();
+    if (settings?.whatsappUserToken) {
+        return settings.whatsappUserToken;
+    }
+
+    const token = crypto.randomUUID().replace(/-/g, "");
+
+    if (settings) {
+        await prisma.systemSettings.update({
+            where: { id: settings.id },
+            data: { whatsappUserToken: token },
+        });
+    } else {
+        await prisma.systemSettings.create({
+            data: {
+                whatsappUserToken: token,
+                whatsappInstanceName: "zen-crm",
+            },
+        });
+    }
+
+    return token;
+}

@@ -1,6 +1,7 @@
 "use server";
 
 import { prisma } from "@/lib/db";
+import { resolveAiProviderKey } from "@/lib/ai/provider-keys";
 
 /**
  * AI Contact Enrichment Service
@@ -19,8 +20,7 @@ interface EnrichmentData {
 
 async function getGeminiApiKey(): Promise<string | null> {
     try {
-        const settings = await prisma.systemSettings.findFirst();
-        return settings?.geminiApiKey || null;
+        return await resolveAiProviderKey("gemini");
     } catch {
         return null;
     }

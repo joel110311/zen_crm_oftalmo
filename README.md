@@ -1,36 +1,108 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Zen CRM Go
 
-## Getting Started
+CRM conversacional para WhatsApp con inbox multiusuario, bot con IA, RAG interno, pipeline visual, agenda y canal QR sobre librerias Go.
 
-First, run the development server:
+Este repositorio esta preparado para despliegue tipo SaaS por instancia: cada cliente levanta su propio stack, conecta su numero por QR, configura sus claves y trabaja sobre una base limpia, sin mensajes ni leads precargados.
+
+## Stack
+
+- `zen-crm`: Next.js + Prisma + pgvector
+- `zen-crm-db`: PostgreSQL con extension vector
+- `whatsapp-gateway`: WuzAPI sobre Go / whatsmeow para login por QR
+
+## Funciones principales
+
+- Inbox de WhatsApp con takeover humano / IA
+- Recepcion y envio de texto, imagen, audio, video y documentos
+- Plantillas internas
+- Pipeline editable con etapas y presets
+- Base de conocimiento con texto, archivos, URLs, sitemap, GitHub y YouTube
+- Agenda interna y sincronizacion con Google Calendar
+- Scoring comercial y captura de datos del lead
+
+## Seguridad de claves IA
+
+Por defecto, el CRM **no usa silenciosamente** `OPENAI_API_KEY` ni `GEMINI_API_KEY` del contenedor.
+
+La prioridad ahora es:
+
+1. clave guardada por el cliente en `Configuracion > IA`
+2. variables de entorno **solo** si `ALLOW_ENV_AI_FALLBACK=true`
+
+Para despliegue SaaS por cliente, la recomendacion es:
+
+- `ALLOW_ENV_AI_FALLBACK=false`
+- que cada cliente guarde su propia clave en `Configuracion > IA`
+
+## Despliegue con Docker / Portainer
+
+Usa `docker-compose.zen-crm.yml`.
+
+### Variables requeridas
+
+- `POSTGRES_DB`
+- `POSTGRES_PASSWORD`
+- `WUZAPI_ADMIN_TOKEN`
+- `WUZAPI_GLOBAL_ENCRYPTION_KEY`
+- `AUTH_SECRET`
+- `AUTH_URL`
+- `APP_BASE_URL`
+- `WHATSAPP_WEBHOOK_BASE_URL`
+- `INITIAL_ADMIN_EMAIL`
+- `INITIAL_ADMIN_PASSWORD`
+
+### Variables opcionales
+
+- `INITIAL_ADMIN_NAME`
+- `WUZAPI_USER_TOKEN`
+- `WHATSAPP_INSTANCE_NAME`
+- `OPENAI_API_KEY`
+- `GEMINI_API_KEY`
+- `ALLOW_ENV_AI_FALLBACK`
+- `TZ`
+
+### Arranque
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+docker compose -f docker-compose.zen-crm.yml up -d
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Primer acceso
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+En una base nueva, el contenedor crea automaticamente:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- estructura base de la app
+- pipeline inicial limpio
+- un usuario `SUPERADMIN` con los datos definidos en `INITIAL_ADMIN_EMAIL` y `INITIAL_ADMIN_PASSWORD`
 
-## Learn More
+Luego:
 
-To learn more about Next.js, take a look at the following resources:
+1. entra al CRM
+2. ve a `Configuracion > WhatsApp`
+3. prepara el canal
+4. conecta por QR
+5. ve a `Configuracion > IA`
+6. guarda la clave del cliente
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Base limpia para clientes nuevos
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+La imagen de PostgreSQL ya no usa dumps con datos historicos.
 
-## Deploy on Vercel
+Cada despliegue nuevo arranca sin:
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+- contactos
+- conversaciones
+- mensajes
+- leads
+- citas
+- plantillas
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Solo se crea la base minima operativa para que el cliente pueda iniciar.
+
+## Desarrollo local
+
+```bash
+docker compose -f docker-compose.local.yml up -d --build
+```
+
+El compose local deja `ALLOW_ENV_AI_FALLBACK=true` para facilitar pruebas con variables de entorno.

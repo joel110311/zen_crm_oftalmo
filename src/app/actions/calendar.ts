@@ -2,9 +2,21 @@
 
 import { prisma } from "@/lib/db";
 import { revalidatePath } from "next/cache";
+import {
+    AppointmentSchedulingError,
+    createManagedAppointment,
+    deleteManagedAppointment,
+    updateManagedAppointment,
+} from "@/lib/calendar/appointments";
+import { syncGoogleCalendarToCrm } from "@/lib/google-calendar";
 
 export async function getAppointments() {
     try {
+        try {
+            await syncGoogleCalendarToCrm(false);
+        } catch (syncError) {
+            console.error("[Google Calendar] Background sync failed while loading appointments:", syncError);
+        }
         return await prisma.appointment.findMany({
             orderBy: { startTime: "asc" },
             include: { user: true, contact: true }
@@ -21,22 +33,17 @@ export async function createAppointment(data: {
     endTime: Date;
     notes?: string;
     contactId?: string;
+    userId?: string;
 }) {
     try {
-        await prisma.appointment.create({
-            data: {
-                title: data.title,
-                startTime: data.startTime,
-                endTime: data.endTime,
-                notes: data.notes,
-                status: "scheduled",
-                contactId: data.contactId,
-            },
-        });
+        await createManagedAppointment(data);
         revalidatePath("/dashboard/calendar");
         return { success: true };
     } catch (error) {
         console.error("Failed to create appointment:", error);
+        if (error instanceof AppointmentSchedulingError) {
+            return { success: false, error: error.message };
+        }
         return { success: false, error: "Failed to create appointment" };
     }
 }
@@ -47,28 +54,24 @@ export async function updateAppointment(id: string, data: {
     endTime?: Date;
     notes?: string;
     contactId?: string;
+    userId?: string;
 }) {
     try {
-        await prisma.appointment.update({
-            where: { id },
-            data: {
-                ...data,
-                updatedAt: new Date(),
-            },
-        });
+        await updateManagedAppointment(id, data);
         revalidatePath("/dashboard/calendar");
         return { success: true };
     } catch (error) {
         console.error("Failed to update appointment:", error);
+        if (error instanceof AppointmentSchedulingError) {
+            return { success: false, error: error.message };
+        }
         return { success: false, error: "Failed to update appointment" };
     }
 }
 
 export async function deleteAppointment(id: string) {
     try {
-        await prisma.appointment.delete({
-            where: { id },
-        });
+        await deleteManagedAppointment(id);
         revalidatePath("/dashboard/calendar");
         return { success: true };
     } catch (error) {

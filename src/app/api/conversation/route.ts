@@ -1,15 +1,19 @@
 // API route for conversation actions: mute, favorite, close, clear, delete
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { auth } from "@/lib/auth";
 
 export async function POST(request: NextRequest) {
     try {
         const body = await request.json();
-        const { conversationId, action } = body;
+        const { conversationId, action, botActive, assignedUserId } = body;
 
         if (!conversationId || !action) {
             return NextResponse.json({ error: "conversationId and action are required" }, { status: 400 });
         }
+
+        const session = await auth();
+        const currentUser = session?.user as { id?: string; role?: string } | undefined;
 
         console.log("[API] Conversation action:", action, "for:", conversationId);
 
@@ -70,39 +74,52 @@ export async function POST(request: NextRequest) {
             case "toggleBot": {
                 const conv = await prisma.conversation.findUnique({
                     where: { id: conversationId },
-                    include: { contact: true },
                 });
-                const newBotActive = !conv?.botActive;
+                const newBotActive = typeof botActive === "boolean"
+                    ? botActive
+                    : !conv?.botActive;
                 const updated = await prisma.conversation.update({
                     where: { id: conversationId },
                     data: { botActive: newBotActive },
                 });
 
-                // Send webhook to n8n with tag
-                try {
-                    const settings = await prisma.systemSettings.findFirst();
-                    if (settings?.n8nWebhookUrl) {
-                        const tag = newBotActive ? "activar" : "detener";
-                        fetch(settings.n8nWebhookUrl, {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({
-                                from: conv?.contact?.phone || "",
-                                text: "",
-                                customerName: conv?.contact?.name || "",
-                                contactId: conv?.contact?.id || "",
-                                conversationId,
-                                tag,
-                                action: newBotActive ? "bot_activated" : "bot_deactivated",
-                                timestamp: new Date().toISOString(),
-                            }),
-                        }).catch(err => console.error("[Bot Toggle] Webhook error:", err));
-                    }
-                } catch (e) {
-                    console.error("[Bot Toggle] Settings error:", e);
+                return NextResponse.json({ success: true, botActive: updated.botActive });
+            }
+
+            case "assign": {
+                const nextAssignedUserId =
+                    typeof assignedUserId === "string" && assignedUserId.trim().length > 0
+                        ? assignedUserId.trim()
+                        : null;
+
+                if (
+                    currentUser?.role !== "SUPERADMIN" &&
+                    nextAssignedUserId &&
+                    nextAssignedUserId !== currentUser?.id
+                ) {
+                    return NextResponse.json({ error: "No tienes permiso para asignar a otro usuario." }, { status: 403 });
                 }
 
-                return NextResponse.json({ success: true, botActive: updated.botActive });
+                const updated = await prisma.conversation.update({
+                    where: { id: conversationId },
+                    data: { assignedUserId: nextAssignedUserId },
+                    include: {
+                        assignedUser: {
+                            select: {
+                                id: true,
+                                name: true,
+                                email: true,
+                                role: true,
+                            },
+                        },
+                    },
+                });
+
+                return NextResponse.json({
+                    success: true,
+                    assignedUserId: updated.assignedUserId,
+                    assignedUser: updated.assignedUser,
+                });
             }
 
             default:

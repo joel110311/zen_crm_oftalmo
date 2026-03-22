@@ -2,8 +2,133 @@
 
 import { prisma } from "@/lib/db";
 import { revalidatePath } from "next/cache";
-import { sendWhatsAppMessage } from "@/lib/ycloud";
 import { enrichContactFromMessage } from "@/lib/ai-enrichment";
+import { sendWuzapiTextMessage } from "@/lib/wuzapi";
+import { generateConversationReply } from "@/lib/ai/chatbot";
+import { getSystemSettingsOrDefaults } from "@/lib/system-settings";
+import { buildInboundMediaContext, shouldSkipAutoReplyText } from "@/lib/ai/media-understanding";
+import { maybeHandleAppointmentBooking } from "@/lib/ai/appointment-booking";
+import { processLeadAutomationTurn } from "@/lib/ai/lead-intelligence";
+
+function normalizeContactName(name?: string | null) {
+    const normalized = name?.trim().replace(/\s+/g, " ") || "";
+    if (!normalized) return null;
+    if (/^(unknown|desconocido|sin nombre|null|undefined|n\/a|na)$/i.test(normalized)) {
+        return null;
+    }
+    return normalized;
+}
+
+async function maybeSendAutomatedReply(
+    conversationId: string,
+    inboundMessageId: string,
+    latestUserMessage: string,
+) {
+    try {
+        const settings = await getSystemSettingsOrDefaults();
+        if (!settings.isBotEnabled) return;
+        if (shouldSkipAutoReplyText(latestUserMessage)) return;
+
+        const initialConversation = await prisma.conversation.findUnique({
+            where: { id: conversationId },
+            include: { contact: true },
+        });
+
+        if (!initialConversation?.botActive || !initialConversation.contact?.phone) {
+            return;
+        }
+
+        if (settings.autoReplyDelayMs > 0) {
+            await new Promise((resolve) => setTimeout(resolve, settings.autoReplyDelayMs));
+        }
+
+        const [latestConversation, latestMessage] = await Promise.all([
+            prisma.conversation.findUnique({
+                where: { id: conversationId },
+                include: { contact: true },
+            }),
+            prisma.message.findFirst({
+                where: { conversationId },
+                orderBy: { createdAt: "desc" },
+            }),
+        ]);
+
+        if (!latestConversation?.botActive || !latestConversation.contact?.phone) return;
+        if (!latestMessage || latestMessage.id !== inboundMessageId || latestMessage.direction !== "inbound") {
+            return;
+        }
+
+        const leadAutomation = await processLeadAutomationTurn({
+            conversationId,
+            latestUserMessage,
+            settings,
+        });
+        const appointmentResult = await maybeHandleAppointmentBooking(
+            conversationId,
+            latestUserMessage,
+            {
+                mode: leadAutomation.pendingCaptureField ? "validate" : "create",
+            },
+        );
+
+        let reply: string | null = null;
+
+        if (
+            appointmentResult.kind === "missing" ||
+            appointmentResult.kind === "unavailable" ||
+            appointmentResult.kind === "created"
+        ) {
+            reply = appointmentResult.reply;
+        } else {
+            const appointmentInstruction =
+                appointmentResult.kind === "validated" && leadAutomation.pendingCaptureField
+                    ? [
+                        `Ya verificaste operativamente que el horario ${appointmentResult.availableSlot.label} sigue disponible.`,
+                        "Todavia no confirmes que la cita quedo agendada.",
+                        `Antes de reservarla, pide unicamente el dato pendiente del cliente (${leadAutomation.pendingCaptureField === "name" ? "nombre completo" : "correo electronico"}).`,
+                        "Manten el mismo horario como referencia y no inventes asesoras, ejecutivos ni datos de contacto humanos.",
+                    ].join(" ")
+                    : null;
+
+            const automationInstruction = [leadAutomation.instruction, appointmentInstruction]
+                .filter(Boolean)
+                .join(" ")
+                .trim() || null;
+
+            reply = await generateConversationReply(
+                conversationId,
+                latestUserMessage,
+                automationInstruction,
+            );
+        }
+
+        if (!reply) return;
+
+        const transportResult = await sendWuzapiTextMessage(latestConversation.contact.phone, reply);
+
+        await prisma.message.create({
+            data: {
+                conversationId,
+                content: reply,
+                direction: "outbound",
+                status: "sent",
+                type: "text",
+                senderType: "bot",
+                providerMessageId: transportResult?.Id || null,
+            },
+        });
+
+        await prisma.conversation.update({
+            where: { id: conversationId },
+            data: { updatedAt: new Date() },
+        });
+
+        revalidatePath("/dashboard/inbox");
+        revalidatePath("/dashboard/pipeline");
+    } catch (error) {
+        console.error("[Bot] Failed to send automated reply:", error);
+    }
+}
 
 export async function getConversations() {
     try {
@@ -50,6 +175,8 @@ export async function sendMessage(conversationId: string, content: string, direc
             throw new Error("Conversation not found");
         }
 
+        const isHumanOutbound = direction === "outbound";
+
         // Create message in database first
         const message = await prisma.message.create({
             data: {
@@ -58,6 +185,7 @@ export async function sendMessage(conversationId: string, content: string, direc
                 direction,
                 status: "sending",
                 type: "text",
+                senderType: isHumanOutbound ? "human" : null,
             },
         });
 
@@ -65,17 +193,20 @@ export async function sendMessage(conversationId: string, content: string, direc
         console.log("[SendMessage] Direction:", direction);
         console.log("[SendMessage] Contact phone:", conversation.contact?.phone);
 
-        // If outbound, send via YCloud WhatsApp API
+        // If outbound, send via WhatsApp QR gateway
         if (direction === "outbound" && conversation.contact?.phone) {
-            console.log("[SendMessage] Attempting to send via YCloud...");
+            console.log("[SendMessage] Attempting to send via WuzAPI...");
             try {
-                const result = await sendWhatsAppMessage(conversation.contact.phone, content);
-                console.log("[SendMessage] YCloud result:", result);
+                const result = await sendWuzapiTextMessage(conversation.contact.phone, content);
+                console.log("[SendMessage] WuzAPI result:", result);
 
                 // Update message status to sent
                 await prisma.message.update({
                     where: { id: message.id },
-                    data: { status: result.success ? "sent" : "failed" },
+                    data: {
+                        status: result?.Id ? "sent" : "failed",
+                        providerMessageId: result?.Id || null,
+                    },
                 });
             } catch (whatsappError) {
                 console.error("[SendMessage] WhatsApp send error:", whatsappError);
@@ -86,7 +217,7 @@ export async function sendMessage(conversationId: string, content: string, direc
                 });
             }
         } else {
-            console.log("[SendMessage] Skipping YCloud - direction:", direction, "phone:", conversation.contact?.phone);
+            console.log("[SendMessage] Skipping WhatsApp transport - direction:", direction, "phone:", conversation.contact?.phone);
             // For inbound or no phone, just mark as sent
             await prisma.message.update({
                 where: { id: message.id },
@@ -96,7 +227,10 @@ export async function sendMessage(conversationId: string, content: string, direc
 
         await prisma.conversation.update({
             where: { id: conversationId },
-            data: { updatedAt: new Date() },
+            data: {
+                updatedAt: new Date(),
+                botActive: isHumanOutbound ? false : conversation.botActive,
+            },
         });
 
         revalidatePath(`/dashboard/inbox`);
@@ -140,30 +274,30 @@ export async function processInboundMessage(
         mediaUrl?: string;
         mediaType?: string;
         mediaFileName?: string;
-    }
+    },
+    providerMessageId?: string,
 ) {
     try {
+        const normalizedCustomerName = normalizeContactName(customerName);
+
         // Find or create contact by phone number
         let contact = await prisma.contact.findUnique({
             where: { phone: from },
         });
 
-        let isNewContact = false;
-
         if (!contact) {
-            isNewContact = true;
             contact = await prisma.contact.create({
                 data: {
                     phone: from,
-                    name: customerName || null,
+                    name: normalizedCustomerName,
                     status: "lead",
                 },
             });
-        } else if (customerName && !contact.name) {
+        } else if (normalizedCustomerName && !normalizeContactName(contact.name)) {
             // Update contact name if we got it from webhook and it's not set
             contact = await prisma.contact.update({
                 where: { id: contact.id },
-                data: { name: customerName },
+                data: { name: normalizedCustomerName },
             });
         }
 
@@ -192,16 +326,24 @@ export async function processInboundMessage(
                 mediaUrl: media?.mediaUrl || null,
                 mediaType: media?.mediaType || null,
                 mediaFileName: media?.mediaFileName || null,
+                providerMessageId: providerMessageId || null,
             },
         });
 
-        // Update conversation timestamp and reset 24h window
+        // Update conversation activity timestamp
         await prisma.conversation.update({
             where: { id: conversation.id },
             data: {
                 updatedAt: new Date(),
-                sessionExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000)
             },
+        });
+
+        const botInputText = await buildInboundMediaContext({
+            text,
+            type: media?.type,
+            mediaUrl: media?.mediaUrl,
+            mediaType: media?.mediaType,
+            mediaFileName: media?.mediaFileName,
         });
 
         // ── Auto-create Deal for contacts without a deal ──
@@ -217,8 +359,9 @@ export async function processInboundMessage(
                 });
 
                 if (incomingStage) {
-                    const dealTitle = (contact.name || customerName)
-                        ? `Lead - ${contact.name || customerName}`
+                    const displayName = normalizeContactName(contact.name) || normalizedCustomerName;
+                    const dealTitle = displayName
+                        ? `Lead - ${displayName}`
                         : `Lead WhatsApp - ${from}`;
 
                     await prisma.deal.create({
@@ -242,44 +385,13 @@ export async function processInboundMessage(
 
         // ── CHATBOT / N8N FORWARDING ──
         try {
-            const settings = await prisma.systemSettings.findFirst();
-            if (settings?.isBotEnabled && settings?.n8nWebhookUrl) {
-                console.log(`[Chatbot] Bot enabled. Forwarding message from ${from} to n8n...`);
-
-                // Send payload compatible with n8n Webhook node
-                const n8nPayload = {
-                    from,
-                    text,
-                    customerName: customerName || contact.name,
-                    contactId: contact.id,
-                    conversationId: conversation.id,
-                    direction: "inbound",
-                    senderType: "customer",
-                    media,
-                    timestamp: new Date().toISOString(),
-                };
-
-                // Non-blocking fetch to avoid delaying the webhook response
-                fetch(settings.n8nWebhookUrl, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(n8nPayload),
-                }).then(res => {
-                    console.log(`[Chatbot] n8n response status: ${res.status}`);
-                }).catch(err => {
-                    console.error("[Chatbot] Failed to forward to n8n:", err);
-                });
-            } else {
-                // Only do AI enrichment if Bot is DISABLED (or maybe we want both?)
-                // For now, let's keep enrichment active as it just updates contact info
-                console.log("[Chatbot] Bot disabled or no webhook URL. Skipping forwarding.");
-            }
+            void maybeSendAutomatedReply(conversation.id, message.id, botInputText);
         } catch (botError) {
-            console.error("[Chatbot] Error checking bot settings:", botError);
+            console.error("[Chatbot] Error scheduling automated reply:", botError);
         }
 
         // ── AI Contact Enrichment (fire-and-forget) ──
-        enrichContactFromMessage(contact.id, text).catch((err) => {
+        enrichContactFromMessage(contact.id, botInputText || text).catch((err) => {
             console.error("[AI Enrichment] Background enrichment failed:", err);
         });
 

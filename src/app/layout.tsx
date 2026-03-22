@@ -1,12 +1,5 @@
 import type { Metadata } from "next";
-import { Poppins } from "next/font/google";
 import "./globals.css";
-
-const poppins = Poppins({
-  subsets: ["latin"],
-  weight: ["300", "400", "500", "600", "700"],
-  variable: "--font-poppins",
-});
 export const metadata: Metadata = {
   title: "Zen CRM",
   description: "Advanced WhatsApp CRM with AI capabilities",
@@ -17,11 +10,13 @@ import { Toaster } from "@/components/ui/toaster"
 import { SessionProvider } from "@/components/providers/session-provider"
 import { auth } from "@/lib/auth"
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const session = await auth();
+
   return (
     <html lang="es" suppressHydrationWarning>
       <head>
@@ -29,7 +24,7 @@ export default function RootLayout({
         <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
       </head>
       <body className="font-sans antialiased">
-        <SessionProvider>
+        <SessionProvider session={session}>
           <ThemeProvider
             attribute="class"
             defaultTheme="system"

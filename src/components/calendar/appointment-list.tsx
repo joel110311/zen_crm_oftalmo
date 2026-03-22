@@ -7,6 +7,7 @@ import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { Edit2, Trash2, CheckCircle, Bot } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { getContactFullName } from "@/lib/contact-name";
 
 interface AppointmentListProps {
     appointments: any[];
@@ -56,7 +57,7 @@ export function AppointmentList({ appointments, onEdit, onDelete }: AppointmentL
                                     <div className="flex items-center gap-2">
                                         <div className="flex flex-col">
                                             <span className="font-medium text-slate-900">
-                                                {apt.contact ? apt.contact.name : "Cliente desconocido"}
+                                                {apt.contact ? getContactFullName(apt.contact, "Cliente desconocido") : "Cliente desconocido"}
                                             </span>
                                             <span className="text-xs text-slate-400">
                                                 {apt.contact?.phone || "Sin teléfono"}

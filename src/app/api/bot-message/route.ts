@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db";
 /**
  * POST /api/bot-message
  * 
- * Called by n8n (or any external bot) AFTER sending a message via YCloud.
+ * Called by any external assistant that wants to persist a bot message in the CRM.
  * Stores the bot's response in the CRM so it appears in the chat.
  * 
  * Body:

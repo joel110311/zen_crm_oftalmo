@@ -23,6 +23,11 @@
 # misc
 .DS_Store
 *.pem
+cookies.txt
+csrf.json
+build_stats.txt
+media-upload.log
+tmp*
 
 # debug
 npm-debug.log*

@@ -9,6 +9,7 @@ import { AutoSaveInput } from "@/components/contacts/auto-save-input";
 import { ContactTags } from "@/components/contacts/contact-tags";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
+import { getContactFullName, getContactInitial } from "@/lib/contact-name";
 
 export default async function ContactDetailsPage(props: { params: Promise<{ id: string }> }) {
     const params = await props.params;
@@ -26,6 +27,7 @@ export default async function ContactDetailsPage(props: { params: Promise<{ id: 
             dealTitle: deal.title
         }))
     ) || [];
+    const fullName = getContactFullName(contact);
 
     return (
         <div className="flex flex-col h-full gap-4">
@@ -37,7 +39,7 @@ export default async function ContactDetailsPage(props: { params: Promise<{ id: 
                     </Button>
                 </Link>
                 <div>
-                    <h1 className="text-2xl font-bold Tracking-tight text-gray-900">{contact.name || "Sin Nombre"}</h1>
+                    <h1 className="text-2xl font-bold Tracking-tight text-gray-900">{fullName}</h1>
                     <p className="text-sm text-gray-500">
                         Creado el {format(new Date(contact.createdAt), "PPP", { locale: es })}
                     </p>
@@ -51,7 +53,7 @@ export default async function ContactDetailsPage(props: { params: Promise<{ id: 
                         <CardContent className="pt-6 flex flex-col items-center text-center">
                             <Avatar className="h-24 w-24 mb-4 ring-2 ring-offset-2 ring-blue-100">
                                 <AvatarFallback className="text-2xl bg-gradient-to-br from-blue-500 to-indigo-600 text-white">
-                                    {(contact.name || "C").charAt(0).toUpperCase()}
+                                    {getContactInitial(contact)}
                                 </AvatarFallback>
                             </Avatar>
 
@@ -71,9 +73,15 @@ export default async function ContactDetailsPage(props: { params: Promise<{ id: 
                                 <AutoSaveInput
                                     id={contact.id}
                                     field="name"
-                                    label="Nombre Completo"
+                                    label="Nombre"
                                     initialValue={contact.name || ""}
                                     className="font-medium"
+                                />
+                                <AutoSaveInput
+                                    id={contact.id}
+                                    field="lastName"
+                                    label="Apellidos"
+                                    initialValue={contact.lastName || ""}
                                 />
                                 <AutoSaveInput
                                     id={contact.id}

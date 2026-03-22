@@ -1,9 +1,10 @@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Users, MessageSquare, TrendingUp, Calendar, ArrowRight, Wallet, Plus, Send, BarChart3 } from "lucide-react";
+import { Users, MessageSquare, TrendingUp, Calendar, ArrowRight, Wallet, Plus, BarChart3 } from "lucide-react";
 import { prisma } from "@/lib/db";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { auth } from "@/lib/auth";
+import { getContactFullName } from "@/lib/contact-name";
 
 async function getDashboardStats() {
     const [
@@ -28,7 +29,7 @@ async function getDashboardStats() {
             take: 5,
             orderBy: { createdAt: "desc" },
             include: {
-                contact: { select: { name: true, phone: true } },
+                contact: { select: { name: true, lastName: true, phone: true } },
                 stage: { select: { name: true, color: true } },
             },
         }),
@@ -36,7 +37,7 @@ async function getDashboardStats() {
             where: { startTime: { gte: new Date() } },
             take: 5,
             orderBy: { startTime: "asc" },
-            include: { contact: { select: { name: true } } },
+            include: { contact: { select: { name: true, lastName: true } } },
         }),
     ]);
 
@@ -96,11 +97,6 @@ export default async function DashboardPage() {
                     <Button variant="outline" size="sm" className="rounded-lg gap-1.5 font-medium" asChild>
                         <Link href="/dashboard/contacts">
                             <Plus className="h-3.5 w-3.5" /> Nuevo Contacto
-                        </Link>
-                    </Button>
-                    <Button variant="outline" size="sm" className="rounded-lg gap-1.5 font-medium" asChild>
-                        <Link href="/dashboard/templates">
-                            <Send className="h-3.5 w-3.5" /> Enviar Plantilla
                         </Link>
                     </Button>
                     <Button size="sm" className="rounded-lg gap-1.5 font-medium" asChild>
@@ -348,7 +344,7 @@ export default async function DashboardPage() {
                                         </div>
                                         <div className="flex-1 min-w-0">
                                             <p className="text-sm font-semibold truncate text-foreground leading-snug">
-                                                {deal.contact?.name || deal.title}
+                                                {deal.contact ? getContactFullName(deal.contact, deal.title) : deal.title}
                                             </p>
                                             <p className="text-xs text-muted-foreground truncate">
                                                 {deal.stage.name} • <span className="font-medium text-foreground">${deal.value.toLocaleString("es-MX")}</span>
@@ -387,7 +383,7 @@ export default async function DashboardPage() {
                                             </p>
                                             <p className="text-xs text-muted-foreground">
                                                 {new Date(apt.startTime).toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" })}
-                                                {apt.contact?.name ? ` • ${apt.contact.name}` : ""}
+                                                {apt.contact ? ` • ${getContactFullName(apt.contact)}` : ""}
                                             </p>
                                         </div>
                                     </div>

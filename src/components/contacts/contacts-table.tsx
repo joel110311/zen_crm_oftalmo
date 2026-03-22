@@ -22,6 +22,7 @@ import Link from "next/link";
 import { useDebouncedCallback } from "use-debounce";
 import { ContactTableTags } from "@/components/contacts/contact-table-tags";
 import { ContactActions } from "@/components/contacts/contact-actions";
+import { getContactFullName, getContactInitial } from "@/lib/contact-name";
 
 interface ContactsPageProps {
     contacts: any[]; // Prisma type
@@ -99,7 +100,9 @@ export function ContactsTable({ contacts }: ContactsPageProps) {
                                 </TableCell>
                             </TableRow>
                         ) : (
-                            contacts.map((contact) => (
+                            contacts.map((contact) => {
+                                const fullName = getContactFullName(contact);
+                                return (
                                 <TableRow key={contact.id} className="group hover:bg-muted/50 transition-colors border-b border-border">
                                     <TableCell>
                                         <Checkbox />
@@ -108,12 +111,12 @@ export function ContactsTable({ contacts }: ContactsPageProps) {
                                         <Link href={`/dashboard/contacts/${contact.id}`} className="flex items-center gap-3">
                                             <Avatar className="h-8 w-8">
                                                 <AvatarFallback className="bg-primary/10 text-primary font-bold text-xs">
-                                                    {contact.name?.charAt(0).toUpperCase()}
+                                                    {getContactInitial(contact)}
                                                 </AvatarFallback>
                                             </Avatar>
                                             <div>
                                                 <div className="font-medium text-foreground group-hover:text-primary transition-colors">
-                                                    {contact.name}
+                                                    {fullName}
                                                 </div>
                                             </div>
                                         </Link>
@@ -137,7 +140,8 @@ export function ContactsTable({ contacts }: ContactsPageProps) {
                                         <ContactActions contactId={contact.id} />
                                     </TableCell>
                                 </TableRow>
-                            ))
+                                );
+                            })
                         )}
                     </TableBody>
                 </Table>

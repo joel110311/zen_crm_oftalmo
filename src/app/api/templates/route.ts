@@ -1,82 +1,132 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { auth } from "@/lib/auth";
+import { listTemplateVariableKeys, normalizeTemplateShortcut } from "@/lib/templates";
 
-const YCLOUD_BASE = "https://api.ycloud.com/v2";
+const ALLOWED_TEMPLATE_TYPES = new Set(["text", "image", "document"]);
 
-async function getApiKey() {
-    const settings = await prisma.systemSettings.findFirst();
-    return settings?.ycloudApiKey || process.env.YCLOUD_API_KEY || "";
+function getSessionRole(session: unknown) {
+    return (session as { user?: { role?: string } } | null)?.user?.role || null;
 }
 
-// GET: List all WhatsApp templates from YCloud
-export async function GET(req: NextRequest) {
+function ensureAuthenticated(session: unknown) {
+    if (!(session as { user?: { id?: string } } | null)?.user?.id) {
+        return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+    }
+    return null;
+}
+
+function ensureSuperadmin(session: unknown) {
+    const role = getSessionRole(session);
+    if (role !== "SUPERADMIN") {
+        return NextResponse.json({ error: "Solo superadmin puede administrar plantillas" }, { status: 403 });
+    }
+    return null;
+}
+
+export async function GET(request: NextRequest) {
     try {
-        const apiKey = await getApiKey();
-        if (!apiKey) {
-            return NextResponse.json({ error: "YCloud API Key no configurada" }, { status: 400 });
-        }
+        const session = await auth();
+        const unauthorized = ensureAuthenticated(session);
+        if (unauthorized) return unauthorized;
+        const templateRepo = prisma.template as any;
 
-        const { searchParams } = new URL(req.url);
-        const page = searchParams.get("page") || "1";
-        const limit = searchParams.get("limit") || "100";
+        const { searchParams } = new URL(request.url);
+        const activeOnly = searchParams.get("activeOnly") === "true";
+        const query = searchParams.get("q")?.trim();
 
-        const res = await fetch(
-            `${YCLOUD_BASE}/whatsapp/templates?limit=${limit}&page=${page}`,
-            {
-                headers: { "X-API-Key": apiKey },
-                cache: "no-store",
-            }
-        );
+        const templates = await templateRepo.findMany({
+            where: {
+                ...(activeOnly ? { isActive: true } : {}),
+                ...(query
+                    ? {
+                          OR: [
+                              { name: { contains: query, mode: "insensitive" } },
+                              { category: { contains: query, mode: "insensitive" } },
+                              { content: { contains: query, mode: "insensitive" } },
+                              { shortcut: { contains: query, mode: "insensitive" } },
+                          ],
+                      }
+                    : {}),
+            },
+            orderBy: [
+                { isFavorite: "desc" },
+                { sortOrder: "asc" },
+                { lastUsedAt: "desc" },
+                { usageCount: "desc" },
+                { updatedAt: "desc" },
+            ],
+        });
 
-        if (!res.ok) {
-            const err = await res.json().catch(() => ({}));
-            console.error("[Templates API] YCloud error:", err);
-            return NextResponse.json(
-                { error: err.message || `YCloud error: ${res.status}` },
-                { status: res.status }
-            );
-        }
-
-        const data = await res.json();
-        return NextResponse.json(data);
+        return NextResponse.json({ templates });
     } catch (error) {
-        console.error("[Templates API] Error:", error);
-        return NextResponse.json({ error: "Failed to fetch templates" }, { status: 500 });
+        console.error("[Templates] GET failed:", error);
+        return NextResponse.json({ error: "No se pudieron cargar las plantillas" }, { status: 500 });
     }
 }
 
-// POST: Create a new WhatsApp template
-export async function POST(req: NextRequest) {
+export async function POST(request: NextRequest) {
     try {
-        const apiKey = await getApiKey();
-        if (!apiKey) {
-            return NextResponse.json({ error: "YCloud API Key no configurada" }, { status: 400 });
+        const session = await auth();
+        const unauthorized = ensureAuthenticated(session);
+        if (unauthorized) return unauthorized;
+        const forbidden = ensureSuperadmin(session);
+        if (forbidden) return forbidden;
+
+        const body = await request.json();
+        const templateRepo = prisma.template as any;
+        const name = String(body.name || "").trim();
+        const content = String(body.content || "").trim();
+        const type = String(body.type || "text").trim();
+        const category = String(body.category || "").trim() || null;
+        const shortcut = normalizeTemplateShortcut(body.shortcut);
+        const mediaUrl = typeof body.mediaUrl === "string" ? body.mediaUrl : null;
+        const mediaType = typeof body.mediaType === "string" ? body.mediaType : null;
+        const mediaFileName = typeof body.mediaFileName === "string" ? body.mediaFileName : null;
+        const isFavorite = Boolean(body.isFavorite);
+        const isActive = body.isActive !== false;
+        const sortOrder = Number.isFinite(Number(body.sortOrder)) ? Number(body.sortOrder) : 0;
+
+        if (!name) {
+            return NextResponse.json({ error: "El nombre es obligatorio" }, { status: 400 });
         }
 
-        const body = await req.json();
+        if (!ALLOWED_TEMPLATE_TYPES.has(type)) {
+            return NextResponse.json({ error: "Tipo de plantilla no soportado" }, { status: 400 });
+        }
 
-        const res = await fetch(`${YCLOUD_BASE}/whatsapp/templates`, {
-            method: "POST",
-            headers: {
-                "X-API-Key": apiKey,
-                "Content-Type": "application/json",
+        if (type === "text" && !content) {
+            return NextResponse.json({ error: "El contenido es obligatorio para plantillas de texto" }, { status: 400 });
+        }
+
+        if ((type === "image" || type === "document") && !mediaUrl) {
+            return NextResponse.json({ error: "La plantilla requiere un archivo adjunto" }, { status: 400 });
+        }
+
+        const template = await templateRepo.create({
+            data: {
+                name,
+                content,
+                category,
+                type,
+                shortcut,
+                mediaUrl,
+                mediaType,
+                mediaFileName,
+                variables: listTemplateVariableKeys(content),
+                isFavorite,
+                isActive,
+                sortOrder,
             },
-            body: JSON.stringify(body),
         });
 
-        const data = await res.json();
-
-        if (!res.ok) {
-            console.error("[Templates API] Create error:", data);
-            return NextResponse.json(
-                { error: data.message || `YCloud error: ${res.status}` },
-                { status: res.status }
-            );
-        }
-
-        return NextResponse.json(data, { status: 201 });
+        return NextResponse.json({ success: true, template });
     } catch (error) {
-        console.error("[Templates API] Create error:", error);
-        return NextResponse.json({ error: "Failed to create template" }, { status: 500 });
+        console.error("[Templates] POST failed:", error);
+        const message =
+            error instanceof Error && error.message.toLowerCase().includes("unique")
+                ? "El atajo ya esta en uso por otra plantilla"
+                : "No se pudo crear la plantilla";
+        return NextResponse.json({ error: message }, { status: 500 });
     }
 }

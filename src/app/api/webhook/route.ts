@@ -1,233 +1,689 @@
+import crypto from "crypto";
+import path from "path";
+import { mkdir, writeFile } from "fs/promises";
+import { revalidatePath } from "next/cache";
 import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/db";
 import { processInboundMessage } from "@/app/actions/chat";
+import { getSystemSettingsOrDefaults } from "@/lib/system-settings";
+import { downloadWuzapiMedia } from "@/lib/wuzapi";
 
-// Verify Webhook (GET) - Used by Meta direct API
-export async function GET(req: NextRequest) {
-    const searchParams = req.nextUrl.searchParams;
-    const mode = searchParams.get("hub.mode");
-    const token = searchParams.get("hub.verify_token");
-    const challenge = searchParams.get("hub.challenge");
+type JsonObject = Record<string, unknown>;
 
-    // ECH Guard 1: missing params
-    if (!mode || !token || !challenge) {
-        return new NextResponse("Bad Request: Missing hub params", { status: 400 });
-    }
+type WuzapiWebhookEvent = JsonObject & {
+    Info?: JsonObject;
+    Message?: unknown;
+    PushName?: string;
+};
 
-    const VERIFY_TOKEN = process.env.META_VERIFY_TOKEN;
+type WuzapiWebhookPayload = {
+    token?: string;
+    type?: string;
+    event?: WuzapiWebhookEvent;
+    base64?: string;
+    mimeType?: string;
+    fileName?: string;
+    s3?: {
+        url?: string;
+        mimeType?: string;
+        fileName?: string;
+    };
+};
 
-    if (mode === "subscribe" && token === VERIFY_TOKEN) {
-        console.log("WEBHOOK_VERIFIED");
-        return new NextResponse(challenge, { status: 200 });
-    }
-
-    return new NextResponse("Forbidden", { status: 403 });
+function asRecord(value: unknown): JsonObject | null {
+    return typeof value === "object" && value !== null ? (value as JsonObject) : null;
 }
 
-// Handle Events (POST) - Supports YCloud payload format
+function getString(record: JsonObject | null, key: string): string | undefined {
+    const value = record?.[key];
+    return typeof value === "string" ? value : undefined;
+}
+
+function getNumber(record: JsonObject | null, key: string): number | undefined {
+    const value = record?.[key];
+    if (typeof value === "number" && Number.isFinite(value)) {
+        return value;
+    }
+    if (typeof value === "string") {
+        const parsed = Number(value);
+        return Number.isFinite(parsed) ? parsed : undefined;
+    }
+    return undefined;
+}
+
+function getBoolean(record: JsonObject | null, key: string): boolean | undefined {
+    const value = record?.[key];
+    if (typeof value === "boolean") {
+        return value;
+    }
+    if (typeof value === "string") {
+        const normalized = value.trim().toLowerCase();
+        if (normalized === "true") return true;
+        if (normalized === "false") return false;
+    }
+    return undefined;
+}
+
+function normalizeCustomerNameValue(value: string | undefined): string | undefined {
+    if (!value) return undefined;
+
+    const normalized = value.trim().replace(/\s+/g, " ");
+    if (!normalized) return undefined;
+
+    if (/^(unknown|desconocido|sin nombre|null|undefined|n\/a|na)$/i.test(normalized)) {
+        return undefined;
+    }
+
+    return normalized;
+}
+
+function getNestedRecord(record: JsonObject | null, key: string): JsonObject | null {
+    return asRecord(record?.[key]);
+}
+
+function resolveCustomerName(payload: WuzapiWebhookPayload, info: JsonObject) {
+    const eventRecord = asRecord(payload.event);
+    const candidates = [
+        getString(info, "PushName"),
+        getString(info, "pushName"),
+        getString(info, "SenderName"),
+        getString(info, "senderName"),
+        getString(info, "Notify"),
+        getString(info, "notify"),
+        getString(info, "VerifiedName"),
+        getString(info, "verifiedName"),
+        getString(info, "FullName"),
+        getString(info, "fullName"),
+        getString(eventRecord, "PushName"),
+        getString(eventRecord, "pushName"),
+        getString(eventRecord, "SenderName"),
+        getString(eventRecord, "senderName"),
+        getString(eventRecord, "Notify"),
+        getString(eventRecord, "notify"),
+    ];
+
+    return candidates
+        .map((candidate) => normalizeCustomerNameValue(candidate))
+        .find(Boolean);
+}
+
+type MediaPayload = {
+    type?: string;
+    mediaUrl?: string;
+    mediaType?: string;
+    mediaFileName?: string;
+};
+
+type DownloadRequestPayload = {
+    Url: string;
+    DirectPath?: string;
+    MediaKey: string;
+    Mimetype: string;
+    FileEncSHA256?: string;
+    FileSHA256: string;
+    FileLength: number;
+};
+
+type ExtractedMessageDetails = {
+    text: string;
+    type: "text" | "image" | "document" | "audio" | "video";
+    mimeType?: string;
+    fileName?: string;
+    ignore?: boolean;
+    downloadKind?: "image" | "audio" | "video" | "document" | "sticker";
+    downloadPayload?: DownloadRequestPayload;
+    previewDataUrl?: string;
+};
+
+function isLidAddress(value: unknown) {
+    return typeof value === "string" && value.includes("@lid");
+}
+
+function normalizeJidValue(value: string) {
+    return value.replace(/:\d+@/, "@").trim();
+}
+
+function extractJidPhone(value: unknown): string {
+    if (!value) return "";
+
+    if (typeof value === "string") {
+        const normalized = normalizeJidValue(value);
+        const candidate = normalized.includes("@")
+            ? normalized.split("@")[0]
+            : normalized;
+        return candidate.replace(/\D/g, "");
+    }
+
+    if (typeof value === "object") {
+        const maybeObject = value as Record<string, unknown>;
+        const user = maybeObject.User || maybeObject.user;
+        if (typeof user === "string") {
+            return user.replace(/\D/g, "");
+        }
+
+        const jidString = maybeObject.String || maybeObject.string;
+        if (typeof jidString === "string") {
+            return extractJidPhone(jidString);
+        }
+    }
+
+    return "";
+}
+
+function pickPreferredPhoneSource(info: JsonObject) {
+    const candidates = [
+        info["Chat"],
+        info["chat"],
+        info["SenderAlt"],
+        info["senderAlt"],
+        info["RecipientAlt"],
+        info["recipientAlt"],
+        info["Sender"],
+        info["sender"],
+    ];
+
+    return (
+        candidates.find((candidate) => candidate && !isLidAddress(candidate)) ||
+        candidates.find(Boolean) ||
+        ""
+    );
+}
+
+function pickPreferredOutboundPhoneSource(info: JsonObject) {
+    const candidates = [
+        info["RecipientAlt"],
+        info["recipientAlt"],
+        info["Recipient"],
+        info["recipient"],
+        info["Chat"],
+        info["chat"],
+        info["RemoteJid"],
+        info["remoteJid"],
+        info["SenderAlt"],
+        info["senderAlt"],
+    ];
+
+    return (
+        candidates.find((candidate) => candidate && !isLidAddress(candidate)) ||
+        candidates.find(Boolean) ||
+        ""
+    );
+}
+
+function unwrapMessageNode(node: unknown): unknown {
+    const record = asRecord(node);
+    if (!record) return node;
+
+    const deviceSentMessage = getNestedRecord(record, "deviceSentMessage");
+    if (deviceSentMessage?.message) return unwrapMessageNode(deviceSentMessage.message);
+
+    const editedMessage = getNestedRecord(record, "editedMessage");
+    if (editedMessage?.message) return unwrapMessageNode(editedMessage.message);
+
+    const ephemeralMessage = getNestedRecord(record, "ephemeralMessage");
+    if (ephemeralMessage?.message) return unwrapMessageNode(ephemeralMessage.message);
+
+    const viewOnceMessage = getNestedRecord(record, "viewOnceMessage");
+    if (viewOnceMessage?.message) return unwrapMessageNode(viewOnceMessage.message);
+
+    const viewOnceMessageV2 = getNestedRecord(record, "viewOnceMessageV2");
+    if (viewOnceMessageV2?.message) return unwrapMessageNode(viewOnceMessageV2.message);
+
+    return record;
+}
+
+function extFromMimeType(mimeType: string) {
+    if (mimeType.includes("jpeg")) return ".jpg";
+    if (mimeType.includes("png")) return ".png";
+    if (mimeType.includes("webp")) return ".webp";
+    if (mimeType.includes("pdf")) return ".pdf";
+    if (mimeType.includes("ogg")) return ".ogg";
+    if (mimeType.includes("mpeg")) return ".mp3";
+    if (mimeType.includes("mp4")) return ".mp4";
+    if (mimeType.includes("quicktime")) return ".mov";
+    if (mimeType.includes("plain")) return ".txt";
+    return "";
+}
+
+function buildDownloadPayload(record: JsonObject | null): DownloadRequestPayload | undefined {
+    if (!record) return undefined;
+
+    const url = getString(record, "URL");
+    const mediaKey = getString(record, "mediaKey");
+    const mimeType = getString(record, "mimetype");
+    const fileSha256 = getString(record, "fileSHA256");
+    const fileLength = getNumber(record, "fileLength");
+
+    if (!url || !mediaKey || !mimeType || !fileSha256 || !fileLength) {
+        return undefined;
+    }
+
+    return {
+        Url: url,
+        DirectPath: getString(record, "directPath"),
+        MediaKey: mediaKey,
+        Mimetype: mimeType,
+        FileEncSHA256: getString(record, "fileEncSHA256"),
+        FileSHA256: fileSha256,
+        FileLength: fileLength,
+    };
+}
+
+function decodeDataUrl(dataUrl: string) {
+    const [, base64 = ""] = dataUrl.split(",", 2);
+    return Buffer.from(base64, "base64");
+}
+
+function extractMessageDetails(messageNode: unknown): ExtractedMessageDetails {
+    const message = asRecord(unwrapMessageNode(messageNode));
+
+    if (!message) {
+        return {
+            text: "[Mensaje de WhatsApp]",
+            type: "text" as const,
+            ignore: true,
+        };
+    }
+
+    const protocolMessage = getNestedRecord(message, "protocolMessage");
+    if (protocolMessage) {
+        return {
+            text: "[Evento de sistema de WhatsApp]",
+            type: "text" as const,
+            ignore: true,
+        };
+    }
+
+    const conversation = getString(message, "conversation");
+    if (conversation) {
+        return { text: conversation, type: "text" as const };
+    }
+
+    const extendedTextMessage = getNestedRecord(message, "extendedTextMessage");
+    const extendedText = getString(extendedTextMessage, "text");
+    if (extendedText) {
+        return { text: extendedText, type: "text" as const };
+    }
+
+    const imageMessage = getNestedRecord(message, "imageMessage");
+    if (imageMessage) {
+        return {
+            text: getString(imageMessage, "caption") || "[Imagen]",
+            type: "image" as const,
+            mimeType: getString(imageMessage, "mimetype"),
+            fileName: getString(imageMessage, "fileName"),
+            downloadKind: "image",
+            downloadPayload: buildDownloadPayload(imageMessage),
+            previewDataUrl: getString(imageMessage, "JPEGThumbnail")
+                ? `data:image/jpeg;base64,${getString(imageMessage, "JPEGThumbnail")}`
+                : undefined,
+        };
+    }
+
+    const documentMessage = getNestedRecord(message, "documentMessage");
+    if (documentMessage) {
+        return {
+            text: getString(documentMessage, "caption") || getString(documentMessage, "fileName") || "[Documento]",
+            type: "document" as const,
+            mimeType: getString(documentMessage, "mimetype"),
+            fileName: getString(documentMessage, "fileName"),
+            downloadKind: "document",
+            downloadPayload: buildDownloadPayload(documentMessage),
+        };
+    }
+
+    const audioMessage = getNestedRecord(message, "audioMessage");
+    if (audioMessage) {
+        return {
+            text: "[Audio]",
+            type: "audio" as const,
+            mimeType: getString(audioMessage, "mimetype"),
+            downloadKind: "audio",
+            downloadPayload: buildDownloadPayload(audioMessage),
+        };
+    }
+
+    const videoMessage = getNestedRecord(message, "videoMessage");
+    if (videoMessage) {
+        return {
+            text: getString(videoMessage, "caption") || "[Video]",
+            type: "video" as const,
+            mimeType: getString(videoMessage, "mimetype"),
+            fileName: getString(videoMessage, "fileName"),
+            downloadKind: "video",
+            downloadPayload: buildDownloadPayload(videoMessage),
+        };
+    }
+
+    const stickerMessage = getNestedRecord(message, "stickerMessage");
+    if (stickerMessage) {
+        return {
+            text: "[Sticker]",
+            type: "image" as const,
+            mimeType: getString(stickerMessage, "mimetype"),
+            downloadKind: "sticker",
+            downloadPayload: buildDownloadPayload(stickerMessage),
+        };
+    }
+
+    return {
+        text: "[Mensaje de WhatsApp]",
+        type: "text",
+        ignore: true,
+    };
+}
+
+function resolvePhoneFromInfo(info: JsonObject, isFromMe: boolean) {
+    return extractJidPhone(
+        isFromMe
+            ? pickPreferredOutboundPhoneSource(info)
+            : pickPreferredPhoneSource(info),
+    );
+}
+
+function resolveProviderMessageId(info: JsonObject) {
+    return (
+        getString(info, "ID") ||
+        getString(info, "Id") ||
+        getString(info, "id") ||
+        getString(info, "MessageID") ||
+        getString(info, "messageId") ||
+        ""
+    ).trim();
+}
+
+function stringContainsNonDirectJid(value: string) {
+    const normalized = normalizeJidValue(value).toLowerCase();
+    return normalized.includes("@g.us") || normalized.includes("@broadcast") || normalized.includes("@newsletter");
+}
+
+function valueContainsNonDirectJid(value: unknown): boolean {
+    if (!value) return false;
+
+    if (typeof value === "string") {
+        return stringContainsNonDirectJid(value);
+    }
+
+    if (typeof value === "object") {
+        const record = value as Record<string, unknown>;
+        return Object.values(record).some((entry) => valueContainsNonDirectJid(entry));
+    }
+
+    return false;
+}
+
+function isNonDirectChat(info: JsonObject) {
+    const explicitGroupFlag = getBoolean(info, "IsGroup") ?? getBoolean(info, "isGroup");
+    if (explicitGroupFlag) {
+        return true;
+    }
+
+    const candidates = [
+        info["Chat"],
+        info["chat"],
+        info["RemoteJid"],
+        info["remoteJid"],
+        info["Sender"],
+        info["sender"],
+        info["Recipient"],
+        info["recipient"],
+        info["MessageSource"],
+        info["messageSource"],
+    ];
+
+    return candidates.some((candidate) => valueContainsNonDirectJid(candidate));
+}
+
+function normalizeIncomingPayload(raw: unknown): WuzapiWebhookPayload {
+    const payload = asRecord(raw);
+    if (!payload) {
+        return {};
+    }
+
+    const jsonData = getString(payload, "jsonData");
+    if (!jsonData) {
+        return payload as WuzapiWebhookPayload;
+    }
+
+    try {
+        const parsed = JSON.parse(jsonData) as WuzapiWebhookPayload;
+        return {
+            ...parsed,
+            token: getString(payload, "token") || getString(payload, "Token") || parsed.token,
+            base64: getString(payload, "base64") || parsed.base64,
+            mimeType: getString(payload, "mimeType") || parsed.mimeType,
+            fileName: getString(payload, "fileName") || parsed.fileName,
+            s3: parsed.s3,
+        };
+    } catch {
+        return payload as WuzapiWebhookPayload;
+    }
+}
+
+async function saveIncomingMedia(payload: WuzapiWebhookPayload, details: ExtractedMessageDetails) {
+    const fileName =
+        payload.s3?.fileName ||
+        payload.fileName ||
+        details.fileName ||
+        `wa-${Date.now()}${extFromMimeType(payload.s3?.mimeType || payload.mimeType || details.mimeType || "")}`;
+    const mimeType = payload.s3?.mimeType || payload.mimeType || details.mimeType || undefined;
+
+    if (payload.s3?.url) {
+        return {
+            type: details.type,
+            mediaUrl: payload.s3.url,
+            mediaType: mimeType,
+            mediaFileName: fileName,
+        } satisfies MediaPayload;
+    }
+
+    if (!payload.base64) {
+        if (details.downloadKind && details.downloadPayload) {
+            try {
+                const downloaded = await downloadWuzapiMedia(details.downloadKind, details.downloadPayload);
+                if (downloaded.Data) {
+                    const uploadsDir = path.join(process.cwd(), "public", "uploads");
+                    await mkdir(uploadsDir, { recursive: true });
+                    const downloadedMimeType = downloaded.Mimetype || mimeType || details.downloadPayload.Mimetype;
+                    const extension = path.extname(fileName) || extFromMimeType(downloadedMimeType || "") || "";
+                    const safeFileName = `${Date.now()}-${crypto.randomUUID().slice(0, 8)}${extension}`;
+                    const absoluteFilePath = path.join(uploadsDir, safeFileName);
+                    await writeFile(absoluteFilePath, decodeDataUrl(downloaded.Data));
+
+                    return {
+                        type: details.type,
+                        mediaUrl: `/uploads/${safeFileName}`,
+                        mediaType: downloadedMimeType,
+                        mediaFileName: fileName,
+                    } satisfies MediaPayload;
+                }
+            } catch (error) {
+                console.error("[Webhook] Failed to download media from WuzAPI:", error);
+            }
+        }
+
+        if (details.previewDataUrl) {
+            const uploadsDir = path.join(process.cwd(), "public", "uploads");
+            await mkdir(uploadsDir, { recursive: true });
+            const extension = path.extname(fileName) || ".jpg";
+            const safeFileName = `${Date.now()}-${crypto.randomUUID().slice(0, 8)}${extension}`;
+            const absoluteFilePath = path.join(uploadsDir, safeFileName);
+            await writeFile(absoluteFilePath, decodeDataUrl(details.previewDataUrl));
+
+            return {
+                type: details.type,
+                mediaUrl: `/uploads/${safeFileName}`,
+                mediaType: mimeType || "image/jpeg",
+                mediaFileName: fileName,
+            } satisfies MediaPayload;
+        }
+
+        return {
+            type: details.type,
+            mediaType: mimeType,
+            mediaFileName: fileName,
+        } satisfies MediaPayload;
+    }
+
+    const uploadsDir = path.join(process.cwd(), "public", "uploads");
+    await mkdir(uploadsDir, { recursive: true });
+    const extension = path.extname(fileName) || extFromMimeType(mimeType || "") || "";
+    const safeFileName = `${Date.now()}-${crypto.randomUUID().slice(0, 8)}${extension}`;
+    const absoluteFilePath = path.join(uploadsDir, safeFileName);
+    const buffer = Buffer.from(payload.base64, "base64");
+    await writeFile(absoluteFilePath, buffer);
+
+    return {
+        type: details.type,
+        mediaUrl: `/uploads/${safeFileName}`,
+        mediaType: mimeType,
+        mediaFileName: fileName,
+    } satisfies MediaPayload;
+}
+
+async function storeOutboundEcho(
+    phone: string,
+    text: string,
+    media: MediaPayload,
+    providerMessageId?: string,
+) {
+    const normalizedPhone = phone.replace(/\D/g, "");
+    const phoneSuffix = normalizedPhone.slice(-10);
+    let contact = await prisma.contact.findFirst({
+        where: {
+            OR: [
+                { phone: normalizedPhone },
+                ...(phoneSuffix ? [{ phone: { endsWith: phoneSuffix } }] : []),
+            ],
+        },
+    });
+
+    if (!contact) {
+        contact = await prisma.contact.create({
+            data: {
+                phone: normalizedPhone,
+                status: "lead",
+            },
+        });
+    }
+
+    let conversation = await prisma.conversation.findFirst({
+        where: { contactId: contact.id, status: "active" },
+    });
+
+    if (!conversation) {
+        conversation = await prisma.conversation.create({
+            data: {
+                contactId: contact.id,
+                status: "active",
+            },
+        });
+    }
+
+    const duplicate = await prisma.message.findFirst({
+        where: {
+            conversationId: conversation.id,
+            OR: [
+                ...(providerMessageId ? [{ providerMessageId }] : []),
+                {
+                    content: text,
+                    direction: "outbound",
+                    type: media.type || "text",
+                    createdAt: { gte: new Date(Date.now() - 15000) },
+                },
+            ],
+        },
+    });
+
+    if (duplicate) {
+        if (providerMessageId && !duplicate.providerMessageId) {
+            await prisma.message.update({
+                where: { id: duplicate.id },
+                data: { providerMessageId },
+            });
+        }
+        return;
+    }
+
+    await prisma.message.create({
+        data: {
+            conversationId: conversation.id,
+            content: text,
+            direction: "outbound",
+            status: "sent",
+            type: media.type || "text",
+            mediaUrl: media.mediaUrl || null,
+            mediaType: media.mediaType || null,
+            mediaFileName: media.mediaFileName || null,
+            senderType: "human",
+            providerMessageId: providerMessageId || null,
+        },
+    });
+
+    await prisma.conversation.update({
+        where: { id: conversation.id },
+        data: {
+            updatedAt: new Date(),
+            botActive: false,
+        },
+    });
+
+    revalidatePath("/dashboard/inbox");
+}
+
+export async function GET() {
+    return NextResponse.json({ ok: true, channel: "whatsapp-webhook" });
+}
+
 export async function POST(req: NextRequest) {
     try {
-        const body = await req.json();
+        const payload = normalizeIncomingPayload(await req.json());
+        const settings = await getSystemSettingsOrDefaults();
 
-        // Log the incoming webhook payload for debugging
-        console.log("Incoming Webhook:", JSON.stringify(body, null, 2));
+        if (settings.whatsappUserToken && payload.token && payload.token !== settings.whatsappUserToken) {
+            return new NextResponse("Forbidden", { status: 403 });
+        }
 
-        // Check for YCloud payload format
-        // YCloud uses "type" field and "whatsappInboundMessage" for incoming messages
-        if (body.type === "whatsapp.inbound_message.received" && body.whatsappInboundMessage) {
-            const msg = body.whatsappInboundMessage;
-            const from = msg.from?.replace(/\D/g, "") || ""; // Remove non-digits like + sign
-            
-            // ECH Guard 2: Missing sender
-            if (!from) {
-                console.warn("[YCloud] Dropped message: missing or empty sender phone");
-                return new NextResponse("OK: Empty Sender Dropped", { status: 200 });
-            }
-            
-            const customerName = msg.customerProfile?.name;
-
-            // Determine message type and content
-            let text = "";
-            let messageType = "text";
-            let mediaUrl: string | undefined;
-            let mediaType: string | undefined;
-            let mediaFileName: string | undefined;
-
-            if (msg.type === "text" && msg.text?.body) {
-                text = msg.text.body;
-                messageType = "text";
-            } else if (msg.type === "image" && msg.image) {
-                text = msg.image.caption || "[Imagen]";
-                messageType = "image";
-                mediaUrl = msg.image.link;
-                mediaType = msg.image.mimeType || "image/jpeg";
-            } else if (msg.type === "document" && msg.document) {
-                text = msg.document.caption || msg.document.filename || "[Documento]";
-                messageType = "document";
-                mediaUrl = msg.document.link;
-                mediaType = msg.document.mimeType || "application/octet-stream";
-                mediaFileName = msg.document.filename;
-            } else if (msg.type === "audio" && msg.audio) {
-                text = "[Audio]";
-                messageType = "audio";
-                mediaUrl = msg.audio.link;
-                mediaType = msg.audio.mimeType || "audio/ogg";
-            } else if (msg.type === "video" && msg.video) {
-                text = msg.video.caption || "[Video]";
-                messageType = "video";
-                mediaUrl = msg.video.link;
-                mediaType = msg.video.mimeType || "video/mp4";
-            } else if (msg.type === "sticker" && msg.sticker) {
-                text = "[Sticker]";
-                messageType = "image";
-                mediaUrl = msg.sticker.link;
-                mediaType = "image/webp";
-            } else {
-                text = `[${msg.type || "Media"}]`;
-                messageType = msg.type || "text";
-            }
-
-            console.log(`[YCloud] Received ${messageType} from ${from} (${customerName}): ${text}`);
-
-            // ECH Guard 3: Prevent unhandled DB error crash turning into repeated 500s 
-            // from YCloud causing spam
-            try {
-                // Store the message in database with media info
-                await processInboundMessage(from, text, customerName, {
-                    type: messageType,
-                    mediaUrl,
-                    mediaType,
-                    mediaFileName,
-                });
-                console.log("[YCloud] Message stored successfully!");
-            } catch (dbError) {
-                console.error("[YCloud] Database error storing message:", dbError);
-                // Return 200 even on DB failure to ack the webhook, avoiding unlimited retry spam
-            }
-
+        if (payload.type !== "Message" || !payload.event?.Info) {
             return new NextResponse("EVENT_RECEIVED", { status: 200 });
         }
 
-        // Handle message status updates (delivered, read, etc.)
-        if (body.type === "whatsapp.message.updated" && body.whatsappMessage) {
-            const status = body.whatsappMessage.status;
-            const messageId = body.whatsappMessage.id;
-            console.log(`[YCloud] Message ${messageId} status updated to: ${status}`);
-
-            // TODO: Update message status in database
+        const info = payload.event.Info;
+        if (isNonDirectChat(info)) {
             return new NextResponse("EVENT_RECEIVED", { status: 200 });
         }
 
-        // Handle message echoes (messages sent from n8n, WhatsApp app, or other external sources via YCloud)
-        // These are outbound messages that need to appear in the CRM
-        if (body.type === "whatsapp.smb.message.echoes" && body.whatsappInboundMessage) {
-            const msg = body.whatsappInboundMessage;
-            const to = msg.to?.replace(/\D/g, "") || msg.from?.replace(/\D/g, "") || "";
-
-            // ECH Guard 4: Missing target in echo
-            if (!to) {
-                console.log("[YCloud] Echo dropped: Unresolvable destination");
-                return new NextResponse("EVENT_RECEIVED", { status: 200 });
-            }
-
-            console.log(`[YCloud] Message echo: outbound to ${to}`);
-
-            if (to) {
-                try {
-                    const { prisma } = await import("@/lib/db");
-
-                    // Find contact by phone number
-                    const contact = await prisma.contact.findFirst({
-                        where: { phone: { contains: to.slice(-10) } },
-                    });
-
-                    if (contact) {
-                        // Find or create conversation
-                        let conversation = await prisma.conversation.findFirst({
-                            where: { contactId: contact.id },
-                        });
-
-                        if (!conversation) {
-                            conversation = await prisma.conversation.create({
-                                data: { contactId: contact.id, status: "active" },
-                            });
-                        }
-
-                        // Determine content
-                        let text = "";
-                        let messageType = "text";
-                        if (msg.type === "text" && msg.text?.body) {
-                            text = msg.text.body;
-                        } else {
-                            text = `[${msg.type || "Media"}]`;
-                            messageType = msg.type || "text";
-                        }
-
-                        // Check if this message was already stored (avoid duplicates from CRM-sent messages)
-                        const recentDuplicate = await prisma.message.findFirst({
-                            where: {
-                                conversationId: conversation.id,
-                                content: text,
-                                direction: "outbound",
-                                createdAt: { gte: new Date(Date.now() - 30000) }, // Within last 30 seconds
-                            },
-                        });
-
-                        if (!recentDuplicate) {
-                            try {
-                                await prisma.message.create({
-                                    data: {
-                                        conversationId: conversation.id,
-                                        content: text,
-                                        direction: "outbound",
-                                        status: "sent",
-                                        type: messageType,
-                                        senderType: "bot", // Sent by external system (n8n)
-                                    },
-                                });
-
-                                await prisma.conversation.update({
-                                    where: { id: conversation.id },
-                                    data: { updatedAt: new Date() },
-                                });
-
-                                console.log(`[YCloud] Echo stored as outbound message for ${contact.name}`);
-                            } catch (error) {
-                                // ECH Guard 5: Prevent race condition crash if conversation is deleted/locked mid-flight
-                                console.error("[YCloud] Race condition or database error storing echo:", error);
-                            }
-                        } else {
-                            console.log(`[YCloud] Echo skipped (duplicate of CRM-sent message)`);
-                        }
-                    }
-                } catch (echoError) {
-                    console.error("[YCloud] Echo processing error:", echoError);
-                }
-            }
+        const messageDetails = extractMessageDetails(payload.event.Message);
+        if (messageDetails.ignore) {
             return new NextResponse("EVENT_RECEIVED", { status: 200 });
         }
 
-        // Fallback: Check for Meta direct API payload format
-        if (body.object) {
-            if (
-                body.entry &&
-                body.entry[0]?.changes &&
-                body.entry[0].changes[0]?.value?.messages &&
-                body.entry[0].changes[0].value.messages[0]
-            ) {
-                const message = body.entry[0].changes[0].value.messages[0];
-                const from = message.from;
-                const msgBody = message.text ? message.text.body : "[Media/Other]";
+        const media = messageDetails.type !== "text"
+            ? await saveIncomingMedia(payload, messageDetails)
+            : undefined;
 
-                console.log(`[Meta] Received message from ${from}: ${msgBody}`);
+        const isFromMe = getBoolean(info, "IsFromMe") ?? getBoolean(info, "isFromMe") ?? false;
+        const phone = resolvePhoneFromInfo(info, isFromMe);
+        const providerMessageId = resolveProviderMessageId(info);
 
-                // Store the message in database
-                await processInboundMessage(from, msgBody);
-            }
+        if (!phone) {
+            console.warn("[Webhook] Ignoring message without resolvable phone", {
+                isFromMe,
+                chat: getString(info, "Chat") || getString(info, "chat"),
+                senderAlt: getString(info, "SenderAlt") || getString(info, "senderAlt"),
+                recipientAlt: getString(info, "RecipientAlt") || getString(info, "recipientAlt"),
+            });
             return new NextResponse("EVENT_RECEIVED", { status: 200 });
         }
 
-        // Unknown event type - still return 200 to acknowledge
-        console.log("[Webhook] Unknown event type:", body.type || "N/A");
+        if (isFromMe) {
+            await storeOutboundEcho(phone, messageDetails.text, media || {}, providerMessageId);
+            return new NextResponse("EVENT_RECEIVED", { status: 200 });
+        }
+
+        const customerName = resolveCustomerName(payload, info);
+
+        await processInboundMessage(phone, messageDetails.text, customerName, media, providerMessageId);
         return new NextResponse("EVENT_RECEIVED", { status: 200 });
     } catch (error) {
         console.error("Webhook Error:", error);

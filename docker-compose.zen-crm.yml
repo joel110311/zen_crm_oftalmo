@@ -1,23 +1,26 @@
-version: '3.8'
+version: "3.8"
+
 services:
-  # Zen CRM - Next.js Full Stack
   zen-crm:
     image: ghcr.io/joel110311/zen_crm:latest
     environment:
-      # Connection to the dedicated pgvector container
-      - DATABASE_URL=postgresql://zencrm:950b719a13e682e057b42c7b11dd2213@zen-crm-db:5432/zencrm
-
-      # App Secrets
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - YCLOUD_API_KEY=b5df62fc3757e5f7ab51166591c6645c
-      - YCLOUD_WHATSAPP_PHONE_ID=+524771075025
-      - META_VERIFY_TOKEN=crmb51166591c6645c
-
-      # Authentication
-      - AUTH_SECRET=zencrm_secret_key_prod_2026_950b719a
-      - AUTH_URL=https://crm.logicapp.net
-
-      # Next.js & Host Settings
+      - DATABASE_URL=postgresql://zencrm:${POSTGRES_PASSWORD}@zen-crm-db:5432/${POSTGRES_DB}
+      - WHATSAPP_GATEWAY_URL=http://whatsapp-gateway:8080
+      - WUZAPI_ADMIN_TOKEN=${WUZAPI_ADMIN_TOKEN}
+      - WUZAPI_USER_TOKEN=${WUZAPI_USER_TOKEN:-}
+      - WHATSAPP_INSTANCE_NAME=${WHATSAPP_INSTANCE_NAME:-zen-crm}
+      - WUZAPI_GLOBAL_ENCRYPTION_KEY=${WUZAPI_GLOBAL_ENCRYPTION_KEY}
+      - ALLOW_ENV_AI_FALLBACK=${ALLOW_ENV_AI_FALLBACK:-false}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - INITIAL_ADMIN_EMAIL=${INITIAL_ADMIN_EMAIL}
+      - INITIAL_ADMIN_PASSWORD=${INITIAL_ADMIN_PASSWORD}
+      - INITIAL_ADMIN_NAME=${INITIAL_ADMIN_NAME:-Owner}
+      - AUTH_SECRET=${AUTH_SECRET}
+      - AUTH_URL=${AUTH_URL}
+      - APP_BASE_URL=${APP_BASE_URL}
+      - WHATSAPP_WEBHOOK_BASE_URL=${WHATSAPP_WEBHOOK_BASE_URL}
+      - TZ=${TZ:-America/Mexico_City}
       - PORT=3000
       - HOSTNAME=0.0.0.0
     networks:
@@ -26,6 +29,7 @@ services:
       - zen_crm_uploads:/app/public/uploads
     depends_on:
       - zen-crm-db
+      - whatsapp-gateway
     deploy:
       replicas: 1
       restart_policy:
@@ -38,16 +42,34 @@ services:
         - "traefik.http.services.zen-crm.loadbalancer.server.port=3000"
         - "traefik.docker.network=SociosNet"
 
-  # Dedicated pgvector Database with Pre-loaded Data
+  whatsapp-gateway:
+    image: asternic/wuzapi:latest
+    environment:
+      - WUZAPI_ADMIN_TOKEN=${WUZAPI_ADMIN_TOKEN}
+      - WUZAPI_GLOBAL_ENCRYPTION_KEY=${WUZAPI_GLOBAL_ENCRYPTION_KEY}
+      - DB_USER=zencrm
+      - DB_PASSWORD=${POSTGRES_PASSWORD}
+      - DB_NAME=${POSTGRES_DB}
+      - DB_HOST=zen-crm-db
+      - DB_PORT=5432
+      - DB_SSLMODE=false
+      - TZ=${TZ:-America/Mexico_City}
+      - WEBHOOK_FORMAT=json
+      - SESSION_DEVICE_NAME=${SESSION_DEVICE_NAME:-Zen CRM}
+    networks:
+      - SociosNet
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+
   zen-crm-db:
-    build:
-      context: .
-      dockerfile: Dockerfile.db
     image: ghcr.io/joel110311/zen_crm_db:latest
     environment:
       - POSTGRES_USER=zencrm
-      - POSTGRES_PASSWORD=950b719a13e682e057b42c7b11dd2213
-      - POSTGRES_DB=zencrm
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - TZ=${TZ:-America/Mexico_City}
     volumes:
       - zen_crm_db_data:/var/lib/postgresql/data
     networks:
@@ -64,7 +86,6 @@ services:
 volumes:
   zen_crm_db_data:
   zen_crm_uploads:
-
 
 networks:
   SociosNet:

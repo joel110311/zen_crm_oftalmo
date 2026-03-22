@@ -16,6 +16,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { Loader2, ChevronLeft, ChevronRight } from "lucide-react";
 
 import { createAppointment, updateAppointment, deleteAppointment } from "@/app/actions/calendar";
+import { buildLocalTime, getCalendarVisibleRange, type BusinessHoursConfig } from "@/lib/calendar/business-hours";
 
 // Setup localizer
 const locales = {
@@ -43,9 +44,10 @@ interface CalendarEvent {
 
 interface BigCalendarProps {
     initialEvents: CalendarEvent[];
+    businessHours: BusinessHoursConfig;
 }
 
-export function BigCalendar({ initialEvents, onSelectSlot, onSelectEvent }: BigCalendarProps & {
+export function BigCalendar({ initialEvents, businessHours, onSelectSlot, onSelectEvent }: BigCalendarProps & {
     onSelectSlot: (slot: any) => void;
     onSelectEvent: (event: any) => void;
 }) {
@@ -62,10 +64,15 @@ export function BigCalendar({ initialEvents, onSelectSlot, onSelectEvent }: BigC
     const { toast } = useToast();
 
     // Stable min/max times for the day (today's date) to ensure correct height calculation and drag stability
+    const visibleRange = useMemo(
+        () => getCalendarVisibleRange(businessHours, date, view === Views.DAY ? "day" : "week"),
+        [businessHours, date, view],
+    );
+
     const { min, max } = useMemo(() => ({
-        min: new Date(new Date().setHours(7, 0, 0, 0)),
-        max: new Date(new Date().setHours(22, 0, 0, 0))
-    }), []);
+        min: buildLocalTime(date, visibleRange.start),
+        max: buildLocalTime(date, visibleRange.end),
+    }), [date, visibleRange.end, visibleRange.start]);
 
     // Sync events if initialEvents changes (optional, but good if parent refetches)
     React.useEffect(() => {
@@ -220,7 +227,7 @@ export function BigCalendar({ initialEvents, onSelectSlot, onSelectEvent }: BigC
                             onClick={goToToday}
                             className="h-7 text-xs px-2 hover:bg-background"
                         >
-                            Today
+                            Hoy
                         </Button>
                         <Button
                             variant="ghost"
@@ -239,7 +246,7 @@ export function BigCalendar({ initialEvents, onSelectSlot, onSelectEvent }: BigC
                             onClick={() => toolbar.onView('month')}
                             className={`h-7 text-xs ${toolbar.view !== 'month' ? 'hover:bg-background' : ''}`}
                         >
-                            Month
+                            Mes
                         </Button>
                         <Button
                             variant={toolbar.view === 'week' ? 'default' : 'ghost'}
@@ -247,7 +254,7 @@ export function BigCalendar({ initialEvents, onSelectSlot, onSelectEvent }: BigC
                             onClick={() => toolbar.onView('week')}
                             className={`h-7 text-xs ${toolbar.view !== 'week' ? 'hover:bg-background' : ''}`}
                         >
-                            Week
+                            Semana
                         </Button>
                         <Button
                             variant={toolbar.view === 'day' ? 'default' : 'ghost'}
@@ -255,7 +262,7 @@ export function BigCalendar({ initialEvents, onSelectSlot, onSelectEvent }: BigC
                             onClick={() => toolbar.onView('day')}
                             className={`h-7 text-xs ${toolbar.view !== 'day' ? 'hover:bg-background' : ''}`}
                         >
-                            Day
+                            Dia
                         </Button>
                     </div>
                 </div>
@@ -301,6 +308,7 @@ export function BigCalendar({ initialEvents, onSelectSlot, onSelectEvent }: BigC
                 timeslots={4}
                 min={min}
                 max={max}
+                scrollToTime={min}
             />
         </div>
     );

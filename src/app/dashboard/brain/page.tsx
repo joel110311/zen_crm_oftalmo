@@ -1,27 +1,49 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import { Bot, BrainCircuit, Loader2, Save, SearchCheck, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Switch } from "@/components/ui/switch";
-import { Slider } from "@/components/ui/slider";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Bot, Save, Sparkles, Loader2, Webhook } from "lucide-react";
-import { useState, useEffect } from "react";
-
+import { Slider } from "@/components/ui/slider";
+import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { KnowledgeBase } from "@/components/brain/knowledge-base";
 import { getSystemSettings, updateSystemSettings } from "@/app/actions/settings";
 import { useToast } from "@/components/ui/use-toast";
+import { normalizeChatModelSelection, resolveChatModelSelection, SUPPORTED_CHAT_MODELS } from "@/lib/ai/models";
+import {
+    BUSINESS_DAY_KEYS,
+    BUSINESS_DAY_LABELS,
+    formatBusinessScheduleSummary,
+    normalizeBusinessHours,
+    type BusinessDayKey,
+    type BusinessWeeklySchedule,
+} from "@/lib/calendar/business-hours";
 
 export default function BrainConfigPage() {
-    const [temperature, setTemperature] = useState([0.7]);
-    const [isBotEnabled, setIsBotEnabled] = useState(false);
-    const [n8nUrl, setN8nUrl] = useState("");
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
+    const [isBotEnabled, setIsBotEnabled] = useState(false);
+    const [autoReplyDelaySeconds, setAutoReplyDelaySeconds] = useState([8]);
+    const [agentName, setAgentName] = useState("Asistente Zen");
+    const [agentPrompt, setAgentPrompt] = useState("");
+    const [openaiModel, setOpenaiModel] = useState(normalizeChatModelSelection());
+    const [knowledgeTopK, setKnowledgeTopK] = useState("6");
+    const [temperature, setTemperature] = useState([0.3]);
+    const [businessTimeZone, setBusinessTimeZone] = useState("America/Mexico_City");
+    const [businessWeeklySchedule, setBusinessWeeklySchedule] = useState<BusinessWeeklySchedule>(
+        () => normalizeBusinessHours().weeklySchedule,
+    );
+    const [appointmentDurationMinutes, setAppointmentDurationMinutes] = useState("30");
+    const [leadScoringEnabled, setLeadScoringEnabled] = useState(true);
+    const [captureLeadName, setCaptureLeadName] = useState(false);
+    const [captureLeadEmail, setCaptureLeadEmail] = useState(false);
+    const [leadInterestThreshold, setLeadInterestThreshold] = useState([45]);
     const { toast } = useToast();
 
     useEffect(() => {
@@ -29,36 +51,90 @@ export default function BrainConfigPage() {
             try {
                 const settings = await getSystemSettings();
                 if (settings) {
+                    const businessHours = normalizeBusinessHours(settings);
                     setIsBotEnabled(settings.isBotEnabled);
-                    setN8nUrl(settings.n8nWebhookUrl || "");
+                    setAgentName(settings.agentName || "Asistente Zen");
+                    setAgentPrompt(
+                        settings.agentPrompt ||
+                            "Eres un asistente comercial y de soporte que responde por WhatsApp desde un CRM. Responde en espanol, con claridad y sin inventar informacion.",
+                    );
+                    setAutoReplyDelaySeconds([
+                        Math.max(3, Math.min(20, Math.round((settings.autoReplyDelayMs || 8000) / 1000))),
+                    ]);
+                    setOpenaiModel(normalizeChatModelSelection(settings.openaiModel));
+                    setKnowledgeTopK(String(settings.knowledgeTopK || 6));
+                    setTemperature([settings.agentTemperature || 0.3]);
+                    setBusinessTimeZone(businessHours.timeZone || "America/Mexico_City");
+                    setBusinessWeeklySchedule(businessHours.weeklySchedule);
+                    setAppointmentDurationMinutes(String(settings.appointmentDurationMinutes || 30));
+                    setLeadScoringEnabled(settings.leadScoringEnabled ?? true);
+                    setCaptureLeadName(settings.captureLeadName ?? false);
+                    setCaptureLeadEmail(settings.captureLeadEmail ?? false);
+                    setLeadInterestThreshold([settings.leadInterestThreshold || 45]);
                 }
             } catch (error) {
-                console.error("Failed to load settings:", error);
+                console.error("Failed to load brain settings:", error);
             } finally {
                 setIsLoading(false);
             }
         };
+
         loadSettings();
     }, []);
+
+    const updateBusinessDay = (
+        dayKey: BusinessDayKey,
+        patch: Partial<BusinessWeeklySchedule[BusinessDayKey]>,
+    ) => {
+        setBusinessWeeklySchedule((current) => ({
+            ...current,
+            [dayKey]: {
+                ...current[dayKey],
+                ...patch,
+            },
+        }));
+    };
 
     const handleSave = async () => {
         setIsSaving(true);
         try {
+            const normalizedBusinessHours = normalizeBusinessHours({
+                businessTimeZone,
+                appointmentDurationMinutes: Number(appointmentDurationMinutes) || 30,
+                businessWeeklySchedule,
+            });
             const result = await updateSystemSettings({
                 isBotEnabled,
-                n8nWebhookUrl: n8nUrl,
+                agentName,
+                agentPrompt,
+                openaiModel,
+                knowledgeTopK: Number(knowledgeTopK) || 6,
+                agentTemperature: temperature[0] || 0.3,
+                autoReplyDelayMs: (autoReplyDelaySeconds[0] || 8) * 1000,
+                businessHoursStart: normalizedBusinessHours.start,
+                businessHoursEnd: normalizedBusinessHours.end,
+                businessTimeZone: normalizedBusinessHours.timeZone,
+                businessWeeklySchedule: normalizedBusinessHours.weeklySchedule,
+                appointmentDurationMinutes: Number(appointmentDurationMinutes) || 30,
+                leadScoringEnabled,
+                captureLeadName,
+                captureLeadEmail,
+                leadInterestThreshold: leadInterestThreshold[0] || 45,
             });
 
-            if (result.success) {
-                toast({ title: "Configuración guardada", description: "Los cambios han sido actualizados." });
-            } else {
+            if (!result.success) {
                 throw new Error(result.error);
             }
-        } catch (error: any) {
+
             toast({
-                title: "Error",
-                description: error.message || "No se pudo guardar la configuración.",
-                variant: "destructive"
+                title: "Cerebro actualizado",
+                description: "El agente ya usara esta configuracion en WhatsApp.",
+            });
+        } catch (error) {
+            toast({
+                title: "No se pudo guardar",
+                description: error instanceof Error ? error.message : "Fallo al guardar la configuracion",
+                variant: "destructive",
             });
         } finally {
             setIsSaving(false);
@@ -66,170 +142,424 @@ export default function BrainConfigPage() {
     };
 
     if (isLoading) {
-        return <div className="flex h-full items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
+        return (
+            <div className="flex h-full items-center justify-center">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            </div>
+        );
     }
 
+    const selectedModel = resolveChatModelSelection(openaiModel);
+    const currentBusinessHours = normalizeBusinessHours({
+        businessTimeZone,
+        appointmentDurationMinutes: Number(appointmentDurationMinutes) || 30,
+        businessWeeklySchedule,
+    });
+
     return (
-        <div className="flex flex-col gap-6 max-w-4xl mx-auto h-full">
-            <div className="flex items-center justify-between shrink-0">
+        <div className="flex flex-col gap-6 max-w-5xl mx-auto h-full">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                 <div className="flex items-center gap-3">
-                    <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
-                        <Bot className="h-6 w-6" />
+                    <div className="h-11 w-11 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
+                        <BrainCircuit className="h-6 w-6" />
                     </div>
                     <div>
                         <h1 className="text-3xl font-bold tracking-tight">Cerebro IA</h1>
-                        <p className="text-muted-foreground">Configura la personalidad y el conocimiento de tu agente de IA.</p>
+                        <p className="text-muted-foreground">
+                            Aqui se concentra la logica del agente, sus fuentes y el contexto que usara para contestar en WhatsApp.
+                        </p>
                     </div>
                 </div>
+
                 <Button onClick={handleSave} disabled={isSaving}>
-                    {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                    <Save className="mr-2 h-4 w-4" /> Guardar Cambios
+                    {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                    Guardar cambios
                 </Button>
             </div>
 
-            <Tabs defaultValue="config" className="w-full flex-1 flex flex-col">
+            <Tabs defaultValue="config" className="flex-1">
                 <TabsList className="w-fit">
-                    <TabsTrigger value="config">Configuración</TabsTrigger>
-                    <TabsTrigger value="knowledge">Base de Conocimiento</TabsTrigger>
+                    <TabsTrigger value="config">Configuracion</TabsTrigger>
+                    <TabsTrigger value="knowledge">Conocimiento</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="config" className="space-y-6 mt-6">
-                    {/* CHATBOT SETTINGS CARD */}
                     <Card className="border-primary/20 bg-primary/5">
                         <CardHeader>
                             <CardTitle className="flex items-center gap-2">
                                 <Bot className="h-5 w-5 text-primary" />
-                                Chatbot Principal
+                                Autopiloto del agente
                             </CardTitle>
-                            <CardDescription>Controla el comportamiento automático del bot.</CardDescription>
+                            <CardDescription>
+                                Activa o pausa las respuestas automaticas. Si esta apagado, el CRM seguira recibiendo mensajes pero no respondera solo.
+                            </CardDescription>
                         </CardHeader>
-                        <CardContent className="space-y-4">
-                            <div className="flex items-center justify-between space-x-2 border p-4 rounded-lg bg-background">
-                                <div className="flex flex-col space-y-1">
-                                    <Label htmlFor="bot-enabled" className="text-base font-medium">Habilitar Chatbot IA</Label>
-                                    <span className="text-sm text-muted-foreground">
-                                        Si está activo, los mensajes se enviarán al flujo de automatización (n8n).
-                                    </span>
-                                </div>
-                                <Switch
-                                    id="bot-enabled"
-                                    checked={isBotEnabled}
-                                    onCheckedChange={setIsBotEnabled}
-                                />
-                            </div>
-
-                            {isBotEnabled && (
-                                <div className="grid gap-2 pt-2 animate-in fade-in slide-in-from-top-2">
-                                    <Label htmlFor="n8n-url" className="flex items-center gap-2">
-                                        <Webhook className="h-4 w-4" />
-                                        URL del Webhook (n8n)
-                                    </Label>
-                                    <Input
-                                        id="n8n-url"
-                                        placeholder="https://n8n.tu-dominio.com/webhook/..."
-                                        value={n8nUrl}
-                                        onChange={(e) => setN8nUrl(e.target.value)}
-                                        className="font-mono text-sm"
+                        <CardContent>
+                            <div className="space-y-4">
+                                <div className="flex items-center justify-between rounded-xl border bg-background px-4 py-4">
+                                    <div>
+                                        <Label htmlFor="bot-enabled" className="text-base font-medium">Responder automaticamente</Label>
+                                        <p className="text-sm text-muted-foreground mt-1">
+                                            Usa el historial del contacto y la base de conocimiento antes de responder por WhatsApp.
+                                        </p>
+                                    </div>
+                                    <Switch
+                                        id="bot-enabled"
+                                        checked={isBotEnabled}
+                                        onCheckedChange={setIsBotEnabled}
                                     />
+                                </div>
+
+                                <div className="rounded-xl border bg-background px-4 py-4">
+                                    <div className="flex items-center justify-between gap-3">
+                                        <div>
+                                            <Label className="text-base font-medium">
+                                                Tiempo de espera antes de responder
+                                            </Label>
+                                            <p className="mt-1 text-sm text-muted-foreground">
+                                                Si el cliente manda varios mensajes seguidos, el agente espera este tiempo antes de contestar para leer mejor el turno completo.
+                                            </p>
+                                        </div>
+                                        <span className="rounded-full border px-3 py-1 text-sm font-semibold text-foreground">
+                                            {autoReplyDelaySeconds[0]} s
+                                        </span>
+                                    </div>
+
+                                    <div className="mt-5 space-y-4">
+                                        <Slider
+                                            value={autoReplyDelaySeconds}
+                                            onValueChange={setAutoReplyDelaySeconds}
+                                            min={3}
+                                            max={20}
+                                            step={1}
+                                        />
+
+                                        <div className="flex flex-wrap gap-2">
+                                            {[4, 8, 12, 15].map((seconds) => (
+                                                <Button
+                                                    key={seconds}
+                                                    type="button"
+                                                    variant={
+                                                        autoReplyDelaySeconds[0] === seconds
+                                                            ? "default"
+                                                            : "outline"
+                                                    }
+                                                    size="sm"
+                                                    onClick={() => setAutoReplyDelaySeconds([seconds])}
+                                                >
+                                                    {seconds}s
+                                                </Button>
+                                            ))}
+                                        </div>
+
+                                        <p className="text-xs text-muted-foreground">
+                                            Recomendado: 8 segundos. Rango disponible: 3 a 20 segundos.
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    <div className="grid gap-6 lg:grid-cols-2">
+                        <Card>
+                            <CardHeader>
+                                <CardTitle>Identidad del agente</CardTitle>
+                                <CardDescription>Define como se presenta y como debe razonar antes de contestar.</CardDescription>
+                            </CardHeader>
+                            <CardContent className="space-y-4">
+                                <div className="space-y-2">
+                                    <Label>Nombre del agente</Label>
+                                    <Input value={agentName} onChange={(event) => setAgentName(event.target.value)} />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Prompt principal</Label>
+                                    <Textarea
+                                        value={agentPrompt}
+                                        onChange={(event) => setAgentPrompt(event.target.value)}
+                                        className="min-h-[220px] font-mono text-sm"
+                                        placeholder="Describe tono, objetivos, restricciones y la forma de responder."
+                                    />
+                                </div>
+                            </CardContent>
+                        </Card>
+
+                        <Card>
+                            <CardHeader>
+                                <CardTitle className="flex items-center gap-2">
+                                    <Sparkles className="h-5 w-5 text-primary" />
+                                    Parametros del modelo
+                                </CardTitle>
+                                <CardDescription>Ajusta cuanto contexto recuperar y que tan creativo sera el agente.</CardDescription>
+                            </CardHeader>
+                            <CardContent className="space-y-6">
+                                <div className="space-y-2">
+                                    <div className="flex items-center justify-between gap-3">
+                                        <Label>LLM principal</Label>
+                                        <span className="rounded-full border px-2 py-0.5 text-[11px] uppercase tracking-wide text-muted-foreground">
+                                            {selectedModel.provider}
+                                        </span>
+                                    </div>
+                                    <Select value={openaiModel} onValueChange={setOpenaiModel}>
+                                        <SelectTrigger className="w-full">
+                                            <SelectValue placeholder="Selecciona un modelo" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {SUPPORTED_CHAT_MODELS.map((option) => (
+                                                <SelectItem key={option.id} value={option.id}>
+                                                    {option.label}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
                                     <p className="text-xs text-muted-foreground">
-                                        Los mensajes entrantes se enviarán a esta URL vía POST con el payload del mensaje.
+                                        {selectedModel.description || "Modelo recomendado para las respuestas del agente."}
+                                    </p>
+                                    <p className="text-xs text-muted-foreground">
+                                        OpenAI y Gemini ya pueden usarse para las respuestas del bot. La base de conocimiento y la transcripcion siguen aprovechando OpenAI cuando hace falta.
                                     </p>
                                 </div>
-                            )}
+
+                                <div className="space-y-2">
+                                    <Label className="flex items-center gap-2">
+                                        <SearchCheck className="h-4 w-4 text-primary" />
+                                        Documentos a recuperar por consulta
+                                    </Label>
+                                    <Input
+                                        value={knowledgeTopK}
+                                        onChange={(event) => setKnowledgeTopK(event.target.value)}
+                                        inputMode="numeric"
+                                    />
+                                    <p className="text-xs text-muted-foreground">
+                                        Cuantos chunks relevantes consultara antes de generar la respuesta.
+                                    </p>
+                                </div>
+
+                                <div className="space-y-4">
+                                    <div className="flex items-center justify-between">
+                                        <Label>Temperatura</Label>
+                                        <span className="text-sm text-muted-foreground">{temperature[0].toFixed(1)}</span>
+                                    </div>
+                                    <Slider
+                                        value={temperature}
+                                        onValueChange={setTemperature}
+                                        min={0}
+                                        max={1}
+                                        step={0.1}
+                                    />
+                                    <p className="text-xs text-muted-foreground">
+                                        Baja para respuestas mas sobrias y repetibles. Sube si quieres un estilo mas flexible.
+                                    </p>
+                                </div>
+                            </CardContent>
+                        </Card>
+                    </div>
+
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Scoring y captura del lead</CardTitle>
+                            <CardDescription>
+                                Detecta interés real durante la conversación, mueve el lead a <span className="font-medium text-foreground">Calificado</span> y pide los datos uno por uno cuando haga sentido.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+                            <div className="space-y-4">
+                                <div className="flex items-center justify-between rounded-xl border bg-background px-4 py-4">
+                                    <div className="pr-4">
+                                        <Label htmlFor="lead-scoring-enabled" className="text-base font-medium">
+                                            Activar scoring automático
+                                        </Label>
+                                        <p className="mt-1 text-sm text-muted-foreground">
+                                            El bot calcula interés con los mensajes del mismo día. Al cruzar el umbral mueve el lead a <span className="font-medium text-foreground">Calificado</span>.
+                                        </p>
+                                    </div>
+                                    <Switch
+                                        id="lead-scoring-enabled"
+                                        checked={leadScoringEnabled}
+                                        onCheckedChange={setLeadScoringEnabled}
+                                    />
+                                </div>
+
+                                <div className="rounded-xl border bg-background px-4 py-4">
+                                    <div className="space-y-1">
+                                        <Label className="text-base font-medium">Datos opcionales a solicitar</Label>
+                                        <p className="text-sm text-muted-foreground">
+                                            Si activas ambos, el agente los pedirá de forma orgánica uno por uno: primero el nombre y después el correo.
+                                        </p>
+                                    </div>
+
+                                    <div className="mt-4 space-y-3">
+                                        <label className="flex items-start gap-3 rounded-xl border border-border/60 bg-muted/20 px-3 py-3 transition-colors hover:bg-muted/35">
+                                            <Checkbox
+                                                checked={captureLeadName}
+                                                onCheckedChange={(checked) => setCaptureLeadName(Boolean(checked))}
+                                                className="mt-0.5"
+                                            />
+                                            <div className="space-y-1">
+                                                <span className="text-sm font-medium leading-none">Pedir nombre del cliente</span>
+                                                <p className="text-xs text-muted-foreground">
+                                                    Aunque WhatsApp traiga un nombre de perfil, el bot lo tratará como provisional y pedirá el nombre real.
+                                                </p>
+                                            </div>
+                                        </label>
+
+                                        <label className="flex items-start gap-3 rounded-xl border border-border/60 bg-muted/20 px-3 py-3 transition-colors hover:bg-muted/35">
+                                            <Checkbox
+                                                checked={captureLeadEmail}
+                                                onCheckedChange={(checked) => setCaptureLeadEmail(Boolean(checked))}
+                                                className="mt-0.5"
+                                            />
+                                            <div className="space-y-1">
+                                                <span className="text-sm font-medium leading-none">Pedir correo electrónico</span>
+                                                <p className="text-xs text-muted-foreground">
+                                                    Sirve para dar seguimiento comercial, compartir propuestas o agendar con mejor contexto.
+                                                </p>
+                                            </div>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="space-y-4">
+                                <div className="rounded-xl border bg-background px-4 py-4">
+                                    <div className="flex items-center justify-between">
+                                        <Label>Umbral de interés</Label>
+                                        <span className="text-sm font-semibold text-foreground">{leadInterestThreshold[0]}%</span>
+                                    </div>
+                                    <div className="mt-4">
+                                        <Slider
+                                            value={leadInterestThreshold}
+                                            onValueChange={setLeadInterestThreshold}
+                                            min={30}
+                                            max={80}
+                                            step={5}
+                                            disabled={!leadScoringEnabled}
+                                        />
+                                    </div>
+                                    <p className="mt-3 text-xs text-muted-foreground">
+                                        Con el valor actual, normalmente se activa después de <span className="font-medium text-foreground">3 mensajes del cliente en el mismo día</span>, o antes si detecta señales fuertes como precio, cita, demo o intención de compra.
+                                    </p>
+                                </div>
+
+                                <div className="rounded-xl border bg-muted/30 p-4 text-sm text-muted-foreground space-y-2">
+                                    <p className="font-medium text-foreground">Qué hará automáticamente el CRM</p>
+                                    <p>Actualizará la puntuación y el paso comercial del lead.</p>
+                                    <p>Cuando detecte interés real, moverá el lead a la etapa <span className="font-medium text-foreground">Calificado</span>.</p>
+                                    <p>Si el cliente comparte nombre o correo, los guardará en silencio y lo verás reflejado en inbox y pipeline.</p>
+                                </div>
+                            </div>
                         </CardContent>
                     </Card>
 
                     <Card>
                         <CardHeader>
-                            <CardTitle>Persona del Agente</CardTitle>
-                            <CardDescription>Define quién es tu agente y cómo debe hablar.</CardDescription>
+                            <CardTitle>Agenda y horario comercial</CardTitle>
+                            <CardDescription>
+                                Este horario lo usa el bot para agendar citas y tambien define el rango visible en el calendario semanal y diario.
+                            </CardDescription>
                         </CardHeader>
-                        <CardContent className="space-y-4">
-                            <div className="grid gap-2">
-                                <Label htmlFor="name">Nombre del Agente</Label>
-                                <Input id="name" placeholder="ej. Asistente Zen" defaultValue="Asistente Zen" />
-                            </div>
-                            <div className="grid gap-2">
-                                <Label htmlFor="instructions">Instrucciones del Sistema</Label>
-                                <Textarea
-                                    id="instructions"
-                                    placeholder="Eres un asistente útil para..."
-                                    className="min-h-[200px] font-mono text-sm"
-                                    defaultValue="Eres un asistente de CRM profesional y servicial. Tu objetivo es calificar clientes potenciales y programar citas. Sé siempre cortés y conciso."
-                                />
-                            </div>
-                        </CardContent>
-                    </Card>
+                        <CardContent className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
+                            <div className="space-y-4">
+                                <div className="space-y-3">
+                                    {BUSINESS_DAY_KEYS.map((dayKey) => {
+                                        const daySchedule = businessWeeklySchedule[dayKey];
 
-                    <div className="grid md:grid-cols-2 gap-6">
-                        <Card>
-                            <CardHeader>
-                                <CardTitle>Configuración del Modelo</CardTitle>
-                                <CardDescription>Ajusta los parámetros cognitivos de la IA.</CardDescription>
-                            </CardHeader>
-                            <CardContent className="space-y-6">
-                                <div className="grid gap-2">
-                                    <Label>Proveedor del Modelo</Label>
-                                    <Select defaultValue="gpt-4o">
-                                        <SelectTrigger>
-                                            <SelectValue placeholder="Seleccionar modelo" />
+                                        return (
+                                            <div
+                                                key={dayKey}
+                                                className="grid gap-3 rounded-xl border bg-background px-4 py-4 sm:grid-cols-[170px_1fr_1fr] sm:items-center"
+                                            >
+                                                <div className="flex items-center justify-between gap-3 sm:justify-start">
+                                                    <div>
+                                                        <p className="text-sm font-medium text-foreground">{BUSINESS_DAY_LABELS[dayKey]}</p>
+                                                        <p className="text-xs text-muted-foreground">
+                                                            {daySchedule.enabled ? "Abierto" : "Cerrado"}
+                                                        </p>
+                                                    </div>
+                                                    <Switch
+                                                        checked={daySchedule.enabled}
+                                                        onCheckedChange={(checked) =>
+                                                            updateBusinessDay(dayKey, { enabled: checked })
+                                                        }
+                                                    />
+                                                </div>
+
+                                                <div className="space-y-2">
+                                                    <Label className="text-xs uppercase tracking-wide text-muted-foreground">
+                                                        Abre
+                                                    </Label>
+                                                    <Input
+                                                        type="time"
+                                                        value={daySchedule.start}
+                                                        disabled={!daySchedule.enabled}
+                                                        onChange={(event) =>
+                                                            updateBusinessDay(dayKey, { start: event.target.value })
+                                                        }
+                                                    />
+                                                </div>
+
+                                                <div className="space-y-2">
+                                                    <Label className="text-xs uppercase tracking-wide text-muted-foreground">
+                                                        Cierra
+                                                    </Label>
+                                                    <Input
+                                                        type="time"
+                                                        value={daySchedule.end}
+                                                        disabled={!daySchedule.enabled}
+                                                        onChange={(event) =>
+                                                            updateBusinessDay(dayKey, { end: event.target.value })
+                                                        }
+                                                    />
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+
+                                <div className="space-y-2">
+                                    <Label>Zona horaria</Label>
+                                    <Input
+                                        value={businessTimeZone}
+                                        onChange={(event) => setBusinessTimeZone(event.target.value)}
+                                        placeholder="America/Mexico_City"
+                                    />
+                                    <p className="text-xs text-muted-foreground">
+                                        Se usa para interpretar frases como &quot;manana a las 3&quot; y para confirmar la hora exacta de la cita.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div className="space-y-4">
+                                <div className="space-y-2">
+                                    <Label>Duracion por defecto de la cita (minutos)</Label>
+                                    <Select value={appointmentDurationMinutes} onValueChange={setAppointmentDurationMinutes}>
+                                        <SelectTrigger className="w-full">
+                                            <SelectValue placeholder="Selecciona una duracion" />
                                         </SelectTrigger>
                                         <SelectContent>
-                                            <SelectItem value="gpt-4o">GPT-4o (OpenAI)</SelectItem>
-                                            <SelectItem value="gpt-4-turbo">GPT-4 Turbo</SelectItem>
-                                            <SelectItem value="claude-3-opus">Claude 3 Opus</SelectItem>
+                                            <SelectItem value="15">15 minutos</SelectItem>
+                                            <SelectItem value="30">30 minutos</SelectItem>
+                                            <SelectItem value="45">45 minutos</SelectItem>
+                                            <SelectItem value="60">60 minutos</SelectItem>
+                                            <SelectItem value="90">90 minutos</SelectItem>
                                         </SelectContent>
                                     </Select>
                                 </div>
 
-                                <div className="space-y-4">
-                                    <div className="flex items-center justify-between">
-                                        <Label>Creatividad (Temperatura): {temperature}</Label>
-                                        <Sparkles className="h-4 w-4 text-muted-foreground" />
-                                    </div>
-                                    <Slider
-                                        value={temperature}
-                                        onValueChange={setTemperature}
-                                        max={1}
-                                        step={0.1}
-                                    />
-                                    <p className="text-xs text-muted-foreground">
-                                        Valores bajos hacen la respuesta más determinista. Valores altos la hacen más creativa.
-                                    </p>
+                                <div className="rounded-xl border bg-background px-4 py-4 text-sm text-muted-foreground space-y-2">
+                                    <p className="font-medium text-foreground">Resumen actual</p>
+                                    <p>{formatBusinessScheduleSummary(currentBusinessHours)}</p>
                                 </div>
-                            </CardContent>
-                        </Card>
 
-                        <Card>
-                            <CardHeader>
-                                <CardTitle>Capacidades</CardTitle>
-                                <CardDescription>Habilitar o deshabilitar funciones específicas.</CardDescription>
-                            </CardHeader>
-                            <CardContent className="space-y-4">
-                                <div className="flex items-center justify-between space-x-2 border p-3 rounded-lg">
-                                    <div className="flex flex-col space-y-1">
-                                        <Label htmlFor="rag" className="font-medium">Base de Conocimiento (RAG)</Label>
-                                        <span className="text-xs text-muted-foreground">Permitir a la IA buscar en documentos subidos</span>
-                                    </div>
-                                    <Switch id="rag" defaultChecked />
+                                <div className="rounded-xl border bg-muted/30 p-4 text-sm text-muted-foreground space-y-2">
+                                    <p className="font-medium text-foreground">Como impacta esta configuracion</p>
+                                    <p>El bot solo propondra citas dentro del horario del dia correspondiente.</p>
+                                    <p>Si el sabado cierra antes o el domingo esta cerrado, la agenda lo respetara automaticamente.</p>
+                                    <p>Las vistas semanal y diaria del calendario se ajustaran usando estos horarios.</p>
                                 </div>
-                                <div className="flex items-center justify-between space-x-2 border p-3 rounded-lg">
-                                    <div className="flex flex-col space-y-1">
-                                        <Label htmlFor="scheduling" className="font-medium">Auto-Agendamiento</Label>
-                                        <span className="text-xs text-muted-foreground">Permitir a la IA reservar citas</span>
-                                    </div>
-                                    <Switch id="scheduling" defaultChecked />
-                                </div>
-                                <div className="flex items-center justify-between space-x-2 border p-3 rounded-lg">
-                                    <div className="flex flex-col space-y-1">
-                                        <Label htmlFor="voice" className="font-medium">Procesamiento de Voz</Label>
-                                        <span className="text-xs text-muted-foreground">Transcribir y responder a notas de voz</span>
-                                    </div>
-                                    <Switch id="voice" />
-                                </div>
-                            </CardContent>
-                        </Card>
-                    </div>
+                            </div>
+                        </CardContent>
+                    </Card>
                 </TabsContent>
 
                 <TabsContent value="knowledge" className="mt-6">

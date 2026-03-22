@@ -21,6 +21,20 @@ interface TagData {
     color: string;
 }
 
+const LEAD_STATUS_LABELS: Record<string, string> = {
+    nuevo: "Nuevo",
+    interesado: "Interesado",
+    calificado: "Calificado",
+};
+
+const LEAD_STEP_LABELS: Record<string, string> = {
+    inicio: "Inicio",
+    interes: "Interes detectado",
+    captura_nombre: "Captura de nombre",
+    captura_email: "Captura de correo",
+    calificado: "Lead calificado",
+};
+
 export function DealDetailPanel({ deal, onClose, onUpdate, onDelete }: DealDetailPanelProps) {
     const router = useRouter();
     const [editTitle, setEditTitle] = useState(deal.title);
@@ -40,6 +54,9 @@ export function DealDetailPanel({ deal, onClose, onUpdate, onDelete }: DealDetai
     const contactName = [deal.contact?.name, deal.contact?.lastName].filter(Boolean).join(" ") || "Sin nombre";
     const assignedTags = allTags.filter((t) => dealTagIds.includes(t.id));
     const availableTags = allTags.filter((t) => !dealTagIds.includes(t.id));
+    const intelligence = deal.intelligence ?? null;
+    const leadStatusLabel = intelligence ? (LEAD_STATUS_LABELS[intelligence.interestStatus] || intelligence.interestStatus) : "Sin scoring";
+    const leadStepLabel = intelligence ? (LEAD_STEP_LABELS[intelligence.currentStep] || intelligence.currentStep) : "Sin paso";
 
     // Fetch all tags on mount
     useEffect(() => {
@@ -49,14 +66,14 @@ export function DealDetailPanel({ deal, onClose, onUpdate, onDelete }: DealDetai
         });
     }, []);
 
-    // Sync when deal changes
+    // Only reset the form when the user opens a different lead.
     useEffect(() => {
         setEditTitle(deal.title);
         setEditValue(deal.value.toString());
         setEditNotes(deal.notes || "");
         setEditPriority(deal.priority);
         setDealTagIds(deal.dealTags?.map((dt) => dt.tag.id) || []);
-    }, [deal]);
+    }, [deal.id]);
 
     const handleSave = () => {
         startTransition(async () => {
@@ -228,6 +245,72 @@ export function DealDetailPanel({ deal, onClose, onUpdate, onDelete }: DealDetai
                             </p>
                         </div>
                     </div>
+
+                    {intelligence && (
+                        <div className="rounded-xl border border-border bg-secondary p-4 space-y-4">
+                            <div>
+                                <p className="text-xs font-medium text-muted-foreground uppercase tracking-[0.18em]">
+                                    Inteligencia comercial
+                                </p>
+                            </div>
+
+                            <div className="grid gap-3 sm:grid-cols-2">
+                                <div className="rounded-xl border border-border bg-background/70 px-3 py-3">
+                                    <p className="text-xs text-muted-foreground">Estado del lead</p>
+                                    <p className="mt-1 text-sm font-semibold text-foreground">{leadStatusLabel}</p>
+                                </div>
+                                <div className="rounded-xl border border-border bg-background/70 px-3 py-3">
+                                    <p className="text-xs text-muted-foreground">Paso actual</p>
+                                    <p className="mt-1 text-sm font-semibold text-foreground">{leadStepLabel}</p>
+                                </div>
+                            </div>
+
+                            <div className="rounded-xl border border-border bg-background/70 px-3 py-3">
+                                <div className="flex items-center justify-between gap-3">
+                                    <p className="text-xs text-muted-foreground">Puntuacion</p>
+                                    <span className="text-sm font-semibold text-foreground">{intelligence.score}%</span>
+                                </div>
+                                <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-muted">
+                                    <div
+                                        className="h-full rounded-full bg-emerald-500 transition-all"
+                                        style={{ width: `${Math.min(Math.max(intelligence.score, 0), 100)}%` }}
+                                    />
+                                </div>
+                                <p className="mt-2 text-xs text-muted-foreground">
+                                    {intelligence.sameDayInboundCount} mensajes del cliente detectados hoy.
+                                </p>
+                            </div>
+
+                            <div className="rounded-xl border border-border bg-background/70 px-3 py-3">
+                                <div className="flex items-center justify-between gap-3">
+                                    <p className="text-xs text-muted-foreground">Progreso del paso</p>
+                                    <span className="text-sm font-semibold text-foreground">{intelligence.stepProgress}%</span>
+                                </div>
+                                <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-muted">
+                                    <div
+                                        className="h-full rounded-full bg-primary transition-all"
+                                        style={{ width: `${Math.min(Math.max(intelligence.stepProgress, 0), 100)}%` }}
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="rounded-xl border border-border bg-background/70 px-3 py-3 space-y-2">
+                                <p className="text-xs text-muted-foreground uppercase tracking-[0.18em]">Datos capturados</p>
+                                <div className="flex items-center justify-between gap-3 text-sm">
+                                    <span className="text-muted-foreground">Nombre</span>
+                                    <span className="font-medium text-foreground text-right">{intelligence.capturedName || deal.contact?.name || "-"}</span>
+                                </div>
+                                <div className="flex items-center justify-between gap-3 text-sm">
+                                    <span className="text-muted-foreground">Email</span>
+                                    <span className="font-medium text-foreground text-right">{intelligence.capturedEmail || deal.contact?.email || "-"}</span>
+                                </div>
+                                <div className="flex items-center justify-between gap-3 text-sm">
+                                    <span className="text-muted-foreground">Telefono</span>
+                                    <span className="font-medium text-foreground text-right">{deal.contact?.phone || "-"}</span>
+                                </div>
+                            </div>
+                        </div>
+                    )}
 
                     {/* Contact Info */}
                     <div>

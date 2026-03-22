@@ -67,6 +67,16 @@ export interface DealData {
         id: string;
         tag: { id: string; name: string; color: string };
     }[];
+    intelligence?: {
+        id?: string;
+        score: number;
+        interestStatus: string;
+        currentStep: string;
+        stepProgress: number;
+        capturedName: string | null;
+        capturedEmail: string | null;
+        sameDayInboundCount: number;
+    } | null;
 }
 
 interface PipelineBoardProps {
@@ -117,11 +127,13 @@ export function PipelineBoard({ initialStages, initialDeals }: PipelineBoardProp
                 setStages(data.stages as PipelineStageData[]);
             }
             if (data.deals) {
-                setDeals(data.deals.map((d: any) => ({
+                const mappedDeals = data.deals.map((d: any) => ({
                     ...d,
                     createdAt: d.createdAt instanceof Date ? d.createdAt.toISOString() : String(d.createdAt),
                     updatedAt: d.updatedAt instanceof Date ? d.updatedAt.toISOString() : String(d.updatedAt),
-                })));
+                }));
+                setDeals(mappedDeals);
+                setSelectedDeal((prev) => prev ? mappedDeals.find((deal) => deal.id === prev.id) || prev : prev);
             }
         });
     }, []);

@@ -1,18 +1,8 @@
 "use client";
 
-import React, { useState, useTransition, useEffect } from "react";
+import React, { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import {
-    Dialog,
-    DialogContent,
-    DialogHeader,
-    DialogTitle,
-    DialogTrigger,
-    DialogDescription,
-} from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Plus, Trash2, Lock, Loader2, GripVertical, AlertTriangle } from "lucide-react";
-import {
+    closestCenter,
     DndContext,
     DragEndEvent,
     DragOverlay,
@@ -20,7 +10,6 @@ import {
     PointerSensor,
     useSensor,
     useSensors,
-    closestCenter,
 } from "@dnd-kit/core";
 import {
     arrayMove,
@@ -30,11 +19,36 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import {
-    createPipelineStage,
-    updatePipelineStage,
-    deletePipelineStage,
-    reorderPipelineStages,
-} from "@/app/actions/pipeline";
+    AlertTriangle,
+    CheckCircle2,
+    GripVertical,
+    Loader2,
+    Lock,
+    Plus,
+    Save,
+    Trash2,
+    XCircle,
+} from "lucide-react";
+
+import { savePipelineConfiguration } from "@/app/actions/pipeline";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Switch } from "@/components/ui/switch";
+import { cn } from "@/lib/utils";
+import {
+    DEFAULT_CLOSED_LOST_COLOR,
+    DEFAULT_CLOSED_WON_COLOR,
+    DEFAULT_INCOMING_STAGE_NAME,
+    findMatchingPipelinePreset,
+    getDefaultStageColor,
+    getPipelinePresetById,
+    PIPELINE_PRESETS,
+    type PipelineDraftStage,
+    type PipelinePresetDefinition,
+    type PipelinePresetId,
+} from "@/lib/pipeline-presets";
 import type { PipelineStageData } from "./pipeline-board";
 
 interface FunnelEditorDialogProps {
@@ -44,18 +58,98 @@ interface FunnelEditorDialogProps {
     onStagesChanged: () => void;
 }
 
-const STAGE_COLORS = [
-    "#3B82F6", // Blue
-    "#0EA5E9", // Sky
-    "#F59E0B", // Amber
-    "#EF4444", // Red
-    "#F43F5E", // Rose
-    "#EC4899", // Pink
-    "#6366F1", // Indigo
-    "#0891B2", // Cyan
-    "#F97316", // Orange
-    "#64748B", // Slate
-];
+type DraftStage = PipelineDraftStage & {
+    localId: string;
+};
+
+type PipelineDraft = {
+    activeStages: DraftStage[];
+    includeClosingStages: boolean;
+    closedWonName: string;
+    closedLostName: string;
+    selectedPreset: PipelinePresetId;
+};
+
+function makeLocalStageId() {
+    if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+        return `draft_${crypto.randomUUID()}`;
+    }
+    return `draft_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function toDraftStage(stage: PipelineDraftStage, index: number): DraftStage {
+    return {
+        ...stage,
+        color: stage.color || getDefaultStageColor(index),
+        localId: makeLocalStageId(),
+    };
+}
+
+function getStageTextColor(hexColor: string) {
+    const hex = hexColor.replace("#", "");
+    const normalized =
+        hex.length === 3
+            ? hex
+                .split("")
+                .map((char) => char + char)
+                .join("")
+            : hex;
+
+    const red = parseInt(normalized.slice(0, 2), 16);
+    const green = parseInt(normalized.slice(2, 4), 16);
+    const blue = parseInt(normalized.slice(4, 6), 16);
+    const luminance = (red * 299 + green * 587 + blue * 114) / 1000;
+
+    return luminance > 165 ? "#1F2937" : "#0F172A";
+}
+
+function buildDraftFromStages(stages: PipelineStageData[]): PipelineDraft {
+    const activeStages = stages
+        .filter((stage) => !stage.isIncoming && !stage.isClosedWon && !stage.isClosedLost)
+        .map((stage, index) =>
+            toDraftStage(
+                {
+                    id: stage.id,
+                    name: stage.name,
+                    color: stage.color || getDefaultStageColor(index),
+                },
+                index
+            )
+        );
+    const resolvedActiveStages =
+        activeStages.length > 0
+            ? activeStages
+            : getPipelinePresetById("custom").activeStages.map((stage, index) =>
+                toDraftStage(stage, index)
+            );
+
+    const closedWonStage = stages.find((stage) => stage.isClosedWon);
+    const closedLostStage = stages.find((stage) => stage.isClosedLost);
+    const includeClosingStages = Boolean(closedWonStage && closedLostStage);
+
+    return {
+        activeStages: resolvedActiveStages,
+        includeClosingStages,
+        closedWonName: closedWonStage?.name || "Cerrado Ganado",
+        closedLostName: closedLostStage?.name || "Cerrado Perdido",
+        selectedPreset: findMatchingPipelinePreset({
+            activeStageNames: resolvedActiveStages.map((stage) => stage.name),
+            includeClosingStages,
+            closedWonName: closedWonStage?.name,
+            closedLostName: closedLostStage?.name,
+        }),
+    };
+}
+
+function buildDraftFromPreset(preset: PipelinePresetDefinition): PipelineDraft {
+    return {
+        activeStages: preset.activeStages.map((stage, index) => toDraftStage(stage, index)),
+        includeClosingStages: true,
+        closedWonName: preset.closedWonName,
+        closedLostName: preset.closedLostName,
+        selectedPreset: preset.id,
+    };
+}
 
 export function FunnelEditorDialog({
     open,
@@ -63,371 +157,527 @@ export function FunnelEditorDialog({
     stages,
     onStagesChanged,
 }: FunnelEditorDialogProps) {
-    const [editingStages, setEditingStages] = useState<PipelineStageData[]>(stages);
+    const [draft, setDraft] = useState<PipelineDraft>(() => buildDraftFromStages(stages));
     const [isPending, startTransition] = useTransition();
-    const [showAddForm, setShowAddForm] = useState(false);
-    const [newStageName, setNewStageName] = useState("");
-    const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
-    const [activeId, setActiveId] = useState<string | null>(null);
+    const [activeDragId, setActiveDragId] = useState<string | null>(null);
+    const [error, setError] = useState<string | null>(null);
+    const wasOpenRef = useRef(false);
 
-    // Sync when props change, but only if not dragging/editing locally to avoid jumps
     useEffect(() => {
-        if (!activeId) {
-            setEditingStages(stages);
+        if (open && !wasOpenRef.current) {
+            setDraft(buildDraftFromStages(stages));
+            setError(null);
+            setActiveDragId(null);
         }
-    }, [stages, activeId]);
 
-    const isLocked = (stage: PipelineStageData) =>
-        stage.isIncoming || stage.isClosedWon || stage.isClosedLost;
+        wasOpenRef.current = open;
+    }, [open, stages]);
 
     const sensors = useSensors(
         useSensor(PointerSensor, {
-            activationConstraint: {
-                distance: 8,
-            },
+            activationConstraint: { distance: 8 },
         })
     );
 
+    const activeDragStage = useMemo(
+        () => draft.activeStages.find((stage) => stage.localId === activeDragId) ?? null,
+        [activeDragId, draft.activeStages]
+    );
+
+    const applyPreset = (presetId: PipelinePresetId) => {
+        const preset = getPipelinePresetById(presetId);
+        setDraft(buildDraftFromPreset(preset));
+        setError(null);
+    };
+
+    const updateActiveStage = (localId: string, patch: Partial<DraftStage>) => {
+        setDraft((current) => ({
+            ...current,
+            selectedPreset: "custom",
+            activeStages: current.activeStages.map((stage) =>
+                stage.localId === localId ? { ...stage, ...patch } : stage
+            ),
+        }));
+    };
+
+    const addStage = () => {
+        setDraft((current) => ({
+            ...current,
+            selectedPreset: "custom",
+            activeStages: [
+                ...current.activeStages,
+                {
+                    localId: makeLocalStageId(),
+                    name: "Nueva etapa",
+                    color: getDefaultStageColor(current.activeStages.length),
+                },
+            ],
+        }));
+    };
+
+    const removeStage = (localId: string) => {
+        setDraft((current) => {
+            if (current.activeStages.length <= 1) {
+                return current;
+            }
+
+            return {
+                ...current,
+                selectedPreset: "custom",
+                activeStages: current.activeStages.filter((stage) => stage.localId !== localId),
+            };
+        });
+    };
+
     const handleDragStart = (event: DragStartEvent) => {
-        setActiveId(event.active.id as string);
+        setActiveDragId(event.active.id as string);
     };
 
     const handleDragEnd = (event: DragEndEvent) => {
         const { active, over } = event;
-        setActiveId(null);
+        setActiveDragId(null);
 
-        if (over && active.id !== over.id) {
-            setEditingStages((items) => {
-                const oldIndex = items.findIndex((item) => item.id === active.id);
-                const newIndex = items.findIndex((item) => item.id === over.id);
-                const newItems = arrayMove(items, oldIndex, newIndex);
-
-                // Optimistic update -> Server sync
-                startTransition(async () => {
-                    await reorderPipelineStages(newItems.map((s) => s.id));
-                    onStagesChanged();
-                });
-
-                return newItems;
-            });
+        if (!over || active.id === over.id) {
+            return;
         }
+
+        setDraft((current) => {
+            const oldIndex = current.activeStages.findIndex(
+                (stage) => stage.localId === active.id
+            );
+            const newIndex = current.activeStages.findIndex(
+                (stage) => stage.localId === over.id
+            );
+
+            if (oldIndex === -1 || newIndex === -1) {
+                return current;
+            }
+
+            return {
+                ...current,
+                selectedPreset: "custom",
+                activeStages: arrayMove(current.activeStages, oldIndex, newIndex),
+            };
+        });
     };
 
-    const handleAddStage = () => {
-        if (!newStageName.trim()) return;
+    const handleSave = () => {
+        setError(null);
+
         startTransition(async () => {
-            const res = await createPipelineStage({
-                name: newStageName,
-                color: STAGE_COLORS[Math.floor(Math.random() * STAGE_COLORS.length)],
+            const result = await savePipelineConfiguration({
+                activeStages: draft.activeStages.map((stage) => ({
+                    id: stage.id,
+                    name: stage.name,
+                    color: stage.color,
+                })),
+                includeClosingStages: draft.includeClosingStages,
+                closedWonName: draft.closedWonName,
+                closedLostName: draft.closedLostName,
+                closedWonColor: DEFAULT_CLOSED_WON_COLOR,
+                closedLostColor: DEFAULT_CLOSED_LOST_COLOR,
             });
-            if (res.success) {
-                setNewStageName("");
-                setShowAddForm(false);
-                onStagesChanged();
+
+            if (!result.success) {
+                setError(result.error ?? "No se pudo guardar la configuracion del embudo.");
+                return;
             }
-        });
-    };
 
-    const handleRename = (id: string, name: string) => {
-        if (!name.trim()) return;
-        setEditingStages((prev) =>
-            prev.map((s) => (s.id === id ? { ...s, name } : s))
-        );
-        startTransition(async () => {
-            await updatePipelineStage(id, { name });
             onStagesChanged();
-        });
-    };
-
-    const handleColorChange = (id: string, color: string) => {
-        setEditingStages((prev) =>
-            prev.map((s) => (s.id === id ? { ...s, color } : s))
-        );
-        startTransition(async () => {
-            await updatePipelineStage(id, { color });
-            onStagesChanged();
-        });
-    };
-
-    const handleDelete = (id: string) => {
-        startTransition(async () => {
-            const res = await deletePipelineStage(id);
-            if (res.success) {
-                setDeleteConfirm(null);
-                onStagesChanged();
-            } else {
-                alert("Error al eliminar etapa: " + res.error);
-            }
+            onOpenChange(false);
         });
     };
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="sm:max-w-[520px] max-h-[80vh] overflow-y-auto">
-                <DialogHeader>
-                    <DialogTitle className="flex items-center gap-2">
-                        ✏️ Editar Embudo
-                    </DialogTitle>
-                    <DialogDescription>
-                        Arrastra para reordenar. Agrega, renombra o elimina etapas.
-                    </DialogDescription>
-                </DialogHeader>
+            <DialogContent className="sm:max-w-[960px] gap-0 overflow-hidden p-0">
+                <div className="flex items-center justify-between border-b border-border px-6 py-5">
+                    <div className="space-y-1">
+                        <h2 className="text-2xl font-semibold text-foreground">
+                            Establece tu embudo
+                        </h2>
+                        <p className="max-w-2xl text-sm text-muted-foreground">
+                            Define un flujo tipo Kommo con etapas predefinidas, pero manteniendo
+                            siempre fijo a {DEFAULT_INCOMING_STAGE_NAME}. Las demas etapas las
+                            puedes mover, quitar o adaptar a cada negocio.
+                        </p>
+                    </div>
 
-                <div className="space-y-2 mt-2">
-                    <DndContext
-                        sensors={sensors}
-                        collisionDetection={closestCenter}
-                        onDragStart={handleDragStart}
-                        onDragEnd={handleDragEnd}
-                    >
-                        <SortableContext
-                            items={editingStages.map((s) => s.id)}
-                            strategy={verticalListSortingStrategy}
-                        >
-                            {editingStages.map((stage) => (
-                                <SortableStageItem
-                                    key={stage.id}
-                                    stage={stage}
-                                    isLocked={isLocked(stage)}
-                                    editingStages={editingStages}
-                                    setEditingStages={setEditingStages}
-                                    setDeleteConfirm={setDeleteConfirm}
-                                    deleteConfirm={deleteConfirm}
-                                    handleRename={handleRename}
-                                    handleDelete={handleDelete}
-                                    handleColorChange={handleColorChange}
-                                    isPending={isPending}
-                                />
-                            ))}
-                        </SortableContext>
-                        <DragOverlay>
-                            {activeId ? (
-                                (() => {
-                                    const stage = editingStages.find((s) => s.id === activeId);
-                                    if (!stage) return null;
-                                    return (
-                                        <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg border bg-white shadow-lg opacity-90">
-                                            <GripVertical className="h-4 w-4 text-gray-400 cursor-grabbing" />
-                                            <div
-                                                className="h-4 w-4 rounded-full"
-                                                style={{ backgroundColor: stage.color }}
-                                            />
-                                            <span className="text-sm font-medium">{stage.name}</span>
-                                        </div>
-                                    );
-                                })()
-                            ) : null}
-                        </DragOverlay>
-                    </DndContext>
-
-                    {/* Add stage form */}
-                    {showAddForm ? (
-                        <div
-                            className="flex items-center gap-2 px-3 py-2.5 rounded-lg border border-dashed border-blue-300 bg-blue-50"
-                        >
-                            <Input
-                                className="flex-1 h-8 text-sm"
-                                placeholder="Nombre de la nueva etapa"
-                                value={newStageName}
-                                onChange={(e) => setNewStageName(e.target.value)}
-                                autoFocus
-                                onKeyDown={(e) => {
-                                    if (e.key === "Enter") handleAddStage();
-                                    if (e.key === "Escape") setShowAddForm(false);
-                                }}
-                            />
-                            <Button size="sm" onClick={handleAddStage} disabled={isPending}>
-                                Guardar
-                            </Button>
-                            <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => setShowAddForm(false)}
-                            >
-                                Cancelar
-                            </Button>
-                        </div>
-                    ) : (
+                    <div className="flex items-center gap-2">
                         <Button
-                            variant="outline"
-                            className="w-full border-dashed text-muted-foreground"
-                            onClick={() => setShowAddForm(true)}
+                            variant="ghost"
+                            onClick={() => onOpenChange(false)}
+                            disabled={isPending}
                         >
-                            <Plus className="h-4 w-4 mr-2" />
-                            Agregar nueva etapa
+                            Cancelar
                         </Button>
-                    )}
+                        <Button onClick={handleSave} disabled={isPending}>
+                            {isPending ? (
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            ) : (
+                                <Save className="mr-2 h-4 w-4" />
+                            )}
+                            Guardar
+                        </Button>
+                    </div>
                 </div>
 
-                <div
-                    className="flex items-center gap-2 mt-2 px-3 py-2 rounded-md text-xs"
-                    style={{ backgroundColor: "#FEF3C7", color: "#92400E" }}
-                >
-                    <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0" />
-                    Al eliminar una etapa, sus leads se mueven a "Nuevo Lead".
+                <div className="grid min-h-[640px] grid-cols-1 md:grid-cols-[240px_minmax(0,1fr)]">
+                    <aside className="border-b border-border bg-muted/20 md:border-b-0 md:border-r">
+                        <div className="px-5 py-5">
+                            <p className="text-sm font-semibold text-foreground">Plantillas</p>
+                            <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                                Elige una base y luego ajustala libremente.
+                            </p>
+                        </div>
+
+                        <ScrollArea className="h-[520px] px-3 pb-4 md:h-[580px]" type="always">
+                            <div className="space-y-1.5 pr-2">
+                                {PIPELINE_PRESETS.map((preset) => {
+                                    const isSelected = draft.selectedPreset === preset.id;
+
+                                    return (
+                                        <button
+                                            key={preset.id}
+                                            type="button"
+                                            onClick={() => applyPreset(preset.id)}
+                                            className={cn(
+                                                "w-full rounded-2xl border px-4 py-3 text-left transition-all",
+                                                isSelected
+                                                    ? "border-primary bg-primary/10 shadow-sm"
+                                                    : "border-transparent bg-transparent hover:border-border hover:bg-background"
+                                            )}
+                                        >
+                                            <div className="flex items-start justify-between gap-3">
+                                                <div className="space-y-1">
+                                                    <p className="text-sm font-semibold text-foreground">
+                                                        {preset.label}
+                                                    </p>
+                                                    <p className="text-xs leading-5 text-muted-foreground">
+                                                        {preset.description}
+                                                    </p>
+                                                </div>
+                                                {isSelected ? (
+                                                    <CheckCircle2 className="mt-0.5 h-4 w-4 text-primary" />
+                                                ) : null}
+                                            </div>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </ScrollArea>
+                    </aside>
+
+                    <ScrollArea className="h-[640px]" type="always">
+                        <div className="space-y-6 px-6 py-6">
+                            <section className="space-y-3">
+                                <div className="flex items-center justify-between gap-4">
+                                    <div>
+                                        <p className="text-sm font-semibold text-foreground">
+                                            Leads entrantes
+                                        </p>
+                                        <p className="text-xs leading-5 text-muted-foreground">
+                                            Esta etapa es fija y captura todos los leads nuevos que
+                                            llegan al CRM.
+                                        </p>
+                                    </div>
+                                    <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
+                                        <Lock className="h-3.5 w-3.5" />
+                                        Fija
+                                    </div>
+                                </div>
+
+                                <StagePreviewCard
+                                    name={DEFAULT_INCOMING_STAGE_NAME}
+                                    color="#D1D5DB"
+                                    textColor="#374151"
+                                    locked
+                                />
+                            </section>
+
+                            <section className="space-y-3">
+                                <div className="flex items-end justify-between gap-4">
+                                    <div>
+                                        <p className="text-sm font-semibold text-foreground">
+                                            Etapas activas
+                                        </p>
+                                        <p className="text-xs leading-5 text-muted-foreground">
+                                            Estas etapas si se pueden mover, renombrar y ajustar
+                                            segun tu negocio.
+                                        </p>
+                                    </div>
+                                    <Button variant="outline" size="sm" onClick={addStage}>
+                                        <Plus className="mr-2 h-4 w-4" />
+                                        Agregar etapa
+                                    </Button>
+                                </div>
+
+                                <DndContext
+                                    sensors={sensors}
+                                    collisionDetection={closestCenter}
+                                    onDragStart={handleDragStart}
+                                    onDragEnd={handleDragEnd}
+                                >
+                                    <SortableContext
+                                        items={draft.activeStages.map((stage) => stage.localId)}
+                                        strategy={verticalListSortingStrategy}
+                                    >
+                                        <div className="space-y-2">
+                                            {draft.activeStages.map((stage, index) => (
+                                                <SortableActiveStageCard
+                                                    key={stage.localId}
+                                                    stage={stage}
+                                                    index={index}
+                                                    disableRemove={draft.activeStages.length <= 1}
+                                                    onNameChange={(value) =>
+                                                        updateActiveStage(stage.localId, {
+                                                            name: value,
+                                                        })
+                                                    }
+                                                    onRemove={() => removeStage(stage.localId)}
+                                                />
+                                            ))}
+                                        </div>
+                                    </SortableContext>
+
+                                    <DragOverlay>
+                                        {activeDragStage ? (
+                                            <StagePreviewCard
+                                                name={activeDragStage.name}
+                                                color={activeDragStage.color}
+                                                textColor={getStageTextColor(activeDragStage.color)}
+                                                dragging
+                                            />
+                                        ) : null}
+                                    </DragOverlay>
+                                </DndContext>
+                            </section>
+
+                            <section className="space-y-3">
+                                <div className="flex items-start justify-between gap-4 rounded-2xl border border-border bg-card px-4 py-4">
+                                    <div className="space-y-1">
+                                        <p className="text-sm font-semibold text-foreground">
+                                            Etapas de cierre
+                                        </p>
+                                        <p className="text-xs leading-5 text-muted-foreground">
+                                            Activalas si quieres terminar el flujo con ganado y
+                                            perdido. Si las desactivas, los leads que esten ahi
+                                            volveran a {DEFAULT_INCOMING_STAGE_NAME} al guardar.
+                                        </p>
+                                    </div>
+                                    <Switch
+                                        checked={draft.includeClosingStages}
+                                        onCheckedChange={(checked) => {
+                                            setDraft((current) => ({
+                                                ...current,
+                                                selectedPreset: "custom",
+                                                includeClosingStages: checked,
+                                            }));
+                                        }}
+                                    />
+                                </div>
+
+                                {draft.includeClosingStages ? (
+                                    <div className="space-y-2">
+                                        <ClosingStageCard
+                                            icon={<CheckCircle2 className="h-4 w-4 text-emerald-700" />}
+                                            label="Cierre ganado"
+                                            value={draft.closedWonName}
+                                            color={DEFAULT_CLOSED_WON_COLOR}
+                                            onChange={(value) =>
+                                                setDraft((current) => ({
+                                                    ...current,
+                                                    selectedPreset: "custom",
+                                                    closedWonName: value,
+                                                }))
+                                            }
+                                        />
+                                        <ClosingStageCard
+                                            icon={<XCircle className="h-4 w-4 text-slate-600" />}
+                                            label="Cierre perdido"
+                                            value={draft.closedLostName}
+                                            color={DEFAULT_CLOSED_LOST_COLOR}
+                                            onChange={(value) =>
+                                                setDraft((current) => ({
+                                                    ...current,
+                                                    selectedPreset: "custom",
+                                                    closedLostName: value,
+                                                }))
+                                            }
+                                        />
+                                    </div>
+                                ) : (
+                                    <div className="rounded-2xl border border-dashed border-border bg-muted/20 px-4 py-4 text-sm text-muted-foreground">
+                                        El embudo se guardara sin etapas de cierre al final.
+                                    </div>
+                                )}
+                            </section>
+
+                            {error ? (
+                                <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                                    {error}
+                                </div>
+                            ) : null}
+
+                            <div className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                                <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+                                Si eliminas o reemplazas una etapa, los leads que estaban ahi se
+                                moveran automaticamente a {DEFAULT_INCOMING_STAGE_NAME}.
+                            </div>
+                        </div>
+                    </ScrollArea>
                 </div>
             </DialogContent>
         </Dialog>
     );
 }
 
-// Sub-component for sortable item
-function SortableStageItem({
-    stage,
-    isLocked,
-    setDeleteConfirm,
-    deleteConfirm,
-    handleRename,
-    handleDelete,
-    handleColorChange,
-    isPending,
+function StagePreviewCard({
+    name,
+    color,
+    textColor,
+    locked = false,
+    dragging = false,
 }: {
-    stage: PipelineStageData;
-    isLocked: boolean;
-    editingStages: PipelineStageData[];
-    setEditingStages: React.Dispatch<React.SetStateAction<PipelineStageData[]>>;
-    setDeleteConfirm: (id: string | null) => void;
-    deleteConfirm: string | null;
-    handleRename: (id: string, name: string) => void;
-    handleDelete: (id: string) => void;
-    handleColorChange: (id: string, color: string) => void;
-    isPending: boolean;
+    name: string;
+    color: string;
+    textColor: string;
+    locked?: boolean;
+    dragging?: boolean;
 }) {
-    const {
-        attributes,
-        listeners,
-        setNodeRef,
-        transform,
-        transition,
-        isDragging,
-    } = useSortable({ id: stage.id });
+    return (
+        <div
+            className={cn(
+                "rounded-2xl border border-border/70 px-4 py-3 shadow-sm",
+                dragging && "shadow-xl"
+            )}
+            style={{
+                backgroundColor: color,
+                color: textColor,
+            }}
+        >
+            <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                    <GripVertical className="h-4 w-4 opacity-60" />
+                    <span className="text-sm font-semibold">{name}</span>
+                </div>
+                {locked ? (
+                    <span className="rounded-full bg-white/70 px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-600">
+                        Fija
+                    </span>
+                ) : null}
+            </div>
+        </div>
+    );
+}
+
+function SortableActiveStageCard({
+    stage,
+    index,
+    disableRemove,
+    onNameChange,
+    onRemove,
+}: {
+    stage: DraftStage;
+    index: number;
+    disableRemove: boolean;
+    onNameChange: (value: string) => void;
+    onRemove: () => void;
+}) {
+    const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+        useSortable({ id: stage.localId });
 
     const style = {
         transform: CSS.Transform.toString(transform),
         transition,
-        opacity: isDragging ? 0.3 : 1,
-        position: "relative" as const,
-        zIndex: isDragging ? 999 : "auto",
+        opacity: isDragging ? 0.45 : 1,
     };
+
+    const textColor = getStageTextColor(stage.color);
+
+    return (
+        <div ref={setNodeRef} style={style}>
+            <div
+                className="rounded-2xl border border-border/70 px-4 py-3 shadow-sm"
+                style={{
+                    backgroundColor: stage.color,
+                    color: textColor,
+                }}
+            >
+                <div className="flex items-center gap-3">
+                    <button
+                        type="button"
+                        className="cursor-grab rounded-md p-1 opacity-70 transition hover:bg-black/5 hover:opacity-100"
+                        {...attributes}
+                        {...listeners}
+                    >
+                        <GripVertical className="h-4 w-4" />
+                    </button>
+
+                    <span className="rounded-full bg-white/65 px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.14em]">
+                        Etapa {index + 1}
+                    </span>
+
+                    <input
+                        value={stage.name}
+                        onChange={(event) => onNameChange(event.target.value)}
+                        className="min-w-0 flex-1 bg-transparent text-sm font-semibold outline-none placeholder:text-current/60"
+                        placeholder="Nombre de la etapa"
+                    />
+
+                    <button
+                        type="button"
+                        onClick={onRemove}
+                        disabled={disableRemove}
+                        className="rounded-md p-1 opacity-70 transition hover:bg-black/5 hover:opacity-100 disabled:cursor-not-allowed disabled:opacity-40"
+                        title={
+                            disableRemove
+                                ? "Debes conservar al menos una etapa activa"
+                                : "Eliminar etapa"
+                        }
+                    >
+                        <Trash2 className="h-4 w-4" />
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+function ClosingStageCard({
+    icon,
+    label,
+    value,
+    color,
+    onChange,
+}: {
+    icon: React.ReactNode;
+    label: string;
+    value: string;
+    color: string;
+    onChange: (value: string) => void;
+}) {
+    const textColor = getStageTextColor(color);
 
     return (
         <div
-            ref={setNodeRef}
-            style={style}
-            className="flex items-center gap-2 px-3 py-2.5 rounded-lg mb-2 border border-border bg-card"
+            className="rounded-2xl border border-border/70 px-4 py-3 shadow-sm"
+            style={{ backgroundColor: color, color: textColor }}
         >
-            <div
-                {...attributes}
-                {...listeners}
-                className="cursor-grab hover:text-gray-600 text-gray-400 p-1"
-            >
-                <GripVertical className="h-4 w-4" />
-            </div>
-
-            {/* Color dot */}
-            <div className="relative group">
-                <div
-                    className="h-4 w-4 rounded-full cursor-pointer flex-shrink-0 transition-transform hover:scale-110"
-                    style={{ backgroundColor: stage.color }}
-                    title={isLocked ? "Color fijo" : "Cambiar color"}
-                />
-                {!isLocked && (
-                    <div
-                        className="absolute left-0 top-6 z-50 hidden group-hover:flex flex-wrap gap-1 p-2 bg-popover rounded-lg shadow-xl border border-border"
-                        style={{ width: "150px" }}
-                    >
-                        {STAGE_COLORS.map((c) => (
-                            <button
-                                key={c}
-                                className="h-5 w-5 rounded-full transition-transform hover:scale-125"
-                                style={{
-                                    backgroundColor: c,
-                                    border:
-                                        c === stage.color
-                                            ? "2px solid currentColor"
-                                            : "1px solid hsl(228 14% 20%)",
-                                }}
-                                onClick={() => handleColorChange(stage.id, c)}
-                            />
-                        ))}
-                    </div>
-                )}
-            </div>
-
-            {/* Stage name */}
-            {isLocked ? (
-                <div className="flex items-center gap-1.5 flex-1 min-w-0">
-                    <Lock className="h-3.5 w-3.5 flex-shrink-0" style={{ color: "#94A3B8" }} />
-                    <span
-                        className="text-sm font-medium truncate"
-                        style={{ color: "#64748B" }}
-                    >
-                        {stage.name}
-                    </span>
-                    <span
-                        className="text-[10px] px-1.5 py-0.5 rounded"
-                        style={{ backgroundColor: "#F1F5F9", color: "#94A3B8" }}
-                    >
-                        {stage.isIncoming
-                            ? "Fija"
-                            : stage.isClosedWon
-                                ? "Ganado"
-                                : "Perdido"}
-                    </span>
+            <div className="flex items-center gap-3">
+                <div className="rounded-full bg-white/65 p-1.5">{icon}</div>
+                <div className="min-w-0 flex-1">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.14em] opacity-70">
+                        {label}
+                    </p>
+                    <Input
+                        value={value}
+                        onChange={(event) => onChange(event.target.value)}
+                        className="mt-1 h-9 border-0 bg-white/60 px-3 text-sm font-semibold shadow-none"
+                        placeholder="Nombre de la etapa de cierre"
+                    />
                 </div>
-            ) : (
-                <Input
-                    className="flex-1 h-8 text-sm"
-                    defaultValue={stage.name}
-                    onBlur={(e) => {
-                        if (e.target.value !== stage.name) {
-                            handleRename(stage.id, e.target.value);
-                        }
-                    }}
-                    onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                            (e.target as HTMLInputElement).blur();
-                        }
-                    }}
-                />
-            )}
-
-            {/* Delete button */}
-            {!isLocked && (
-                <div>
-                    {deleteConfirm === stage.id ? (
-                        <div className="flex items-center gap-1">
-                            <Button
-                                size="sm"
-                                variant="destructive"
-                                className="h-7 text-xs"
-                                onClick={() => handleDelete(stage.id)}
-                                disabled={isPending}
-                            >
-                                Eliminar
-                            </Button>
-                            <Button
-                                size="sm"
-                                variant="ghost"
-                                className="h-7 text-xs"
-                                onClick={() => setDeleteConfirm(null)}
-                            >
-                                No
-                            </Button>
-                        </div>
-                    ) : (
-                        <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7"
-                            onClick={() => setDeleteConfirm(stage.id)}
-                            disabled={isPending}
-                        >
-                            <Trash2 className="h-3.5 w-3.5" style={{ color: "#DC2626" }} />
-                        </Button>
-                    )}
-                </div>
-            )}
+            </div>
         </div>
     );
 }

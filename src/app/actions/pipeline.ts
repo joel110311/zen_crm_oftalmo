@@ -1,6 +1,12 @@
 "use server";
 
 import { prisma } from "@/lib/db";
+import {
+    DEFAULT_CLOSED_LOST_COLOR,
+    DEFAULT_CLOSED_WON_COLOR,
+    DEFAULT_INCOMING_STAGE_NAME,
+    getDefaultStageColor,
+} from "@/lib/pipeline-presets";
 import { revalidatePath } from "next/cache";
 
 // ── Pipeline Stages ──
@@ -50,6 +56,7 @@ export async function getDeals() {
             include: {
                 contact: true,
                 stage: true,
+                intelligence: true,
             },
             orderBy: { createdAt: "desc" },
         });
@@ -67,6 +74,7 @@ export async function getDealsByStage(stageId: string) {
             include: {
                 contact: true,
                 stage: true,
+                intelligence: true,
             },
             orderBy: { createdAt: "desc" },
         });
@@ -84,6 +92,7 @@ export async function getDealWithContact(dealId: string) {
             include: {
                 contact: true,
                 stage: true,
+                intelligence: true,
             },
         });
         return deal;
@@ -113,7 +122,7 @@ export async function createDeal(data: {
                 notes: data.notes || null,
                 priority: data.priority || "medium",
             },
-            include: { contact: true, stage: true },
+            include: { contact: true, stage: true, intelligence: true },
         });
         revalidatePath("/dashboard/pipeline");
         return { success: true, deal };
@@ -134,7 +143,7 @@ export async function updateDeal(id: string, data: {
         const deal = await prisma.deal.update({
             where: { id },
             data,
-            include: { contact: true, stage: true },
+            include: { contact: true, stage: true, intelligence: true },
         });
         revalidatePath("/dashboard/pipeline");
         return { success: true, deal };
@@ -236,6 +245,7 @@ export async function getPipelineData() {
                 include: {
                     contact: true,
                     stage: true,
+                    intelligence: true,
                     dealTags: { include: { tag: true } },
                 },
                 orderBy: { createdAt: "desc" },
@@ -543,5 +553,197 @@ export async function reorderPipelineStages(orderedIds: string[]) {
     } catch (error) {
         console.error("Failed to reorder stages:", error);
         return { success: false, error: "Failed to reorder stages." };
+    }
+}
+
+export async function savePipelineConfiguration(data: {
+    activeStages: Array<{
+        id?: string;
+        name: string;
+        color?: string;
+    }>;
+    includeClosingStages: boolean;
+    closedWonName?: string;
+    closedLostName?: string;
+    closedWonColor?: string;
+    closedLostColor?: string;
+}) {
+    try {
+        const normalizedActiveStages = data.activeStages
+            .map((stage, index) => ({
+                id: stage.id,
+                name: stage.name.trim(),
+                color: stage.color?.trim() || getDefaultStageColor(index),
+            }))
+            .filter((stage) => stage.name.length > 0);
+
+        if (normalizedActiveStages.length === 0) {
+            return { success: false, error: "Agrega al menos una etapa activa." };
+        }
+
+        const existingStages = await prisma.pipelineStage.findMany({
+            orderBy: { order: "asc" },
+        });
+
+        const incomingStage = existingStages.find((stage) => stage.isIncoming);
+        if (!incomingStage) {
+            return { success: false, error: "No se encontro la etapa fija de Nuevo Lead." };
+        }
+
+        const existingActiveStages = existingStages.filter(
+            (stage) => !stage.isIncoming && !stage.isClosedWon && !stage.isClosedLost
+        );
+        const existingClosedWonStage =
+            existingStages.find((stage) => stage.isClosedWon) ?? null;
+        const existingClosedLostStage =
+            existingStages.find((stage) => stage.isClosedLost) ?? null;
+
+        await prisma.$transaction(async (tx) => {
+            await tx.pipelineStage.update({
+                where: { id: incomingStage.id },
+                data: {
+                    name: DEFAULT_INCOMING_STAGE_NAME,
+                    order: 0,
+                    isIncoming: true,
+                    isClosedWon: false,
+                    isClosedLost: false,
+                },
+            });
+
+            const keptActiveStageIds = new Set<string>();
+            let nextOrder = 1;
+
+            for (let index = 0; index < normalizedActiveStages.length; index += 1) {
+                const stage = normalizedActiveStages[index];
+                const existingStage =
+                    stage.id &&
+                    existingActiveStages.find((candidate) => candidate.id === stage.id);
+
+                if (existingStage) {
+                    await tx.pipelineStage.update({
+                        where: { id: existingStage.id },
+                        data: {
+                            name: stage.name,
+                            color: stage.color,
+                            order: nextOrder,
+                            isIncoming: false,
+                            isClosedWon: false,
+                            isClosedLost: false,
+                        },
+                    });
+                    keptActiveStageIds.add(existingStage.id);
+                } else {
+                    const createdStage = await tx.pipelineStage.create({
+                        data: {
+                            name: stage.name,
+                            color: stage.color,
+                            order: nextOrder,
+                        },
+                    });
+                    keptActiveStageIds.add(createdStage.id);
+                }
+
+                nextOrder += 1;
+            }
+
+            const removedActiveStageIds = existingActiveStages
+                .filter((stage) => !keptActiveStageIds.has(stage.id))
+                .map((stage) => stage.id);
+
+            if (removedActiveStageIds.length > 0) {
+                await tx.deal.updateMany({
+                    where: { stageId: { in: removedActiveStageIds } },
+                    data: { stageId: incomingStage.id },
+                });
+                await tx.pipelineStage.deleteMany({
+                    where: { id: { in: removedActiveStageIds } },
+                });
+            }
+
+            if (data.includeClosingStages) {
+                const closedWonName = data.closedWonName?.trim() || "Cerrado Ganado";
+                const closedLostName = data.closedLostName?.trim() || "Cerrado Perdido";
+                const closedWonColor = data.closedWonColor?.trim() || DEFAULT_CLOSED_WON_COLOR;
+                const closedLostColor =
+                    data.closedLostColor?.trim() || DEFAULT_CLOSED_LOST_COLOR;
+
+                if (existingClosedWonStage) {
+                    await tx.pipelineStage.update({
+                        where: { id: existingClosedWonStage.id },
+                        data: {
+                            name: closedWonName,
+                            color: closedWonColor,
+                            order: nextOrder,
+                            isIncoming: false,
+                            isClosedWon: true,
+                            isClosedLost: false,
+                        },
+                    });
+                } else {
+                    await tx.pipelineStage.create({
+                        data: {
+                            name: closedWonName,
+                            color: closedWonColor,
+                            order: nextOrder,
+                            isClosedWon: true,
+                        },
+                    });
+                }
+                nextOrder += 1;
+
+                if (existingClosedLostStage) {
+                    await tx.pipelineStage.update({
+                        where: { id: existingClosedLostStage.id },
+                        data: {
+                            name: closedLostName,
+                            color: closedLostColor,
+                            order: nextOrder,
+                            isIncoming: false,
+                            isClosedWon: false,
+                            isClosedLost: true,
+                        },
+                    });
+                } else {
+                    await tx.pipelineStage.create({
+                        data: {
+                            name: closedLostName,
+                            color: closedLostColor,
+                            order: nextOrder,
+                            isClosedLost: true,
+                        },
+                    });
+                }
+            } else {
+                const closingStageIds = [existingClosedWonStage?.id, existingClosedLostStage?.id]
+                    .filter(Boolean) as string[];
+
+                if (closingStageIds.length > 0) {
+                    await tx.deal.updateMany({
+                        where: { stageId: { in: closingStageIds } },
+                        data: { stageId: incomingStage.id },
+                    });
+                    await tx.pipelineStage.deleteMany({
+                        where: { id: { in: closingStageIds } },
+                    });
+                }
+            }
+
+            const finalStages = await tx.pipelineStage.findMany({
+                orderBy: [{ order: "asc" }, { createdAt: "asc" }],
+            });
+
+            for (let index = 0; index < finalStages.length; index += 1) {
+                await tx.pipelineStage.update({
+                    where: { id: finalStages[index].id },
+                    data: { order: index },
+                });
+            }
+        });
+
+        revalidatePath("/dashboard/pipeline");
+        return { success: true };
+    } catch (error) {
+        console.error("Failed to save pipeline configuration:", error);
+        return { success: false, error: "No se pudo guardar la configuracion del embudo." };
     }
 }

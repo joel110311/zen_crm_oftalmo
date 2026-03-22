@@ -7,3 +7,8 @@ node_modules
 .env.*
 .vscode
 .idea
+cookies.txt
+csrf.json
+build_stats.txt
+media-upload.log
+tmp*

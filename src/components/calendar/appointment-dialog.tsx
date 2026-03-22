@@ -17,6 +17,15 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { createAppointment, updateAppointment, deleteAppointment } from "@/app/actions/calendar"; // Ensure these exist
 import { createContact, getContacts } from "@/app/actions/contacts"; // Need a search function for contacts
 import { useToast } from "@/components/ui/use-toast";
+import { getContactFullName } from "@/lib/contact-name";
+import {
+    formatTimeLabel,
+    getBusinessDayScheduleForDate,
+    getNextOpenDate,
+    isBusinessDayOpen,
+    timeToMinutes,
+    type BusinessHoursConfig,
+} from "@/lib/calendar/business-hours";
 
 interface AppointmentDialogProps {
     open: boolean;
@@ -24,9 +33,10 @@ interface AppointmentDialogProps {
     selectedEvent?: any; // Replace with proper type
     selectedSlot?: { start: Date; end: Date } | null;
     onSuccess: () => void;
+    businessHours: BusinessHoursConfig;
 }
 
-export function AppointmentDialog({ open, onOpenChange, selectedEvent, selectedSlot, onSuccess }: AppointmentDialogProps) {
+export function AppointmentDialog({ open, onOpenChange, selectedEvent, selectedSlot, onSuccess, businessHours }: AppointmentDialogProps) {
     const [isPending, startTransition] = useTransition();
     const { toast } = useToast();
 
@@ -49,6 +59,20 @@ export function AppointmentDialog({ open, onOpenChange, selectedEvent, selectedS
     const [newContactPhone, setNewContactPhone] = useState("");
     const [isSubmittingContact, setIsSubmittingContact] = useState(false);
 
+    const clampTimeToSchedule = (value: string, targetDate: Date) => {
+        const { schedule } = getBusinessDayScheduleForDate(targetDate, businessHours);
+        if (!schedule.enabled) {
+            return businessHours.start;
+        }
+
+        const minutes = timeToMinutes(value);
+        if (minutes < timeToMinutes(schedule.start) || minutes >= timeToMinutes(schedule.end)) {
+            return schedule.start;
+        }
+
+        return value;
+    };
+
     // Initialize form when opening
     useEffect(() => {
         if (open) {
@@ -56,28 +80,31 @@ export function AppointmentDialog({ open, onOpenChange, selectedEvent, selectedS
                 setTitle(selectedEvent.title);
                 setContactId(selectedEvent.resource?.contact?.id || "");
                 setDate(selectedEvent.start);
-                setTime(format(selectedEvent.start, "HH:mm"));
+                setTime(clampTimeToSchedule(format(selectedEvent.start, "HH:mm"), selectedEvent.start));
                 const diffMins = (selectedEvent.end.getTime() - selectedEvent.start.getTime()) / 60000;
                 setDuration(diffMins.toString());
                 setNotes(selectedEvent.notes || "");
             } else if (selectedSlot) {
+                const nextDate = isBusinessDayOpen(selectedSlot.start, businessHours)
+                    ? selectedSlot.start
+                    : getNextOpenDate(selectedSlot.start, businessHours);
                 setTitle("");
                 setContactId("");
-                setDate(selectedSlot.start);
-                setTime(format(selectedSlot.start, "HH:mm"));
-                setDuration("30");
+                setDate(nextDate);
+                setTime(clampTimeToSchedule(format(selectedSlot.start, "HH:mm"), nextDate));
+                setDuration(String(businessHours.defaultDurationMinutes));
                 setNotes("");
             } else {
-                // Default reset
+                const nextOpenDate = getNextOpenDate(new Date(), businessHours);
                 setTitle("");
                 setContactId("");
-                setDate(new Date());
-                setTime("09:00");
-                setDuration("30");
+                setDate(nextOpenDate);
+                setTime(clampTimeToSchedule(businessHours.start, nextOpenDate));
+                setDuration(String(businessHours.defaultDurationMinutes));
                 setNotes("");
             }
         }
-    }, [open, selectedEvent, selectedSlot]);
+    }, [businessHours, open, selectedEvent, selectedSlot]);
 
     // Fetch contacts on query change (simple debounce could be added)
     useEffect(() => {
@@ -91,10 +118,34 @@ export function AppointmentDialog({ open, onOpenChange, selectedEvent, selectedS
         fetchContacts();
     }, [query]);
 
+    useEffect(() => {
+        if (!date) return;
+        const clamped = clampTimeToSchedule(time, date);
+        if (clamped !== time) {
+            setTime(clamped);
+        }
+    }, [businessHours, date, time]);
+
+    const selectedDaySchedule = date
+        ? getBusinessDayScheduleForDate(date, businessHours).schedule
+        : null;
+    const selectedDayStart = selectedDaySchedule?.enabled ? selectedDaySchedule.start : businessHours.start;
+    const selectedDayEnd = selectedDaySchedule?.enabled ? selectedDaySchedule.end : businessHours.end;
+
 
     const handleSubmit = () => {
         if (!date || !time || !title) {
             toast({ title: "Faltan datos", description: "Por favor completa los campos obligatorios.", variant: "destructive" });
+            return;
+        }
+
+        const { schedule } = getBusinessDayScheduleForDate(date, businessHours);
+        if (!schedule.enabled) {
+            toast({
+                title: "Dia cerrado",
+                description: "Ese dia no tiene horario comercial configurado. Elige otra fecha.",
+                variant: "destructive",
+            });
             return;
         }
 
@@ -107,22 +158,28 @@ export function AppointmentDialog({ open, onOpenChange, selectedEvent, selectedS
         startTransition(async () => {
             try {
                 if (selectedEvent) {
-                    await updateAppointment(selectedEvent.id, {
+                    const result = await updateAppointment(selectedEvent.id, {
                         title,
                         startTime,
                         endTime,
                         notes,
                         contactId: contactId || undefined,
                     });
+                    if (!result.success) {
+                        throw new Error(result.error || "No se pudo actualizar la cita.");
+                    }
                     toast({ title: "Cita actualizada" });
                 } else {
-                    await createAppointment({
+                    const result = await createAppointment({
                         title,
                         startTime,
                         endTime,
                         notes,
                         contactId: contactId || undefined,
                     });
+                    if (!result.success) {
+                        throw new Error(result.error || "No se pudo agendar la cita.");
+                    }
                     toast({ title: "Cita agendada" });
                 }
                 onSuccess();
@@ -164,7 +221,7 @@ export function AppointmentDialog({ open, onOpenChange, selectedEvent, selectedS
                 setContacts(prev => [result.contact, ...prev]);
                 setContactId(result.contact.id);
                 // Auto-fill title
-                if (!title) setTitle(`Cita con ${result.contact.name}`);
+                if (!title) setTitle(`Cita con ${getContactFullName(result.contact)}`);
 
                 // Reset form state
                 setIsCreatingContact(false);
@@ -203,7 +260,7 @@ export function AppointmentDialog({ open, onOpenChange, selectedEvent, selectedS
                                     className="w-full justify-between bg-background h-11"
                                 >
                                     {contactId
-                                        ? contacts.find((c) => c.id === contactId)?.name || "Cliente seleccionado"
+                                        ? getContactFullName(contacts.find((c) => c.id === contactId), "Cliente seleccionado")
                                         : "Buscar cliente..."}
                                     <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                                 </Button>
@@ -222,7 +279,7 @@ export function AppointmentDialog({ open, onOpenChange, selectedEvent, selectedS
                                                         setContactId(currentValue === contactId ? "" : currentValue);
                                                         setOpenCombobox(false);
                                                         // Auto-fill title if empty
-                                                        if (!title) setTitle(`Reunión con ${contact.name}`);
+                                                        if (!title) setTitle(`Reunión con ${getContactFullName(contact)}`);
                                                     }}
                                                 >
                                                     <Check
@@ -232,7 +289,7 @@ export function AppointmentDialog({ open, onOpenChange, selectedEvent, selectedS
                                                         )}
                                                     />
                                                     <div className="flex flex-col">
-                                                        <span className="font-medium">{contact.name}</span>
+                                                        <span className="font-medium">{getContactFullName(contact)}</span>
                                                         <span className="text-xs text-secondary-foreground">{contact.email || contact.phone}</span>
                                                     </div>
                                                 </CommandItem>
@@ -338,6 +395,7 @@ export function AppointmentDialog({ open, onOpenChange, selectedEvent, selectedS
                                         mode="single"
                                         selected={date}
                                         onSelect={setDate}
+                                        disabled={(calendarDate) => !isBusinessDayOpen(calendarDate, businessHours)}
                                         initialFocus
                                     />
                                 </PopoverContent>
@@ -345,6 +403,15 @@ export function AppointmentDialog({ open, onOpenChange, selectedEvent, selectedS
                         </div>
                         <div className="space-y-2">
                             <Label>Hora *</Label>
+                            {selectedDaySchedule?.enabled ? (
+                                <p className="text-xs text-muted-foreground">
+                                    Disponible entre {formatTimeLabel(selectedDayStart)} y {formatTimeLabel(selectedDayEnd)}.
+                                </p>
+                            ) : (
+                                <p className="text-xs text-amber-600">
+                                    Este dia esta cerrado en el horario comercial.
+                                </p>
+                            )}
                             <div className="relative">
                                 <Clock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                                 <Input
@@ -352,6 +419,9 @@ export function AppointmentDialog({ open, onOpenChange, selectedEvent, selectedS
                                     value={time}
                                     onChange={(e) => setTime(e.target.value)}
                                     className="pl-9 bg-background h-11"
+                                    min={selectedDayStart}
+                                    max={selectedDayEnd}
+                                    disabled={!selectedDaySchedule?.enabled}
                                 />
                             </div>
                         </div>

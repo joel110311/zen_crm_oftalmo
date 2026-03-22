@@ -17,6 +17,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { searchGlobal, type SearchResult } from "@/app/actions/search";
 import { cn } from "@/lib/utils";
+import { getContactFullName } from "@/lib/contact-name";
 
 export function SearchCommand() {
     const router = useRouter();
@@ -107,7 +108,7 @@ export function SearchCommand() {
                                         >
                                             <User className="mr-2 h-4 w-4" />
                                             <div className="flex flex-col">
-                                                <span>{contact.name || "Unknown"} {contact.lastName || ""}</span>
+                                                <span>{getContactFullName(contact, "Unknown")}</span>
                                                 <span className="text-xs text-muted-foreground">{contact.email}</span>
                                             </div>
                                         </CommandItem>

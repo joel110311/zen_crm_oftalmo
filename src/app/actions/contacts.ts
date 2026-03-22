@@ -9,6 +9,7 @@ export async function getContacts(query?: string) {
             ? {
                 OR: [
                     { name: { contains: query, mode: "insensitive" as const } },
+                    { lastName: { contains: query, mode: "insensitive" as const } },
                     { email: { contains: query, mode: "insensitive" as const } },
                     { phone: { contains: query, mode: "insensitive" as const } },
                     { company: { contains: query, mode: "insensitive" as const } },
@@ -86,6 +87,7 @@ export async function createContact(formData: FormData) {
 
 export async function updateContact(id: string, data: Partial<{
     name: string;
+    lastName: string;
     email: string;
     phone: string;
     company: string;

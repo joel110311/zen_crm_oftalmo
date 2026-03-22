@@ -2,24 +2,46 @@
 
 import { prisma } from "@/lib/db";
 import { revalidatePath } from "next/cache";
+import { Prisma } from "@prisma/client";
+import { withSettingsDefaults } from "@/lib/system-settings";
 
 export async function getSystemSettings() {
     try {
         const settings = await prisma.systemSettings.findFirst();
-        return settings;
+        return withSettingsDefaults(settings);
     } catch (error) {
         console.error("Failed to fetch settings:", error);
-        return null;
+        return withSettingsDefaults(null);
     }
 }
 
 export async function updateSystemSettings(data: {
     openaiApiKey?: string;
+    openaiModel?: string;
     geminiApiKey?: string;
-    ycloudApiKey?: string;
-    ycloudPhoneId?: string;
+    whatsappBaseUrl?: string;
+    whatsappAdminToken?: string;
+    whatsappUserToken?: string;
+    whatsappInstanceName?: string;
     isBotEnabled?: boolean;
     n8nWebhookUrl?: string;
+    agentName?: string;
+    agentPrompt?: string;
+    agentTemperature?: number;
+    knowledgeTopK?: number;
+    autoReplyDelayMs?: number;
+    businessHoursStart?: string;
+    businessHoursEnd?: string;
+    businessTimeZone?: string;
+    businessWeeklySchedule?: Prisma.InputJsonValue;
+    appointmentDurationMinutes?: number;
+    googleClientId?: string;
+    googleClientSecret?: string;
+    googleCalendarId?: string;
+    leadScoringEnabled?: boolean;
+    captureLeadName?: boolean;
+    captureLeadEmail?: boolean;
+    leadInterestThreshold?: number;
 }) {
     try {
         const first = await prisma.systemSettings.findFirst();
@@ -37,13 +59,13 @@ export async function updateSystemSettings(data: {
 
         revalidatePath("/dashboard/settings");
         revalidatePath("/dashboard/brain");
+        revalidatePath("/dashboard/calendar");
         return { success: true };
     } catch (error) {
         console.error("Failed to update settings:", error);
-        // @ts-ignore
-        if (error.code) console.error("Prisma Error Code:", error.code);
-        // @ts-ignore
-        if (error.meta) console.error("Prisma Error Meta:", error.meta);
+        const prismaLikeError = error as { code?: string; meta?: unknown };
+        if (prismaLikeError.code) console.error("Prisma Error Code:", prismaLikeError.code);
+        if (prismaLikeError.meta) console.error("Prisma Error Meta:", prismaLikeError.meta);
 
         return { success: false, error: "Failed to update settings" };
     }

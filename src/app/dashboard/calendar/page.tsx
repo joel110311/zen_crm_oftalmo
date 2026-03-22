@@ -3,6 +3,7 @@
 
 import { useState, useEffect, useTransition } from "react";
 import { getAppointments, deleteAppointment } from "@/app/actions/calendar";
+import { getSystemSettings } from "@/app/actions/settings";
 import { BigCalendar } from "@/components/calendar/big-calendar";
 import { AppointmentList } from "@/components/calendar/appointment-list";
 import { AppointmentDialog } from "@/components/calendar/appointment-dialog";
@@ -12,6 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Plus, LayoutList, Calendar as CalendarIcon, Clock, CheckCircle, CalendarDays } from "lucide-react";
 import { toast } from "@/components/ui/use-toast";
 import { format, isToday, isSameWeek } from "date-fns";
+import { formatBusinessScheduleSummary, normalizeBusinessHours } from "@/lib/calendar/business-hours";
 
 export default function CalendarPage() {
     const [appointments, setAppointments] = useState<any[]>([]);
@@ -19,12 +21,16 @@ export default function CalendarPage() {
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [selectedEvent, setSelectedEvent] = useState<any>(null);
     const [selectedSlot, setSelectedSlot] = useState<{ start: Date; end: Date } | null>(null);
+    const [businessHours, setBusinessHours] = useState(() => normalizeBusinessHours());
 
     // Stats
     const [stats, setStats] = useState({ today: 0, week: 0, pending: 0, completed: 0 });
 
     const fetchAppointments = async () => {
-        const data = await getAppointments();
+        const [data, settings] = await Promise.all([
+            getAppointments(),
+            getSystemSettings(),
+        ]);
 
         // Auto-compute status: if scheduled and time passed, mark as completed
         const now = new Date();
@@ -44,6 +50,7 @@ export default function CalendarPage() {
         const completedCount = processedData.filter(a => a.status === 'completed').length;
 
         setStats({ today: todayCount, week: weekCount, pending: pendingCount, completed: completedCount });
+        setBusinessHours(normalizeBusinessHours(settings));
     };
 
     useEffect(() => {
@@ -118,6 +125,9 @@ export default function CalendarPage() {
                 <div>
                     <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">Gestión de Citas</h1>
                     <p className="text-muted-foreground text-sm">Gestiona las citas agendadas con tus clientes.</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                        Horario comercial: {formatBusinessScheduleSummary(businessHours)}
+                    </p>
                 </div>
                 <Button onClick={handleNew} size="sm" className="shadow-sm">
                     <Plus className="mr-2 h-4 w-4" /> Nueva Cita
@@ -198,6 +208,7 @@ export default function CalendarPage() {
                         initialEvents={events}
                         onSelectSlot={handleSelectSlot}
                         onSelectEvent={handleSelectEvent}
+                        businessHours={businessHours}
                     />
                 </TabsContent>
             </Tabs>
@@ -208,6 +219,7 @@ export default function CalendarPage() {
                 selectedEvent={selectedEvent}
                 selectedSlot={selectedSlot}
                 onSuccess={fetchAppointments}
+                businessHours={businessHours}
             />
         </div>
     );
