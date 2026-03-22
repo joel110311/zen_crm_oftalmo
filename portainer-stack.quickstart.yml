@@ -5,9 +5,10 @@
 # 4. WUZAPI_ADMIN_TOKEN
 # 5. WUZAPI_USER_TOKEN
 # 6. WUZAPI_GLOBAL_ENCRYPTION_KEY
-# 7. AUTH_SECRET
-# 8. INITIAL_ADMIN_EMAIL / INITIAL_ADMIN_PASSWORD / INITIAL_ADMIN_NAME
-# 9. STACK SLUG en labels: zencrm-cliente1
+# 7. WUZAPI_GLOBAL_HMAC_KEY
+# 8. AUTH_SECRET
+# 9. INITIAL_ADMIN_EMAIL / INITIAL_ADMIN_PASSWORD / INITIAL_ADMIN_NAME
+# 10. STACK SLUG en labels: zencrm-cliente1
 
 services:
   zen-crm:
@@ -19,6 +20,7 @@ services:
       - WUZAPI_USER_TOKEN=change_this_user_token
       - WHATSAPP_INSTANCE_NAME=zen-crm
       - WUZAPI_GLOBAL_ENCRYPTION_KEY=change_this_32_char_encryption_key
+      - WUZAPI_GLOBAL_HMAC_KEY=change_this_32_char_hmac_key
       - ALLOW_ENV_AI_FALLBACK=false
       - OPENAI_API_KEY=
       - GEMINI_API_KEY=
@@ -61,15 +63,17 @@ services:
         - "traefik.enable=true"
         - "traefik.http.routers.zencrm-cliente1.rule=Host(`crm.cliente1.tudominio.com`)"
         - "traefik.http.routers.zencrm-cliente1.entrypoints=websecure"
+        - "traefik.http.routers.zencrm-cliente1.tls=true"
         - "traefik.http.routers.zencrm-cliente1.tls.certresolver=letsencryptresolver"
         - "traefik.http.services.zencrm-cliente1.loadbalancer.server.port=3000"
         - "traefik.docker.network=SociosNet"
 
   whatsapp-gateway:
-    image: asternic/wuzapi:latest
+    image: asternic/wuzapi:sha-4a20674
     environment:
       - WUZAPI_ADMIN_TOKEN=change_this_admin_token
       - WUZAPI_GLOBAL_ENCRYPTION_KEY=change_this_32_char_encryption_key
+      - WUZAPI_GLOBAL_HMAC_KEY=change_this_32_char_hmac_key
       - DB_USER=zencrm
       - DB_PASSWORD=change_this_postgres_password
       - DB_NAME=zencrm

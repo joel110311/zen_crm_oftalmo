@@ -48,6 +48,7 @@ Si quieres el flujo mas facil posible de copiar/pegar en Portainer, usa `portain
 - `POSTGRES_PASSWORD`
 - `WUZAPI_ADMIN_TOKEN`
 - `WUZAPI_GLOBAL_ENCRYPTION_KEY`
+- `WUZAPI_GLOBAL_HMAC_KEY`
 - `AUTH_SECRET`
 - `AUTH_URL`
 - `APP_BASE_URL`
@@ -105,6 +106,7 @@ Ese archivo ya incluye:
 - app
 - base de datos
 - gateway de WhatsApp
+- router Traefik con `tls=true`
 - healthcheck
 - reintentos de arranque contra PostgreSQL
 - volumenes persistentes
