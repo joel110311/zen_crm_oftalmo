@@ -40,6 +40,7 @@ Usa `docker-compose.zen-crm.yml`.
 
 Para Portainer, toma como base las variables de `portainer.env.example`.
 Si quieres un stack ya orientado a un subdominio de ejemplo, usa tambien `portainer-stack.example.yml`.
+Si quieres el flujo mas facil posible de copiar/pegar en Portainer, usa `portainer-stack.quickstart.yml`.
 
 ### Variables requeridas
 
@@ -89,6 +90,25 @@ docker compose -f docker-compose.zen-crm.yml up -d
 7. si tu Swarm tarda en levantar PostgreSQL, deja los retries de startup tal como vienen
 
 Con esto evitas choques de routers/servicios de Traefik al desplegar varias instancias.
+
+### Despliegue rapido tipo "copiar y pegar"
+
+Si quieres algo mas parecido a tu stack anterior:
+
+1. abre `portainer-stack.quickstart.yml`
+2. cambia solo los valores marcados al inicio del archivo
+3. pegalo completo en Portainer
+4. despliega el stack
+
+Ese archivo ya incluye:
+
+- app
+- base de datos
+- gateway de WhatsApp
+- healthcheck
+- reintentos de arranque contra PostgreSQL
+- volumenes persistentes
+- labels de Traefik
 
 ## Primer acceso
 
