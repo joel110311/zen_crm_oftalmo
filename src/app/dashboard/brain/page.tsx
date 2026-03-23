@@ -13,6 +13,7 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { KnowledgeBase } from "@/components/brain/knowledge-base";
+import { CatalogBase } from "@/components/brain/catalog-base";
 import { getSystemSettings, updateSystemSettings } from "@/app/actions/settings";
 import { useToast } from "@/components/ui/use-toast";
 import { normalizeChatModelSelection, resolveChatModelSelection, SUPPORTED_CHAT_MODELS } from "@/lib/ai/models";
@@ -44,6 +45,11 @@ export default function BrainConfigPage() {
     const [captureLeadName, setCaptureLeadName] = useState(false);
     const [captureLeadEmail, setCaptureLeadEmail] = useState(false);
     const [leadInterestThreshold, setLeadInterestThreshold] = useState([45]);
+    const [catalogOfferImages, setCatalogOfferImages] = useState(true);
+    const [catalogOfferPdf, setCatalogOfferPdf] = useState(true);
+    const [catalogAskBeforeSending, setCatalogAskBeforeSending] = useState(true);
+    const [catalogMaxImagesToSend, setCatalogMaxImagesToSend] = useState([10]);
+    const [catalogIncludeLink, setCatalogIncludeLink] = useState(true);
     const { toast } = useToast();
 
     useEffect(() => {
@@ -71,6 +77,11 @@ export default function BrainConfigPage() {
                     setCaptureLeadName(settings.captureLeadName ?? false);
                     setCaptureLeadEmail(settings.captureLeadEmail ?? false);
                     setLeadInterestThreshold([settings.leadInterestThreshold || 45]);
+                    setCatalogOfferImages(settings.catalogOfferImages ?? true);
+                    setCatalogOfferPdf(settings.catalogOfferPdf ?? true);
+                    setCatalogAskBeforeSending(settings.catalogAskBeforeSending ?? true);
+                    setCatalogMaxImagesToSend([Math.max(1, Math.min(10, settings.catalogMaxImagesToSend || 10))]);
+                    setCatalogIncludeLink(settings.catalogIncludeLink ?? true);
                 }
             } catch (error) {
                 console.error("Failed to load brain settings:", error);
@@ -120,6 +131,11 @@ export default function BrainConfigPage() {
                 captureLeadName,
                 captureLeadEmail,
                 leadInterestThreshold: leadInterestThreshold[0] || 45,
+                catalogOfferImages,
+                catalogOfferPdf,
+                catalogAskBeforeSending,
+                catalogMaxImagesToSend: catalogMaxImagesToSend[0] || 10,
+                catalogIncludeLink,
             });
 
             if (!result.success) {
@@ -181,6 +197,7 @@ export default function BrainConfigPage() {
                 <TabsList className="w-fit">
                     <TabsTrigger value="config">Configuracion</TabsTrigger>
                     <TabsTrigger value="knowledge">Conocimiento</TabsTrigger>
+                    <TabsTrigger value="catalog">Catalogo</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="config" className="space-y-6 mt-6">
@@ -560,10 +577,110 @@ export default function BrainConfigPage() {
                             </div>
                         </CardContent>
                     </Card>
+
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Catalogo con imagenes y PDF</CardTitle>
+                            <CardDescription>
+                                Controla si el agente ofrece fotos, catalogos en PDF y la liga del desarrollo cuando detecta una ficha del catalogo estructurado.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+                            <div className="space-y-4">
+                                <label className="flex items-start gap-3 rounded-xl border border-border/60 bg-background px-4 py-4 transition-colors hover:bg-muted/30">
+                                    <Checkbox
+                                        checked={catalogOfferImages}
+                                        onCheckedChange={(checked) => setCatalogOfferImages(Boolean(checked))}
+                                        className="mt-0.5"
+                                    />
+                                    <div className="space-y-1">
+                                        <span className="text-sm font-medium leading-none">Ofrecer imagenes del desarrollo</span>
+                                        <p className="text-xs text-muted-foreground">
+                                            Si la ficha trae imagenes, el bot puede decirle al cliente que se las comparte.
+                                        </p>
+                                    </div>
+                                </label>
+
+                                <label className="flex items-start gap-3 rounded-xl border border-border/60 bg-background px-4 py-4 transition-colors hover:bg-muted/30">
+                                    <Checkbox
+                                        checked={catalogOfferPdf}
+                                        onCheckedChange={(checked) => setCatalogOfferPdf(Boolean(checked))}
+                                        className="mt-0.5"
+                                    />
+                                    <div className="space-y-1">
+                                        <span className="text-sm font-medium leading-none">Ofrecer catalogo PDF</span>
+                                        <p className="text-xs text-muted-foreground">
+                                            Si la ficha trae PDF, el bot puede ofrecerlo sin asumir que siempre existe.
+                                        </p>
+                                    </div>
+                                </label>
+
+                                <label className="flex items-start gap-3 rounded-xl border border-border/60 bg-background px-4 py-4 transition-colors hover:bg-muted/30">
+                                    <Checkbox
+                                        checked={catalogIncludeLink}
+                                        onCheckedChange={(checked) => setCatalogIncludeLink(Boolean(checked))}
+                                        className="mt-0.5"
+                                    />
+                                    <div className="space-y-1">
+                                        <span className="text-sm font-medium leading-none">Incluir liga del desarrollo</span>
+                                        <p className="text-xs text-muted-foreground">
+                                            Si la ficha trae URL, el bot la comparte junto con los assets cuando corresponda.
+                                        </p>
+                                    </div>
+                                </label>
+                            </div>
+
+                            <div className="space-y-4">
+                                <div className="rounded-xl border bg-background px-4 py-4">
+                                    <div className="flex items-center justify-between">
+                                        <Label>Preguntar antes de enviar archivos</Label>
+                                        <Switch
+                                            checked={catalogAskBeforeSending}
+                                            onCheckedChange={setCatalogAskBeforeSending}
+                                        />
+                                    </div>
+                                    <p className="mt-2 text-xs text-muted-foreground">
+                                        Recomendado activado. El bot primero informa y luego pregunta si el cliente desea fotos o el PDF.
+                                    </p>
+                                </div>
+
+                                <div className="rounded-xl border bg-background px-4 py-4">
+                                    <div className="flex items-center justify-between">
+                                        <Label>Maximo de imagenes por envio</Label>
+                                        <span className="text-sm font-semibold text-foreground">
+                                            {catalogMaxImagesToSend[0]}
+                                        </span>
+                                    </div>
+                                    <div className="mt-4">
+                                        <Slider
+                                            value={catalogMaxImagesToSend}
+                                            onValueChange={setCatalogMaxImagesToSend}
+                                            min={1}
+                                            max={10}
+                                            step={1}
+                                        />
+                                    </div>
+                                    <p className="mt-3 text-xs text-muted-foreground">
+                                        El bot puede mandar hasta 10 imagenes del desarrollo, pero solo las que existan y solo si el cliente las acepta.
+                                    </p>
+                                </div>
+
+                                <div className="rounded-xl border bg-muted/30 p-4 text-sm text-muted-foreground space-y-2">
+                                    <p className="font-medium text-foreground">Comportamiento esperado</p>
+                                    <p>Si una ficha no tiene imagenes o PDF, el agente no los ofrecera.</p>
+                                    <p>Si el cliente responde que si, el CRM enviara los assets disponibles de forma secuencial por WhatsApp.</p>
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
                 </TabsContent>
 
                 <TabsContent value="knowledge" className="mt-6">
                     <KnowledgeBase />
+                </TabsContent>
+
+                <TabsContent value="catalog" className="mt-6">
+                    <CatalogBase />
                 </TabsContent>
             </Tabs>
         </div>

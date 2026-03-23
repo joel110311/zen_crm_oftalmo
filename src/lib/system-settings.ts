@@ -38,6 +38,11 @@ Cuando detectes intencion comercial o de seguimiento, guia la conversacion hacia
     captureLeadName: false,
     captureLeadEmail: false,
     leadInterestThreshold: 45,
+    catalogOfferImages: true,
+    catalogOfferPdf: true,
+    catalogAskBeforeSending: true,
+    catalogMaxImagesToSend: 10,
+    catalogIncludeLink: true,
 } as const;
 
 export type AppSystemSettings = SystemSettings & typeof SYSTEM_SETTINGS_DEFAULTS;

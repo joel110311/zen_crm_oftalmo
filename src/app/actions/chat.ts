@@ -3,12 +3,18 @@
 import { prisma } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 import { enrichContactFromMessage } from "@/lib/ai-enrichment";
-import { sendWuzapiTextMessage } from "@/lib/wuzapi";
+import { resolveMediaToDataUrl } from "@/lib/media-data-url";
+import { findBestCatalogItem, parseCatalogAssetIntent, splitCatalogAssets } from "@/lib/catalog/catalog";
+import { sendWuzapiMediaMessage, sendWuzapiTextMessage } from "@/lib/wuzapi";
 import { generateConversationReply } from "@/lib/ai/chatbot";
 import { getSystemSettingsOrDefaults } from "@/lib/system-settings";
 import { buildInboundMediaContext, shouldSkipAutoReplyText } from "@/lib/ai/media-understanding";
 import { maybeHandleAppointmentBooking } from "@/lib/ai/appointment-booking";
 import { processLeadAutomationTurn } from "@/lib/ai/lead-intelligence";
+
+const CATALOG_OFFER_EXPIRY_MS = 1000 * 60 * 90;
+
+type CatalogItemMatch = NonNullable<Awaited<ReturnType<typeof findBestCatalogItem>>>;
 
 function normalizeContactName(name?: string | null) {
     const normalized = name?.trim().replace(/\s+/g, " ") || "";
@@ -17,6 +23,426 @@ function normalizeContactName(name?: string | null) {
         return null;
     }
     return normalized;
+}
+
+function appendSection(base: string, extra: string | null) {
+    const trimmedBase = base.trim();
+    const trimmedExtra = extra?.trim();
+    if (!trimmedExtra) return trimmedBase;
+    if (!trimmedBase) return trimmedExtra;
+    return `${trimmedBase}\n\n${trimmedExtra}`;
+}
+
+function buildCatalogLookupQuery(
+    history: Array<{ content: string; direction: string }>,
+    latestUserMessage: string,
+) {
+    const pieces: string[] = [];
+
+    for (const candidate of [
+        latestUserMessage,
+        ...history
+            .filter((message) => message.direction === "inbound" && message.content?.trim())
+            .slice(0, 4)
+            .map((message) => message.content.trim()),
+    ]) {
+        const normalized = candidate.trim();
+        if (!normalized) continue;
+        if (pieces[pieces.length - 1] === normalized) continue;
+        pieces.push(normalized);
+    }
+
+    return pieces.join("\n");
+}
+
+function hasRecentCatalogOffer(offeredAt: Date | null | undefined) {
+    if (!offeredAt) return false;
+    return Date.now() - offeredAt.getTime() <= CATALOG_OFFER_EXPIRY_MS;
+}
+
+function buildCatalogInstruction(
+    catalogItem: CatalogItemMatch,
+    maxImagesToSend: number,
+) {
+    const { imageAssets, pdfAsset, linkAsset } = splitCatalogAssets(
+        catalogItem.assets,
+        maxImagesToSend,
+    );
+    const assetSummary = [
+        imageAssets.length > 0 ? `${imageAssets.length} imagenes disponibles` : null,
+        pdfAsset ? "catalogo PDF disponible" : null,
+        linkAsset ? "liga del desarrollo disponible" : null,
+    ]
+        .filter(Boolean)
+        .join(", ");
+
+    return [
+        "Se encontro una ficha estructurada del catalogo.",
+        `Desarrollo: ${catalogItem.development}.`,
+        catalogItem.location ? `Ubicacion: ${catalogItem.location}.` : null,
+        `Pregunta relacionada: ${catalogItem.question}.`,
+        `Respuesta verificada: ${catalogItem.answer}.`,
+        assetSummary ? `Activos disponibles: ${assetSummary}.` : null,
+        "Usa esta ficha como fuente prioritaria si la consulta del cliente corresponde a este desarrollo.",
+        "No inventes caracteristicas, precios ni amenidades que no esten en esta ficha.",
+        "Si el cliente pide imagenes o PDF y existen, puedes decir que se los compartes, pero no afirmes que ya los mandaste antes de enviarlos.",
+    ]
+        .filter(Boolean)
+        .join(" ");
+}
+
+function buildCatalogOfferText(params: {
+    offerImages: boolean;
+    imageCount: number;
+    offerPdf: boolean;
+}) {
+    const lines: string[] = [];
+
+    if (params.offerImages) {
+        const imageLabel =
+            params.imageCount === 1
+                ? "una imagen"
+                : params.imageCount <= 3
+                    ? `${params.imageCount} imagenes`
+                    : `hasta ${params.imageCount} imagenes`;
+        lines.push(`Si quieres, tambien puedo enviarte ${imageLabel} del desarrollo.`);
+    }
+
+    if (params.offerPdf) {
+        lines.push("Y si te sirve, tambien te comparto el catalogo en PDF.");
+    }
+
+    return lines.join("\n");
+}
+
+function buildCatalogAssetIntro(params: {
+    development: string;
+    sendImages: boolean;
+    sendPdf: boolean;
+}) {
+    if (params.sendImages && params.sendPdf) {
+        return `Claro, te comparto las imagenes y tambien el catalogo en PDF de ${params.development}.`;
+    }
+
+    if (params.sendImages) {
+        return `Claro, te comparto las imagenes de ${params.development}.`;
+    }
+
+    if (params.sendPdf) {
+        return `Claro, te comparto el catalogo en PDF de ${params.development}.`;
+    }
+
+    return `Claro, te comparto la informacion de ${params.development}.`;
+}
+
+function buildCatalogLinkMessage(
+    development: string,
+    linkAsset: { url: string },
+) {
+    return `Tambien te dejo la liga de ${development}:\n${linkAsset.url}`;
+}
+
+async function touchAutomatedConversation(conversationId: string) {
+    await prisma.conversation.update({
+        where: { id: conversationId },
+        data: { updatedAt: new Date() },
+    });
+
+    revalidatePath("/dashboard/inbox");
+    revalidatePath("/dashboard/pipeline");
+}
+
+async function persistCatalogState(params: {
+    conversationId: string;
+    catalogItemId: string | null;
+    pendingImages: boolean;
+    pendingPdf: boolean;
+    pendingLink: boolean;
+    offeredAt: Date | null;
+    lastSentAt: Date | null;
+}) {
+    await prisma.catalogConversationState.upsert({
+        where: { conversationId: params.conversationId },
+        create: {
+            conversationId: params.conversationId,
+            catalogItemId: params.catalogItemId,
+            pendingImages: params.pendingImages,
+            pendingPdf: params.pendingPdf,
+            pendingLink: params.pendingLink,
+            offeredAt: params.offeredAt,
+            lastSentAt: params.lastSentAt,
+        },
+        update: {
+            catalogItemId: params.catalogItemId,
+            pendingImages: params.pendingImages,
+            pendingPdf: params.pendingPdf,
+            pendingLink: params.pendingLink,
+            offeredAt: params.offeredAt,
+            lastSentAt: params.lastSentAt,
+        },
+    });
+}
+
+async function sendAutomatedBotText(params: {
+    conversationId: string;
+    phone: string;
+    content: string;
+}) {
+    const content = params.content.trim();
+    if (!content) return;
+
+    try {
+        const transportResult = await sendWuzapiTextMessage(params.phone, content);
+
+        await prisma.message.create({
+            data: {
+                conversationId: params.conversationId,
+                content,
+                direction: "outbound",
+                status: "sent",
+                type: "text",
+                senderType: "bot",
+                providerMessageId: transportResult?.Id || null,
+            },
+        });
+    } catch (error) {
+        await prisma.message.create({
+            data: {
+                conversationId: params.conversationId,
+                content,
+                direction: "outbound",
+                status: "failed",
+                type: "text",
+                senderType: "bot",
+            },
+        });
+        throw error;
+    }
+}
+
+async function sendAutomatedBotMedia(params: {
+    conversationId: string;
+    phone: string;
+    mediaCategory: "image" | "document";
+    mediaUrl: string;
+    mediaLabel?: string | null;
+    development: string;
+}) {
+    const placeholderContent = params.mediaCategory === "image" ? "[image]" : "[document]";
+
+    try {
+        const resolvedMedia = await resolveMediaToDataUrl(params.mediaUrl);
+        const result = await sendWuzapiMediaMessage({
+            phone: params.phone,
+            mediaCategory: params.mediaCategory,
+            dataUrl: resolvedMedia.dataUrl,
+            fileName: resolvedMedia.fileName,
+            mimeType: resolvedMedia.mimeType,
+            caption: params.mediaCategory === "document" ? `Catalogo PDF de ${params.development}` : undefined,
+        });
+
+        await prisma.message.create({
+            data: {
+                conversationId: params.conversationId,
+                content: placeholderContent,
+                direction: "outbound",
+                status: "sent",
+                type: params.mediaCategory,
+                senderType: "bot",
+                mediaUrl: params.mediaUrl,
+                mediaType: resolvedMedia.mimeType,
+                mediaFileName: resolvedMedia.fileName,
+                providerMessageId: result?.Id || null,
+            },
+        });
+
+        return true;
+    } catch (error) {
+        console.error("[Catalog] Failed to send automated media asset:", error);
+        await prisma.message.create({
+            data: {
+                conversationId: params.conversationId,
+                content: placeholderContent,
+                direction: "outbound",
+                status: "failed",
+                type: params.mediaCategory,
+                senderType: "bot",
+                mediaUrl: params.mediaUrl,
+                mediaFileName: params.mediaLabel || null,
+            },
+        });
+        return false;
+    }
+}
+
+async function sendCatalogAssets(params: {
+    conversationId: string;
+    phone: string;
+    development: string;
+    imageAssets: Array<{ url: string; label: string | null }>;
+    pdfAsset: { url: string; label: string | null } | null;
+    linkAsset: { url: string } | null;
+    sendImages: boolean;
+    sendPdf: boolean;
+    sendLink: boolean;
+}) {
+    let sentSomething = false;
+
+    if (params.sendImages) {
+        for (const asset of params.imageAssets) {
+            const sent = await sendAutomatedBotMedia({
+                conversationId: params.conversationId,
+                phone: params.phone,
+                mediaCategory: "image",
+                mediaUrl: asset.url,
+                mediaLabel: asset.label,
+                development: params.development,
+            });
+            sentSomething = sentSomething || sent;
+        }
+    }
+
+    if (params.sendPdf && params.pdfAsset) {
+        const sent = await sendAutomatedBotMedia({
+            conversationId: params.conversationId,
+            phone: params.phone,
+            mediaCategory: "document",
+            mediaUrl: params.pdfAsset.url,
+            mediaLabel: params.pdfAsset.label,
+            development: params.development,
+        });
+        sentSomething = sentSomething || sent;
+    }
+
+    if (params.sendLink && params.linkAsset) {
+        await sendAutomatedBotText({
+            conversationId: params.conversationId,
+            phone: params.phone,
+            content: buildCatalogLinkMessage(params.development, params.linkAsset),
+        });
+        sentSomething = true;
+    }
+
+    return sentSomething;
+}
+
+async function maybeHandleCatalogAssetReply(params: {
+    conversationId: string;
+    phone: string;
+    latestUserMessage: string;
+    settings: Awaited<ReturnType<typeof getSystemSettingsOrDefaults>>;
+    catalogState:
+        | {
+              catalogItemId: string | null;
+              pendingImages: boolean;
+              pendingPdf: boolean;
+              pendingLink: boolean;
+              offeredAt: Date | null;
+              lastSentAt: Date | null;
+              catalogItem: CatalogItemMatch | null;
+          }
+        | null
+        | undefined;
+}) {
+    const state = params.catalogState;
+    if (!state?.catalogItem) {
+        return false;
+    }
+
+    const intent = parseCatalogAssetIntent(params.latestUserMessage);
+    const isOfferActive =
+        hasRecentCatalogOffer(state.offeredAt) &&
+        ((state.pendingImages && state.catalogItem.assets.some((asset) => asset.type === "image")) ||
+            (state.pendingPdf && state.catalogItem.assets.some((asset) => asset.type === "pdf")));
+    const { imageAssets, pdfAsset, linkAsset } = splitCatalogAssets(
+        state.catalogItem.assets,
+        params.settings.catalogMaxImagesToSend,
+    );
+
+    if (intent.negative && isOfferActive) {
+        await sendAutomatedBotText({
+            conversationId: params.conversationId,
+            phone: params.phone,
+            content: "Sin problema, seguimos por aqui.",
+        });
+
+        await persistCatalogState({
+            conversationId: params.conversationId,
+            catalogItemId: state.catalogItem.id,
+            pendingImages: false,
+            pendingPdf: false,
+            pendingLink: false,
+            offeredAt: null,
+            lastSentAt: state.lastSentAt,
+        });
+        await touchAutomatedConversation(params.conversationId);
+        return true;
+    }
+
+    const specificRequest = intent.wantsImages || intent.wantsPdf;
+    const genericAcceptance = intent.affirmative && !specificRequest && isOfferActive;
+
+    if (!specificRequest && !genericAcceptance) {
+        return false;
+    }
+
+    const sendImages = intent.wantsImages ? imageAssets.length > 0 : Boolean(genericAcceptance && state.pendingImages);
+    const sendPdf = intent.wantsPdf ? Boolean(pdfAsset) : Boolean(genericAcceptance && state.pendingPdf);
+
+    if (!sendImages && !sendPdf) {
+        const unavailableReply = intent.wantsImages
+            ? "En esta ficha no tengo imagenes cargadas por ahora."
+            : intent.wantsPdf
+                ? "En esta ficha no tengo un catalogo en PDF cargado por ahora."
+                : "Por ahora no tengo archivos adicionales de esta ficha.";
+
+        await sendAutomatedBotText({
+            conversationId: params.conversationId,
+            phone: params.phone,
+            content: unavailableReply,
+        });
+        await touchAutomatedConversation(params.conversationId);
+        return true;
+    }
+
+    await sendAutomatedBotText({
+        conversationId: params.conversationId,
+        phone: params.phone,
+        content: buildCatalogAssetIntro({
+            development: state.catalogItem.development,
+            sendImages,
+            sendPdf,
+        }),
+    });
+
+    await sendCatalogAssets({
+        conversationId: params.conversationId,
+        phone: params.phone,
+        development: state.catalogItem.development,
+        imageAssets,
+        pdfAsset,
+        linkAsset,
+        sendImages,
+        sendPdf,
+        sendLink: params.settings.catalogIncludeLink && Boolean(linkAsset) && (sendImages || sendPdf || state.pendingLink),
+    });
+
+    await persistCatalogState({
+        conversationId: params.conversationId,
+        catalogItemId: state.catalogItem.id,
+        pendingImages: Boolean(state.pendingImages && !sendImages),
+        pendingPdf: Boolean(state.pendingPdf && !sendPdf),
+        pendingLink: false,
+        offeredAt:
+            state.pendingImages && !sendImages
+                ? state.offeredAt
+                : state.pendingPdf && !sendPdf
+                    ? state.offeredAt
+                    : null,
+        lastSentAt: new Date(),
+    });
+    await touchAutomatedConversation(params.conversationId);
+    return true;
 }
 
 async function maybeSendAutomatedReply(
@@ -45,7 +471,35 @@ async function maybeSendAutomatedReply(
         const [latestConversation, latestMessage] = await Promise.all([
             prisma.conversation.findUnique({
                 where: { id: conversationId },
-                include: { contact: true },
+                include: {
+                    contact: true,
+                    catalogState: {
+                        include: {
+                            catalogItem: {
+                                include: {
+                                    assets: {
+                                        orderBy: [
+                                            { type: "asc" },
+                                            { sortOrder: "asc" },
+                                        ],
+                                    },
+                                },
+                            },
+                        },
+                    },
+                    messages: {
+                        where: {
+                            type: { not: "system" },
+                        },
+                        orderBy: { createdAt: "desc" },
+                        take: 8,
+                        select: {
+                            content: true,
+                            direction: true,
+                            senderType: true,
+                        },
+                    },
+                },
             }),
             prisma.message.findFirst({
                 where: { conversationId },
@@ -55,6 +509,18 @@ async function maybeSendAutomatedReply(
 
         if (!latestConversation?.botActive || !latestConversation.contact?.phone) return;
         if (!latestMessage || latestMessage.id !== inboundMessageId || latestMessage.direction !== "inbound") {
+            return;
+        }
+
+        const handledCatalogReply = await maybeHandleCatalogAssetReply({
+            conversationId,
+            phone: latestConversation.contact.phone,
+            latestUserMessage,
+            settings,
+            catalogState: latestConversation.catalogState,
+        });
+
+        if (handledCatalogReply) {
             return;
         }
 
@@ -72,6 +538,13 @@ async function maybeSendAutomatedReply(
         );
 
         let reply: string | null = null;
+        let catalogItem: CatalogItemMatch | null = null;
+        let pendingCatalogImages = false;
+        let pendingCatalogPdf = false;
+        let pendingCatalogLink = false;
+        let sendCatalogImagesNow = false;
+        let sendCatalogPdfNow = false;
+        let sendCatalogLinkNow = false;
 
         if (
             appointmentResult.kind === "missing" ||
@@ -90,7 +563,67 @@ async function maybeSendAutomatedReply(
                     ].join(" ")
                     : null;
 
+            const catalogLookupQuery = buildCatalogLookupQuery(
+                latestConversation.messages.map((message) => ({
+                    content: message.content,
+                    direction: message.direction,
+                })),
+                latestUserMessage,
+            );
+            catalogItem = await findBestCatalogItem(catalogLookupQuery);
+            const catalogIntent = parseCatalogAssetIntent(latestUserMessage);
+            const catalogInstruction = catalogItem
+                ? buildCatalogInstruction(catalogItem, settings.catalogMaxImagesToSend)
+                : null;
+
+            if (catalogItem) {
+                const { imageAssets, pdfAsset, linkAsset } = splitCatalogAssets(
+                    catalogItem.assets,
+                    settings.catalogMaxImagesToSend,
+                );
+
+                const requestedImages = Boolean(catalogIntent.wantsImages && imageAssets.length > 0);
+                const requestedPdf = Boolean(catalogIntent.wantsPdf && pdfAsset);
+
+                sendCatalogImagesNow =
+                    requestedImages ||
+                    (!settings.catalogAskBeforeSending &&
+                        settings.catalogOfferImages &&
+                        imageAssets.length > 0);
+                sendCatalogPdfNow =
+                    requestedPdf ||
+                    (!settings.catalogAskBeforeSending &&
+                        settings.catalogOfferPdf &&
+                        Boolean(pdfAsset));
+
+                pendingCatalogImages =
+                    settings.catalogAskBeforeSending &&
+                    settings.catalogOfferImages &&
+                    imageAssets.length > 0 &&
+                    !requestedImages;
+                pendingCatalogPdf =
+                    settings.catalogAskBeforeSending &&
+                    settings.catalogOfferPdf &&
+                    Boolean(pdfAsset) &&
+                    !requestedPdf;
+
+                sendCatalogLinkNow =
+                    settings.catalogIncludeLink &&
+                    Boolean(linkAsset) &&
+                    (
+                        sendCatalogImagesNow ||
+                        sendCatalogPdfNow ||
+                        (!pendingCatalogImages && !pendingCatalogPdf)
+                    );
+                pendingCatalogLink =
+                    settings.catalogIncludeLink &&
+                    Boolean(linkAsset) &&
+                    !sendCatalogLinkNow &&
+                    (pendingCatalogImages || pendingCatalogPdf);
+            }
+
             const automationInstruction = [leadAutomation.instruction, appointmentInstruction]
+                .concat(catalogInstruction ? [catalogInstruction] : [])
                 .filter(Boolean)
                 .join(" ")
                 .trim() || null;
@@ -104,27 +637,62 @@ async function maybeSendAutomatedReply(
 
         if (!reply) return;
 
-        const transportResult = await sendWuzapiTextMessage(latestConversation.contact.phone, reply);
+        if (catalogItem && settings.catalogAskBeforeSending) {
+            const offerText = buildCatalogOfferText({
+                offerImages: pendingCatalogImages,
+                imageCount: splitCatalogAssets(
+                    catalogItem.assets,
+                    settings.catalogMaxImagesToSend,
+                ).imageAssets.length,
+                offerPdf: pendingCatalogPdf,
+            });
+            reply = appendSection(reply, offerText);
+        }
 
-        await prisma.message.create({
-            data: {
+        await sendAutomatedBotText({
+            conversationId,
+            phone: latestConversation.contact.phone,
+            content: reply,
+        });
+
+        if (catalogItem) {
+            const { imageAssets, pdfAsset, linkAsset } = splitCatalogAssets(
+                catalogItem.assets,
+                settings.catalogMaxImagesToSend,
+            );
+
+            if (sendCatalogImagesNow || sendCatalogPdfNow || sendCatalogLinkNow) {
+                await sendCatalogAssets({
+                    conversationId,
+                    phone: latestConversation.contact.phone,
+                    development: catalogItem.development,
+                    imageAssets,
+                    pdfAsset,
+                    linkAsset,
+                    sendImages: sendCatalogImagesNow,
+                    sendPdf: sendCatalogPdfNow,
+                    sendLink: sendCatalogLinkNow,
+                });
+            }
+
+            await persistCatalogState({
                 conversationId,
-                content: reply,
-                direction: "outbound",
-                status: "sent",
-                type: "text",
-                senderType: "bot",
-                providerMessageId: transportResult?.Id || null,
-            },
-        });
+                catalogItemId: catalogItem.id,
+                pendingImages: pendingCatalogImages,
+                pendingPdf: pendingCatalogPdf,
+                pendingLink: pendingCatalogLink,
+                offeredAt:
+                    pendingCatalogImages || pendingCatalogPdf
+                        ? new Date()
+                        : null,
+                lastSentAt:
+                    sendCatalogImagesNow || sendCatalogPdfNow || sendCatalogLinkNow
+                        ? new Date()
+                        : latestConversation.catalogState?.lastSentAt || null,
+            });
+        }
 
-        await prisma.conversation.update({
-            where: { id: conversationId },
-            data: { updatedAt: new Date() },
-        });
-
-        revalidatePath("/dashboard/inbox");
-        revalidatePath("/dashboard/pipeline");
+        await touchAutomatedConversation(conversationId);
     } catch (error) {
         console.error("[Bot] Failed to send automated reply:", error);
     }

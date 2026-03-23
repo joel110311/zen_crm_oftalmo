@@ -61,6 +61,7 @@ model Conversation {
   sessionExpiresAt DateTime? // Tracks the 24h WhatsApp Business API window
   
   messages   Message[]
+  catalogState CatalogConversationState?
 
   @@index([updatedAt(sort: Desc)])
   @@index([contactId])
@@ -160,6 +161,57 @@ model KnowledgeChunk {
   createdAt  DateTime        @default(now())
 
   @@index([sourceId, chunkIndex])
+}
+
+model CatalogItem {
+  id            String        @id @default(cuid())
+  externalId    String        @unique
+  development   String
+  location      String?
+  question      String
+  answer        String
+  searchableText String
+  isActive      Boolean       @default(true)
+  embedding     Unsupported("vector(1536)")?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  assets        CatalogAsset[]
+  conversations CatalogConversationState[]
+
+  @@index([development])
+  @@index([isActive])
+}
+
+model CatalogAsset {
+  id         String      @id @default(cuid())
+  itemId      String
+  item        CatalogItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  type        String      // image | pdf | link
+  url         String
+  label       String?
+  sortOrder   Int         @default(0)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  @@index([itemId, type, sortOrder])
+}
+
+model CatalogConversationState {
+  id              String       @id @default(cuid())
+  conversationId  String       @unique
+  conversation    Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  catalogItemId   String?
+  catalogItem     CatalogItem? @relation(fields: [catalogItemId], references: [id], onDelete: SetNull)
+  pendingImages   Boolean      @default(false)
+  pendingPdf      Boolean      @default(false)
+  pendingLink     Boolean      @default(false)
+  offeredAt       DateTime?
+  lastSentAt      DateTime?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  @@index([catalogItemId])
 }
 
 model Template {
@@ -322,6 +374,11 @@ model SystemSettings {
   captureLeadName Boolean @default(false)
   captureLeadEmail Boolean @default(false)
   leadInterestThreshold Int @default(45)
+  catalogOfferImages Boolean @default(true)
+  catalogOfferPdf Boolean @default(true)
+  catalogAskBeforeSending Boolean @default(true)
+  catalogMaxImagesToSend Int @default(10)
+  catalogIncludeLink Boolean @default(true)
   updatedAt       DateTime @updatedAt
 }
 

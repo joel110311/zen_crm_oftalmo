@@ -42,6 +42,11 @@ export async function updateSystemSettings(data: {
     captureLeadName?: boolean;
     captureLeadEmail?: boolean;
     leadInterestThreshold?: number;
+    catalogOfferImages?: boolean;
+    catalogOfferPdf?: boolean;
+    catalogAskBeforeSending?: boolean;
+    catalogMaxImagesToSend?: number;
+    catalogIncludeLink?: boolean;
 }) {
     try {
         const first = await prisma.systemSettings.findFirst();
