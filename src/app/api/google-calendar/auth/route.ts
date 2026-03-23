@@ -1,12 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { auth } from "@/lib/auth";
-import { getGoogleCalendarAuthUrl, getGoogleCalendarRedirectUri } from "@/lib/google-calendar";
+import {
+    getGoogleCalendarAuthUrl,
+    getGoogleCalendarRedirectUri,
+    getPublicAppBaseUrl,
+} from "@/lib/google-calendar";
 
 export async function GET(request: NextRequest) {
     const session = await auth();
     if (!session?.user) {
-        return NextResponse.redirect(new URL("/login", request.url));
+        return NextResponse.redirect(new URL("/login", getPublicAppBaseUrl(request.nextUrl.origin)));
     }
 
     const redirectUri = getGoogleCalendarRedirectUri(request.nextUrl.origin);

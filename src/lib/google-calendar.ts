@@ -41,7 +41,7 @@ type GoogleCalendarStatus = {
     lastSyncedAt?: string | null;
 };
 
-function resolveGoogleOAuthBaseUrl(fallbackOrigin?: string) {
+export function getPublicAppBaseUrl(fallbackOrigin?: string) {
     const candidates = [process.env.APP_BASE_URL, process.env.AUTH_URL, fallbackOrigin];
 
     for (const candidate of candidates) {
@@ -57,7 +57,7 @@ function resolveGoogleOAuthBaseUrl(fallbackOrigin?: string) {
 }
 
 export function getGoogleCalendarRedirectUri(fallbackOrigin?: string) {
-    return new URL("/api/google-calendar/callback", resolveGoogleOAuthBaseUrl(fallbackOrigin)).toString();
+    return new URL("/api/google-calendar/callback", getPublicAppBaseUrl(fallbackOrigin)).toString();
 }
 
 function getCalendarId(value?: string | null) {

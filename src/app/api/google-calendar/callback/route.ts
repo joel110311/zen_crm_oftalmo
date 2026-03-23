@@ -3,13 +3,14 @@ import { auth } from "@/lib/auth";
 import {
     completeGoogleCalendarOAuth,
     getGoogleCalendarRedirectUri,
+    getPublicAppBaseUrl,
     syncGoogleCalendarToCrm,
 } from "@/lib/google-calendar";
 
 export async function GET(request: NextRequest) {
     const session = await auth();
     if (!session?.user) {
-        return NextResponse.redirect(new URL("/login", request.url));
+        return NextResponse.redirect(new URL("/login", getPublicAppBaseUrl(request.nextUrl.origin)));
     }
 
     const code = request.nextUrl.searchParams.get("code");
@@ -17,7 +18,7 @@ export async function GET(request: NextRequest) {
     const state = request.nextUrl.searchParams.get("state");
     const expectedState = request.cookies.get("google_calendar_oauth_state")?.value;
     const redirectUri = getGoogleCalendarRedirectUri(request.nextUrl.origin);
-    const settingsUrl = new URL("/dashboard/settings?section=calendar", request.nextUrl.origin);
+    const settingsUrl = new URL("/dashboard/settings?section=calendar", getPublicAppBaseUrl(request.nextUrl.origin));
 
     const clearStateCookie = (response: NextResponse) => {
         response.cookies.set("google_calendar_oauth_state", "", {
