@@ -29,7 +29,7 @@ export function PipelineColumn({ stage, deals, onDealClick, activeDealId }: Pipe
     return (
         <div
             ref={setNodeRef}
-            className={`flex flex-col h-full transition-all duration-200 rounded-xl border w-[260px] min-w-[260px] md:w-[280px] md:min-w-[280px] 2xl:w-[320px] 2xl:min-w-[320px] ${isOver
+            className={`flex flex-col h-full transition-all duration-200 rounded-xl border w-[208px] min-w-[208px] md:w-[224px] md:min-w-[224px] 2xl:w-[256px] 2xl:min-w-[256px] ${isOver
                 ? "border-dashed ring-2 ring-primary/30 bg-accent/50"
                 : "border-border bg-card/50"
                 }`}
@@ -52,7 +52,7 @@ export function PipelineColumn({ stage, deals, onDealClick, activeDealId }: Pipe
                         />
                         <h3
                             className="font-semibold text-sm truncate text-foreground"
-                            style={{ maxWidth: "140px" }}
+                            style={{ maxWidth: "112px" }}
                         >
                             {stage.name}
                         </h3>
