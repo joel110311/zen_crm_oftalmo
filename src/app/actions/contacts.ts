@@ -20,6 +20,42 @@ export async function getContacts(query?: string) {
         const contacts = await prisma.contact.findMany({
             where,
             orderBy: { createdAt: "desc" },
+            include: {
+                conversations: {
+                    orderBy: { updatedAt: "desc" },
+                    take: 1,
+                    select: {
+                        botActive: true,
+                        assignedUser: {
+                            select: {
+                                name: true,
+                            },
+                        },
+                        updatedAt: true,
+                    },
+                },
+                deals: {
+                    orderBy: { updatedAt: "desc" },
+                    take: 1,
+                    include: {
+                        stage: {
+                            select: {
+                                name: true,
+                                color: true,
+                                isClosedWon: true,
+                                isClosedLost: true,
+                            },
+                        },
+                        intelligence: {
+                            select: {
+                                score: true,
+                                interestStatus: true,
+                                currentStep: true,
+                            },
+                        },
+                    },
+                },
+            },
         });
         return contacts;
     } catch (error) {
