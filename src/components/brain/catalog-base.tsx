@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useTransition } from "react";
-import { FileSpreadsheet, Images, Loader2, RefreshCw, Trash2, Upload } from "lucide-react";
+import { Download, FileSpreadsheet, Images, Loader2, RefreshCw, Trash2, Upload } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -118,8 +118,24 @@ export function CatalogBase() {
                         <Upload className="mx-auto mb-3 h-7 w-7 text-primary" />
                         <p className="text-sm font-medium">Subir catalogo CSV</p>
                         <p className="mt-1 text-xs text-muted-foreground">
-                            Columnas sugeridas: id, desarrollo, ubicacion, pregunta, contenido, imagen_1_url... imagen_10_url, pdf_url, landing_url.
+                            Columnas sugeridas: id, desarrollo, ubicacion, pregunta, contenido, imagen_1_url... imagen_10_url, pdf_url, landing_url, activo.
                         </p>
+                    </div>
+
+                    <div className="rounded-xl border bg-background p-4">
+                        <p className="text-sm font-medium text-foreground">Estructura recomendada</p>
+                        <div className="mt-3 grid gap-2 text-xs text-muted-foreground">
+                            <p><span className="font-medium text-foreground">Obligatorias:</span> id, desarrollo, pregunta, contenido</p>
+                            <p><span className="font-medium text-foreground">Opcionales:</span> ubicacion, imagen_1_url a imagen_10_url, pdf_url, landing_url, activo</p>
+                            <p><span className="font-medium text-foreground">activo:</span> acepta si/no, true/false, 1/0</p>
+                        </div>
+
+                        <Button asChild variant="outline" size="sm" className="mt-4">
+                            <a href="/examples/catalogo-ejemplo.csv" download>
+                                <Download className="h-4 w-4" />
+                                Descargar ejemplo CSV
+                            </a>
+                        </Button>
                     </div>
 
                     <div className="rounded-xl border bg-muted/30 p-4 text-sm text-muted-foreground space-y-2">

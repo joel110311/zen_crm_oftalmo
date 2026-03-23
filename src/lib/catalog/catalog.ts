@@ -8,6 +8,7 @@ type CatalogImportRow = {
     question: string;
     answer: string;
     searchableText: string;
+    isActive: boolean;
     assets: Array<{
         type: "image" | "pdf" | "link";
         url: string;
@@ -43,6 +44,21 @@ function normalizeHeader(value: string) {
 
 function normalizeCell(value: string | undefined) {
     return (value || "").trim();
+}
+
+function parseBooleanCell(value: string | undefined, fallback = true) {
+    const normalized = normalizeCell(value).toLowerCase();
+    if (!normalized) return fallback;
+
+    if (["1", "true", "si", "sí", "yes", "activo", "activa"].includes(normalized)) {
+        return true;
+    }
+
+    if (["0", "false", "no", "inactivo", "inactiva"].includes(normalized)) {
+        return false;
+    }
+
+    return fallback;
 }
 
 function parseCsvLine(source: string) {
@@ -173,6 +189,10 @@ function mapCsvRows(source: string) {
             const location = getFirstValue(row, ["ubicacion", "ubicacion_texto", "location"]) || null;
             const question = getFirstValue(row, ["pregunta", "question"]);
             const answer = getFirstValue(row, ["contenido", "respuesta", "answer", "content"]);
+            const isActive = parseBooleanCell(
+                row.activo || row.active || row.is_active || row.estado,
+                true,
+            );
 
             if (!development || !question || !answer) {
                 return null;
@@ -232,6 +252,7 @@ function mapCsvRows(source: string) {
                     question,
                     answer,
                 }),
+                isActive,
                 assets,
             } satisfies CatalogImportRow;
 
@@ -270,7 +291,7 @@ export async function importCatalogCsv(buffer: Buffer) {
                     question: row.question,
                     answer: row.answer,
                     searchableText: row.searchableText,
-                    isActive: true,
+                    isActive: row.isActive,
                     assets: {
                         create: row.assets.map((asset) => ({
                             type: asset.type,
