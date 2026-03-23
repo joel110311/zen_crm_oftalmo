@@ -26,7 +26,6 @@ import {
     TableRow,
 } from "@/components/ui/table";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Checkbox } from "@/components/ui/checkbox";
 import { NewContactDialog } from "@/components/contacts/new-contact-dialog";
 import { ContactActions } from "@/components/contacts/contact-actions";
 import { getContactFullName, getContactInitial } from "@/lib/contact-name";
@@ -89,7 +88,6 @@ export function ContactsTable({ contacts }: ContactsPageProps) {
     const router = useRouter();
     const searchParams = useSearchParams();
     const [isPending, startTransition] = useTransition();
-    const [selectedIds, setSelectedIds] = useState<string[]>([]);
     const [currentPage, setCurrentPage] = useState(1);
 
     const handleSearch = useDebouncedCallback((term: string) => {
@@ -112,24 +110,6 @@ export function ContactsTable({ contacts }: ContactsPageProps) {
         const start = (safePage - 1) * PAGE_SIZE;
         return contacts.slice(start, start + PAGE_SIZE);
     }, [contacts, safePage]);
-
-    const allCurrentPageSelected =
-        pagedContacts.length > 0 && pagedContacts.every((contact) => selectedIds.includes(contact.id));
-
-    const toggleAllCurrentPage = (checked: boolean) => {
-        const pageIds = pagedContacts.map((contact) => contact.id);
-        setSelectedIds((prev) =>
-            checked
-                ? Array.from(new Set([...prev, ...pageIds]))
-                : prev.filter((id) => !pageIds.includes(id)),
-        );
-    };
-
-    const toggleContact = (contactId: string, checked: boolean) => {
-        setSelectedIds((prev) =>
-            checked ? Array.from(new Set([...prev, contactId])) : prev.filter((id) => id !== contactId),
-        );
-    };
 
     const handleRefresh = () => {
         startTransition(() => {
@@ -227,12 +207,6 @@ export function ContactsTable({ contacts }: ContactsPageProps) {
                 <Table>
                     <TableHeader className="sticky top-0 z-10 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/85">
                         <TableRow className="border-b border-border hover:bg-transparent">
-                            <TableHead className="w-[42px]">
-                                <Checkbox
-                                    checked={allCurrentPageSelected}
-                                    onCheckedChange={(checked) => toggleAllCurrentPage(Boolean(checked))}
-                                />
-                            </TableHead>
                             <TableHead className="text-muted-foreground">Nombre</TableHead>
                             <TableHead className="hidden lg:table-cell text-muted-foreground">Email</TableHead>
                             <TableHead className="text-muted-foreground">Teléfono</TableHead>
@@ -246,7 +220,7 @@ export function ContactsTable({ contacts }: ContactsPageProps) {
                     <TableBody>
                         {contacts.length === 0 ? (
                             <TableRow>
-                                <TableCell colSpan={9} className="h-32 text-center text-muted-foreground">
+                                <TableCell colSpan={8} className="h-32 text-center text-muted-foreground">
                                     No se encontraron contactos.
                                 </TableCell>
                             </TableRow>
@@ -262,12 +236,6 @@ export function ContactsTable({ contacts }: ContactsPageProps) {
                                         key={contact.id}
                                         className="group border-b border-border/70 transition-colors hover:bg-muted/35"
                                     >
-                                        <TableCell>
-                                            <Checkbox
-                                                checked={selectedIds.includes(contact.id)}
-                                                onCheckedChange={(checked) => toggleContact(contact.id, Boolean(checked))}
-                                            />
-                                        </TableCell>
                                         <TableCell>
                                             <Link href={`/dashboard/contacts/${contact.id}`} className="flex items-center gap-3">
                                                 <Avatar className="h-10 w-10 border border-primary/10 shadow-sm">
@@ -335,7 +303,7 @@ export function ContactsTable({ contacts }: ContactsPageProps) {
 
             <div className="flex flex-col gap-3 border-t border-border px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
                 <div className="text-sm text-muted-foreground">
-                    {selectedIds.length > 0 ? `${selectedIds.length} seleccionados` : "Sin selección"}
+                    Página {safePage} de {totalPages}
                 </div>
 
                 <div className="flex items-center gap-2 self-end">
