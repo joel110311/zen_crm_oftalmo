@@ -291,11 +291,18 @@ function MessageResponderBadge({ label, compact = false }: { label: "IA" | "Huma
     return (
         <span
             className={cn(
-                "inline-flex items-center rounded-full border font-semibold uppercase tracking-[0.18em] shadow-sm",
+                "inline-flex items-center rounded-full border font-semibold leading-none shadow-sm",
                 label === "IA"
                     ? "border-emerald-400/30 bg-emerald-50 text-emerald-700 dark:border-emerald-400/20 dark:bg-emerald-500/10 dark:text-emerald-300"
                     : "border-amber-400/35 bg-amber-50 text-amber-700 dark:border-amber-400/20 dark:bg-amber-500/10 dark:text-amber-300",
-                compact ? "px-2 py-0.5 text-[9px]" : "mb-1.5 px-2.5 py-1 text-[10px]",
+                label === "Humano"
+                    ? "tracking-[0.02em]"
+                    : "uppercase tracking-[0.12em]",
+                compact
+                    ? "px-1.5 py-0.5 text-[9px]"
+                    : label === "Humano"
+                        ? "mb-1 px-2 py-0.5 text-[9px]"
+                        : "mb-1 px-2.5 py-0.5 text-[9px]",
             )}
         >
             {label}

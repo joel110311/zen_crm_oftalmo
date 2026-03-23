@@ -42,38 +42,49 @@ function getHostMeta(contact: any) {
     if (!conversation) {
         return {
             label: "Sin asignar",
-            detail: "Sin conversación",
+            detail: "Sin conversacion",
+            classes: "bg-slate-100 text-slate-600",
+        };
+    }
+
+    if (conversation.assignedUser?.name) {
+        return {
+            label: conversation.assignedUser.name,
+            detail: conversation.botActive ? "IA activa" : "Atencion manual",
+            classes: conversation.botActive ? "bg-emerald-50 text-emerald-700" : "bg-blue-100 text-blue-700",
+        };
+    }
+
+    return {
+        label: "Sin asignar",
+        detail: conversation.botActive ? "IA sin responsable" : "Asignacion manual",
+        classes: "bg-slate-100 text-slate-600",
+    };
+}
+
+function getAttendanceMeta(contact: any) {
+    const conversation = contact.conversations?.[0];
+
+    if (!conversation) {
+        return {
+            label: "Sin asignar",
+            detail: "Sin conversacion",
             classes: "bg-slate-100 text-slate-600",
         };
     }
 
     if (conversation.botActive) {
         return {
-            label: "Agente IA",
-            detail: conversation.assignedUser?.name || "Atención automática",
+            label: "IA",
+            detail: "Atencion automatica",
             classes: "bg-emerald-100 text-emerald-700",
         };
     }
 
     return {
         label: "Humano",
-        detail: conversation.assignedUser?.name || "Asignación manual",
-        classes: "bg-blue-100 text-blue-700",
-    };
-}
-
-function getStatusMeta(contact: any) {
-    const stage = contact.deals?.[0]?.stage;
-    const fallbackMap: Record<string, { label: string; color: string }> = {
-        lead: { label: "Nuevo lead", color: "#94A3B8" },
-        qualified: { label: "Calificado", color: "#10B981" },
-        customer: { label: "Cliente", color: "#2563EB" },
-    };
-    const fallback = fallbackMap[contact.status] || fallbackMap.lead;
-
-    return {
-        label: stage?.name || fallback.label,
-        color: stage?.color || fallback.color,
+        detail: conversation.assignedUser?.name || "Atencion manual",
+        classes: "bg-amber-50 text-amber-700",
     };
 }
 
@@ -120,7 +131,7 @@ export function ContactsTable({ contacts }: ContactsPageProps) {
     const handleExport = () => {
         const rows = contacts.map((contact) => {
             const host = getHostMeta(contact);
-            const status = getStatusMeta(contact);
+            const attendance = getAttendanceMeta(contact);
             const score = getScoreMeta(contact);
 
             return [
@@ -128,14 +139,14 @@ export function ContactsTable({ contacts }: ContactsPageProps) {
                 contact.email || "",
                 contact.phone || "",
                 host.label,
-                status.label,
+                attendance.label,
                 String(score.score),
                 new Date(contact.createdAt).toISOString(),
             ];
         });
 
         const csv = [
-            ["Nombre", "Email", "Telefono", "Anfitrion", "Estado", "Calidad", "Creado"].join(","),
+            ["Nombre", "Email", "Telefono", "Anfitrion", "Atiende", "Calidad", "Creado"].join(","),
             ...rows.map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(",")),
         ].join("\n");
 
@@ -190,7 +201,7 @@ export function ContactsTable({ contacts }: ContactsPageProps) {
                     <div className="relative w-full max-w-xl">
                         <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                         <Input
-                            placeholder="Buscar por nombre, email, teléfono o compañía..."
+                            placeholder="Buscar por nombre, email, telefono o compania..."
                             className="h-11 w-full rounded-xl border-input bg-background pl-9"
                             defaultValue={searchParams.get("query")?.toString()}
                             onChange={(e) => handleSearch(e.target.value)}
@@ -209,9 +220,9 @@ export function ContactsTable({ contacts }: ContactsPageProps) {
                         <TableRow className="border-b border-border hover:bg-transparent">
                             <TableHead className="text-muted-foreground">Nombre</TableHead>
                             <TableHead className="hidden lg:table-cell text-muted-foreground">Email</TableHead>
-                            <TableHead className="text-muted-foreground">Teléfono</TableHead>
-                            <TableHead className="hidden md:table-cell text-muted-foreground">Anfitrión</TableHead>
-                            <TableHead className="hidden md:table-cell text-muted-foreground">Estado</TableHead>
+                            <TableHead className="text-muted-foreground">Telefono</TableHead>
+                            <TableHead className="hidden md:table-cell text-muted-foreground">Anfitrion</TableHead>
+                            <TableHead className="hidden md:table-cell text-muted-foreground">Atiende</TableHead>
                             <TableHead className="hidden xl:table-cell text-muted-foreground">Creado</TableHead>
                             <TableHead className="text-muted-foreground">Calidad</TableHead>
                             <TableHead className="w-[56px]"></TableHead>
@@ -228,7 +239,7 @@ export function ContactsTable({ contacts }: ContactsPageProps) {
                             pagedContacts.map((contact) => {
                                 const fullName = getContactFullName(contact, "Sin nombre");
                                 const host = getHostMeta(contact);
-                                const status = getStatusMeta(contact);
+                                const attendance = getAttendanceMeta(contact);
                                 const score = getScoreMeta(contact);
 
                                 return (
@@ -249,7 +260,7 @@ export function ContactsTable({ contacts }: ContactsPageProps) {
                                                         {fullName}
                                                     </div>
                                                     <div className="truncate text-xs text-muted-foreground">
-                                                        {contact.company || "Sin compañía"}
+                                                        {contact.company || "Sin compania"}
                                                     </div>
                                                 </div>
                                             </Link>
@@ -271,23 +282,25 @@ export function ContactsTable({ contacts }: ContactsPageProps) {
                                             </div>
                                         </TableCell>
                                         <TableCell className="hidden md:table-cell">
-                                            <span
-                                                className="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium"
-                                                style={{
-                                                    backgroundColor: `${status.color}22`,
-                                                    color: status.color,
-                                                }}
-                                            >
-                                                {status.label}
-                                            </span>
+                                            <div className="flex flex-col gap-1">
+                                                <span className={`inline-flex w-fit items-center rounded-full px-2.5 py-1 text-xs font-medium ${attendance.classes}`}>
+                                                    {attendance.label}
+                                                </span>
+                                                <span className="truncate text-[11px] text-muted-foreground">
+                                                    {attendance.detail}
+                                                </span>
+                                            </div>
                                         </TableCell>
                                         <TableCell className="hidden xl:table-cell whitespace-nowrap text-sm text-muted-foreground">
                                             {formatDistanceToNow(new Date(contact.createdAt), { addSuffix: true, locale: es })}
                                         </TableCell>
                                         <TableCell>
-                                            <div className={`inline-flex items-center gap-1.5 font-semibold ${score.tone}`}>
+                                            <div
+                                                className={`inline-flex items-center gap-1.5 font-semibold ${score.tone}`}
+                                                title="Se calcula por actividad e interes detectado en la conversacion."
+                                            >
                                                 <Star className="h-4 w-4 fill-current" />
-                                                <span>{score.score}</span>
+                                                <span>{score.score}/100</span>
                                             </div>
                                         </TableCell>
                                         <TableCell>
@@ -303,7 +316,7 @@ export function ContactsTable({ contacts }: ContactsPageProps) {
 
             <div className="flex flex-col gap-3 border-t border-border px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
                 <div className="text-sm text-muted-foreground">
-                    Página {safePage} de {totalPages}
+                    Pagina {safePage} de {totalPages}
                 </div>
 
                 <div className="flex items-center gap-2 self-end">
