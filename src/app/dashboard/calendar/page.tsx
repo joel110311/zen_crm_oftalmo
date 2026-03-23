@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect, useTransition } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { getAppointments, deleteAppointment } from "@/app/actions/calendar";
 import { getSystemSettings } from "@/app/actions/settings";
 import { BigCalendar } from "@/components/calendar/big-calendar";
@@ -26,30 +26,31 @@ export default function CalendarPage() {
     // Stats
     const [stats, setStats] = useState({ today: 0, week: 0, pending: 0, completed: 0 });
 
-    const fetchAppointments = async () => {
-        const [data, settings] = await Promise.all([
-            getAppointments(),
-            getSystemSettings(),
-        ]);
-
-        // Auto-compute status: if scheduled and time passed, mark as completed
+    const applyAppointmentsState = useCallback((data: any[]) => {
         const now = new Date();
-        const processedData = data.map(apt => {
-            if (apt.status === 'scheduled' && new Date(apt.endTime) < now) {
-                return { ...apt, status: 'completed' };
+        const processedData = data.map((apt) => {
+            if (apt.status === "scheduled" && new Date(apt.endTime) < now) {
+                return { ...apt, status: "completed" };
             }
             return apt;
         });
 
         setAppointments(processedData);
 
-        // Calculate stats using processedData
-        const todayCount = processedData.filter(a => isToday(new Date(a.startTime))).length;
-        const weekCount = processedData.filter(a => isSameWeek(new Date(a.startTime), now)).length;
-        const pendingCount = processedData.filter(a => a.status === 'scheduled').length;
-        const completedCount = processedData.filter(a => a.status === 'completed').length;
+        const todayCount = processedData.filter((a) => isToday(new Date(a.startTime))).length;
+        const weekCount = processedData.filter((a) => isSameWeek(new Date(a.startTime), now)).length;
+        const pendingCount = processedData.filter((a) => a.status === "scheduled").length;
+        const completedCount = processedData.filter((a) => a.status === "completed").length;
 
         setStats({ today: todayCount, week: weekCount, pending: pendingCount, completed: completedCount });
+    }, []);
+
+    const fetchAppointments = async () => {
+        const [data, settings] = await Promise.all([
+            getAppointments(),
+            getSystemSettings(),
+        ]);
+        applyAppointmentsState(data);
         setBusinessHours(normalizeBusinessHours(settings));
     };
 
@@ -102,6 +103,37 @@ export default function CalendarPage() {
         setSelectedSlot(null);
         setIsDialogOpen(true);
     };
+
+    const handleAppointmentTimeChange = useCallback((appointmentId: string, start: Date, end: Date) => {
+        setAppointments((prev) => {
+            const next = prev.map((apt) =>
+                apt.id === appointmentId
+                    ? {
+                          ...apt,
+                          startTime: start,
+                          endTime: end,
+                      }
+                    : apt,
+            );
+
+            const now = new Date();
+            const processedData = next.map((apt) => {
+                if (apt.status === "scheduled" && new Date(apt.endTime) < now) {
+                    return { ...apt, status: "completed" };
+                }
+                return apt;
+            });
+
+            const todayCount = processedData.filter((a) => isToday(new Date(a.startTime))).length;
+            const weekCount = processedData.filter((a) => isSameWeek(new Date(a.startTime), now)).length;
+            const pendingCount = processedData.filter((a) => a.status === "scheduled").length;
+            const completedCount = processedData.filter((a) => a.status === "completed").length;
+
+            setStats({ today: todayCount, week: weekCount, pending: pendingCount, completed: completedCount });
+
+            return processedData;
+        });
+    }, []);
 
     // Transform for BigCalendar
     const events = appointments.map((apt) => ({
@@ -208,6 +240,8 @@ export default function CalendarPage() {
                         initialEvents={events}
                         onSelectSlot={handleSelectSlot}
                         onSelectEvent={handleSelectEvent}
+                        onAppointmentTimeChange={handleAppointmentTimeChange}
+                        onMutationSettled={fetchAppointments}
                         businessHours={businessHours}
                     />
                 </TabsContent>
