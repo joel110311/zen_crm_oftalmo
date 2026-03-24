@@ -36,6 +36,15 @@ export type CatalogAvailabilitySummary = {
     }>;
 };
 
+export type CatalogDevelopmentContext = {
+    development: string;
+    location: string | null;
+    entries: Array<{
+        question: string;
+        answer: string;
+    }>;
+};
+
 const MAX_IMPORT_IMAGES = 10;
 const MAX_CATALOG_MATCHES = 3;
 const MIN_VECTOR_SIMILARITY = 0.62;
@@ -743,6 +752,80 @@ async function getCatalogItemWithAssets(id: string) {
             },
         },
     });
+}
+
+export async function getCatalogDevelopmentContext(
+    itemId: string,
+    maxEntries = 6,
+): Promise<CatalogDevelopmentContext | null> {
+    const baseItem = await prisma.catalogItem.findUnique({
+        where: { id: itemId },
+        select: {
+            id: true,
+            development: true,
+            location: true,
+        },
+    });
+
+    if (!baseItem) {
+        return null;
+    }
+
+    const relatedItems = await prisma.catalogItem.findMany({
+        where: {
+            isActive: true,
+            development: {
+                equals: baseItem.development,
+                mode: "insensitive",
+            },
+        },
+        select: {
+            id: true,
+            question: true,
+            answer: true,
+            location: true,
+        },
+        take: 24,
+    });
+
+    const orderedItems = relatedItems.sort((left, right) => {
+        if (left.id === itemId) return -1;
+        if (right.id === itemId) return 1;
+        return left.question.localeCompare(right.question, "es", { sensitivity: "base" });
+    });
+
+    const seenQuestions = new Set<string>();
+    const entries = orderedItems
+        .filter((item) => item.question.trim() && item.answer.trim())
+        .filter((item) => {
+            const normalizedQuestion = normalizeSearchText(item.question);
+            if (!normalizedQuestion || seenQuestions.has(normalizedQuestion)) {
+                return false;
+            }
+
+            seenQuestions.add(normalizedQuestion);
+            return true;
+        })
+        .slice(0, Math.max(1, maxEntries))
+        .map((item) => ({
+            question: item.question,
+            answer: item.answer,
+        }));
+
+    const preferredLocation =
+        resolveAvailabilityLocationHint(
+            tokenizeCatalogQuery(baseItem.location || ""),
+            relatedItems.map((item) => ({
+                development: baseItem.development,
+                location: item.location,
+            })),
+        ) || baseItem.location || relatedItems.find((item) => item.location)?.location || null;
+
+    return {
+        development: baseItem.development,
+        location: preferredLocation,
+        entries,
+    };
 }
 
 export async function findBestCatalogItem(query: string) {

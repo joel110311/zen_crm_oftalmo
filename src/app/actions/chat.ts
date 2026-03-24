@@ -7,6 +7,7 @@ import { resolveMediaToDataUrl } from "@/lib/media-data-url";
 import {
     findBestCatalogItem,
     findCatalogAvailabilitySummary,
+    getCatalogDevelopmentContext,
     parseCatalogAssetIntent,
     splitCatalogAssets,
 } from "@/lib/catalog/catalog";
@@ -87,30 +88,33 @@ function hasRecentCatalogOffer(offeredAt: Date | null | undefined) {
 
 function buildCatalogInstruction(
     catalogItem: CatalogItemMatch,
-    maxImagesToSend: number,
+    developmentContext: Awaited<ReturnType<typeof getCatalogDevelopmentContext>> | null,
 ) {
-    const { imageAssets, pdfAsset, linkAsset } = splitCatalogAssets(
-        catalogItem.assets,
-        maxImagesToSend,
-    );
-    const assetSummary = [
-        imageAssets.length > 0 ? `${imageAssets.length} imagenes disponibles` : null,
-        pdfAsset ? "catalogo PDF disponible" : null,
-        linkAsset ? "liga del desarrollo disponible" : null,
-    ]
-        .filter(Boolean)
-        .join(", ");
+    const verifiedEntries = developmentContext?.entries?.length
+        ? developmentContext.entries
+        : [
+            {
+                question: catalogItem.question,
+                answer: catalogItem.answer,
+            },
+        ];
 
     return [
-        "Se encontro una ficha estructurada del catalogo.",
-        `Desarrollo: ${catalogItem.development}.`,
-        catalogItem.location ? `Ubicacion: ${catalogItem.location}.` : null,
-        `Pregunta relacionada: ${catalogItem.question}.`,
-        `Respuesta verificada: ${catalogItem.answer}.`,
-        assetSummary ? `Activos disponibles: ${assetSummary}.` : null,
+        verifiedEntries.length > 1
+            ? "Se encontraron varias fichas estructuradas verificadas del mismo desarrollo."
+            : "Se encontro una ficha estructurada del catalogo.",
+        `Desarrollo: ${developmentContext?.development || catalogItem.development}.`,
+        (developmentContext?.location || catalogItem.location)
+            ? `Ubicacion base: ${developmentContext?.location || catalogItem.location}.`
+            : null,
+        "Construye una respuesta integrada, comercial y clara usando solo la informacion verificada de estas fichas:",
+        ...verifiedEntries.map((entry, index) =>
+            `Ficha ${index + 1}: ${entry.question} -> ${entry.answer}`,
+        ),
         "Usa esta ficha como fuente prioritaria si la consulta del cliente corresponde a este desarrollo.",
-        "No inventes caracteristicas, precios ni amenidades que no esten en esta ficha.",
-        "Si el cliente pide imagenes o PDF y existen, puedes decir que se los compartes, pero no afirmes que ya los mandaste antes de enviarlos.",
+        "No inventes caracteristicas, precios, amenidades ni ubicaciones que no esten en estas fichas.",
+        "No menciones ni ofrezcas imagenes, PDF o ligas dentro del cuerpo principal de la respuesta; el sistema los ofrece aparte cuando corresponde.",
+        "No repitas textual las preguntas del catalogo. Sintetiza la informacion en una sola respuesta bien organizada.",
         "Cuando respondas con esta ficha, usa formato de WhatsApp bien estructurado: parrafos cortos, listas simples cuando haya caracteristicas y *negritas* solo en la informacion importante.",
         "Resalta en *negritas* lo mas relevante, por ejemplo: nombre del desarrollo, ubicacion, recamaras, banos, amenidades, precio o beneficio principal si aparece en la ficha.",
     ]
@@ -140,6 +144,27 @@ function buildCatalogOfferText(params: {
     }
 
     return lines.join("\n");
+}
+
+function shouldAppendCatalogOffer(
+    reply: string,
+    params: {
+        offerImages: boolean;
+        offerPdf: boolean;
+    },
+) {
+    const normalized = normalizeCatalogComparableText(reply);
+    if (!normalized) return true;
+
+    if (params.offerImages && /\bimagen(?:es)?\b/.test(normalized)) {
+        return false;
+    }
+
+    if (params.offerPdf && (/\bpdf\b/.test(normalized) || /\bcatalogo\b/.test(normalized))) {
+        return false;
+    }
+
+    return true;
 }
 
 function buildCatalogAssetIntro(params: {
@@ -608,6 +633,7 @@ async function maybeSendAutomatedReply(
         let sendCatalogPdfNow = false;
         let sendCatalogLinkNow = false;
         let usedCatalogAvailabilitySummary = false;
+        let catalogDevelopmentContext: Awaited<ReturnType<typeof getCatalogDevelopmentContext>> | null = null;
 
         if (
             appointmentResult.kind === "missing" ||
@@ -640,11 +666,14 @@ async function maybeSendAutomatedReply(
                         ? await findCatalogAvailabilitySummary(catalogLookupQuery)
                         : null
                 );
-            catalogItem = await findBestCatalogItem(catalogLookupQuery);
+            catalogItem =
+                await findBestCatalogItem(latestUserMessage) ||
+                (
+                    catalogLookupQuery !== latestUserMessage
+                        ? await findBestCatalogItem(catalogLookupQuery)
+                        : null
+                );
             const catalogIntent = parseCatalogAssetIntent(latestUserMessage);
-            const catalogInstruction = catalogItem
-                ? buildCatalogInstruction(catalogItem, settings.catalogMaxImagesToSend)
-                : null;
             const shouldPreferCatalogSummary =
                 Boolean(catalogAvailabilitySummary) &&
                 (!catalogItem || !latestMessageMentionsDevelopment(latestUserMessage, catalogItem.development));
@@ -654,6 +683,7 @@ async function maybeSendAutomatedReply(
                 catalogItem = null;
                 usedCatalogAvailabilitySummary = true;
             } else if (catalogItem) {
+                catalogDevelopmentContext = await getCatalogDevelopmentContext(catalogItem.id);
                 const { imageAssets, pdfAsset, linkAsset } = splitCatalogAssets(
                     catalogItem.assets,
                     settings.catalogMaxImagesToSend,
@@ -700,6 +730,9 @@ async function maybeSendAutomatedReply(
             }
 
             if (!reply) {
+                const catalogInstruction = catalogItem
+                    ? buildCatalogInstruction(catalogItem, catalogDevelopmentContext)
+                    : null;
                 const automationInstruction = [leadAutomation.instruction, appointmentInstruction]
                     .concat(catalogInstruction ? [catalogInstruction] : [])
                     .filter(Boolean)
@@ -725,7 +758,12 @@ async function maybeSendAutomatedReply(
                 ).imageAssets.length,
                 offerPdf: pendingCatalogPdf,
             });
-            reply = appendSection(reply, offerText);
+            if (shouldAppendCatalogOffer(reply, {
+                offerImages: pendingCatalogImages,
+                offerPdf: pendingCatalogPdf,
+            })) {
+                reply = appendSection(reply, offerText);
+            }
         }
 
         await sendAutomatedBotText({
