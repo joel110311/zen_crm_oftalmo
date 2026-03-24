@@ -27,6 +27,8 @@ export async function updateSystemSettings(data: {
     n8nWebhookUrl?: string;
     agentName?: string;
     agentPrompt?: string;
+    welcomeMessage?: string;
+    welcomeRepeatHours?: number;
     agentTemperature?: number;
     knowledgeTopK?: number;
     autoReplyDelayMs?: number;

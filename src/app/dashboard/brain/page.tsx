@@ -33,6 +33,8 @@ export default function BrainConfigPage() {
     const [autoReplyDelaySeconds, setAutoReplyDelaySeconds] = useState([8]);
     const [agentName, setAgentName] = useState("Asistente Zen");
     const [agentPrompt, setAgentPrompt] = useState("");
+    const [welcomeMessage, setWelcomeMessage] = useState("");
+    const [welcomeRepeatHours, setWelcomeRepeatHours] = useState("24");
     const [openaiModel, setOpenaiModel] = useState(normalizeChatModelSelection());
     const [knowledgeTopK, setKnowledgeTopK] = useState("6");
     const [temperature, setTemperature] = useState([0.3]);
@@ -66,6 +68,11 @@ export default function BrainConfigPage() {
                         settings.agentPrompt ||
                             "Eres un asistente comercial y de soporte que responde por WhatsApp desde un CRM. Responde en espanol, con claridad y sin inventar informacion.",
                     );
+                    setWelcomeMessage(
+                        settings.welcomeMessage ||
+                            "👋 ¡Hola! Gracias por contactarnos.\n\n¿En qué te podemos ayudar hoy?",
+                    );
+                    setWelcomeRepeatHours(String(settings.welcomeRepeatHours || 24));
                     setAutoReplyDelaySeconds([
                         Math.max(3, Math.min(20, Math.round((settings.autoReplyDelayMs || 8000) / 1000))),
                     ]);
@@ -122,6 +129,8 @@ export default function BrainConfigPage() {
                 isBotEnabled,
                 agentName,
                 agentPrompt,
+                welcomeMessage,
+                welcomeRepeatHours: Math.max(1, Number(welcomeRepeatHours) || 24),
                 openaiModel,
                 knowledgeTopK: Number(knowledgeTopK) || 6,
                 agentTemperature: temperature[0] || 0.3,
@@ -377,6 +386,41 @@ export default function BrainConfigPage() {
                             </CardContent>
                         </Card>
                     </div>
+
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Bienvenida automatica</CardTitle>
+                            <CardDescription>
+                                Este mensaje lo envia la IA automaticamente. No depende de <span className="font-medium text-foreground">Plantillas</span>, que siguen siendo respuestas rapidas manuales para el inbox.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
+                            <div className="space-y-2">
+                                <Label>Mensaje de bienvenida</Label>
+                                <Textarea
+                                    value={welcomeMessage}
+                                    onChange={(event) => setWelcomeMessage(event.target.value)}
+                                    className="min-h-[120px]"
+                                    placeholder="👋 ¡Hola! Gracias por contactarnos..."
+                                />
+                                <p className="text-xs text-muted-foreground">
+                                    Si lo dejas vacio, la bienvenida automatica se desactiva.
+                                </p>
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Volver a enviar bienvenida despues de</Label>
+                                <Input
+                                    value={welcomeRepeatHours}
+                                    onChange={(event) => setWelcomeRepeatHours(event.target.value)}
+                                    inputMode="numeric"
+                                    placeholder="24"
+                                />
+                                <p className="text-xs text-muted-foreground">
+                                    Se mide en horas. Ejemplo: 24 = si el cliente vuelve al dia siguiente, recibe bienvenida otra vez.
+                                </p>
+                            </div>
+                        </CardContent>
+                    </Card>
 
                     <Card>
                         <CardHeader>

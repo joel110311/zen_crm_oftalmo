@@ -352,6 +352,8 @@ model SystemSettings {
   n8nWebhookUrl   String?
   agentName       String?  @default("Asistente Zen")
   agentPrompt     String?
+  welcomeMessage  String?
+  welcomeRepeatHours Int   @default(24)
   agentTemperature Float   @default(0.3)
   knowledgeTopK   Int      @default(6)
   autoReplyDelayMs Int     @default(1200)

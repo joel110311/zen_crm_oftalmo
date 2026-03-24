@@ -20,6 +20,8 @@ export const SYSTEM_SETTINGS_DEFAULTS = {
 Usa el contexto recuperado cuando sea relevante.
 Si no encuentras una respuesta fiable en la base de conocimiento, dilo con honestidad y pide el dato faltante.
 Cuando detectes intencion comercial o de seguimiento, guia la conversacion hacia el siguiente paso util.`,
+    welcomeMessage: `👋 ¡Hola! Gracias por contactarnos.\n\n¿En qué te podemos ayudar hoy?`,
+    welcomeRepeatHours: 24,
     agentTemperature: 0.3,
     knowledgeTopK: 6,
     autoReplyDelayMs: 1200,

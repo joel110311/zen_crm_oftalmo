@@ -18,10 +18,8 @@ import { getSystemSettingsOrDefaults } from "@/lib/system-settings";
 import { buildInboundMediaContext, shouldSkipAutoReplyText } from "@/lib/ai/media-understanding";
 import { maybeHandleAppointmentBooking } from "@/lib/ai/appointment-booking";
 import { processLeadAutomationTurn } from "@/lib/ai/lead-intelligence";
-import { renderTemplateContent } from "@/lib/templates";
 
 const CATALOG_OFFER_EXPIRY_MS = 1000 * 60 * 90;
-const WELCOME_RESET_MS = 1000 * 60 * 60 * 24;
 
 type CatalogItemMatch = NonNullable<Awaited<ReturnType<typeof findBestCatalogItem>>>;
 
@@ -370,49 +368,22 @@ async function touchAutomatedConversation(conversationId: string) {
 }
 
 async function getAutomatedWelcomeMessage(params: {
-    contact: {
-        name?: string | null;
-        company?: string | null;
-        phone?: string | null;
-    } | null | undefined;
-    agentName?: string | null;
+    welcomeMessage?: string | null;
 }) {
-    const templateRepo = prisma.template as any;
-    const welcomeTemplate = await templateRepo.findFirst({
-        where: {
-            isActive: true,
-            shortcut: "bienvenida",
-            type: "text",
-        },
-        orderBy: [{ isFavorite: "desc" }, { updatedAt: "desc" }],
-    });
-
-    const content = welcomeTemplate?.content?.trim();
-    if (!content) {
-        const normalizedAgentName = params.agentName?.trim();
-        const brandLabel =
-            normalizedAgentName && normalizedAgentName.toLowerCase() !== "asistente zen"
-                ? ` *${normalizedAgentName}*`
-                : "";
-
-        return `👋 ¡Hola! Gracias por contactar${brandLabel ? ` a${brandLabel}` : "nos"}.\n\n¿En qué te podemos ayudar hoy?`;
-    }
-
-    return renderTemplateContent(content, {
-        contact: params.contact,
-        agentName: params.agentName,
-    }).trim() || null;
+    return params.welcomeMessage?.trim() || null;
 }
 
 function shouldSendAutomatedWelcome(
     currentInboundAt: Date,
     previousInboundAt: Date | null | undefined,
+    repeatHours: number,
 ) {
     if (!previousInboundAt) {
         return true;
     }
 
-    return currentInboundAt.getTime() - previousInboundAt.getTime() >= WELCOME_RESET_MS;
+    const repeatMs = Math.max(1, repeatHours || 24) * 60 * 60 * 1000;
+    return currentInboundAt.getTime() - previousInboundAt.getTime() >= repeatMs;
 }
 
 async function persistCatalogState(params: {
@@ -784,10 +755,15 @@ async function maybeSendAutomatedReply(
             return;
         }
 
-        if (shouldSendAutomatedWelcome(latestMessage.createdAt, previousInboundMessage?.createdAt)) {
+        if (
+            shouldSendAutomatedWelcome(
+                latestMessage.createdAt,
+                previousInboundMessage?.createdAt,
+                settings.welcomeRepeatHours || 24,
+            )
+        ) {
             const welcomeMessage = await getAutomatedWelcomeMessage({
-                contact: latestConversation.contact,
-                agentName: settings.agentName,
+                welcomeMessage: settings.welcomeMessage,
             });
 
             if (welcomeMessage) {
