@@ -111,6 +111,8 @@ function buildCatalogInstruction(
         "Usa esta ficha como fuente prioritaria si la consulta del cliente corresponde a este desarrollo.",
         "No inventes caracteristicas, precios ni amenidades que no esten en esta ficha.",
         "Si el cliente pide imagenes o PDF y existen, puedes decir que se los compartes, pero no afirmes que ya los mandaste antes de enviarlos.",
+        "Cuando respondas con esta ficha, usa formato de WhatsApp bien estructurado: parrafos cortos, listas simples cuando haya caracteristicas y *negritas* solo en la informacion importante.",
+        "Resalta en *negritas* lo mas relevante, por ejemplo: nombre del desarrollo, ubicacion, recamaras, banos, amenidades, precio o beneficio principal si aparece en la ficha.",
     ]
         .filter(Boolean)
         .join(" ");
@@ -170,23 +172,25 @@ function buildCatalogLinkMessage(
 function buildCatalogAvailabilityReply(summary: Awaited<ReturnType<typeof findCatalogAvailabilitySummary>>) {
     if (!summary) return null;
 
+    const locationLabel = summary.locationHint ? `*${summary.locationHint}*` : "esta zona";
     const header =
         summary.developments.length === 1
-            ? "Si, tengo informacion de este desarrollo disponible:"
+            ? "Sí, tengo información de este desarrollo disponible:"
             : summary.locationHint
-                ? `Si, tengo informacion de desarrollos en ${summary.locationHint}:`
-                : "Si, tengo informacion de estos desarrollos disponibles:";
+                ? `Sí, tengo opciones disponibles en ${locationLabel}:`
+                : "Sí, tengo opciones disponibles en esta zona:";
 
     const lines = summary.developments.map((item) =>
         item.location
-            ? `- ${item.development} (${item.location})`
-            : `- ${item.development}`,
+            ? `- *${item.development}* (${item.location})`
+            : `- *${item.development}*`,
     );
 
     return [
         header,
         lines.join("\n"),
-        "Si quieres, te cuento mas de alguno en particular. Solo dime el nombre del desarrollo.",
+        "Si quieres, te platico más de alguno en particular y te comparto la información más importante.",
+        "Solo dime el nombre del desarrollo que te interese.",
     ].join("\n\n");
 }
 
