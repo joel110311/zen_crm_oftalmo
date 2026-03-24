@@ -115,6 +115,11 @@ function buildCatalogInstruction(
         "No inventes caracteristicas, precios, amenidades ni ubicaciones que no esten en estas fichas.",
         "No menciones ni ofrezcas imagenes, PDF o ligas dentro del cuerpo principal de la respuesta; el sistema los ofrece aparte cuando corresponde.",
         "No repitas textual las preguntas del catalogo. Sintetiza la informacion en una sola respuesta bien organizada.",
+        "Da una respuesta resumida y facil de leer. A la mayoria de los clientes no les gusta leer demasiado.",
+        "Si el usuario solo pide informacion general del desarrollo, responde en formato breve: una introduccion corta, maximo 3 o 4 puntos clave y una pregunta final para continuar la conversacion.",
+        "No enumeres todas las amenidades ni todas las caracteristicas si no te las pidieron. Prioriza solo lo mas vendedor y util.",
+        "Si hay cantidades importantes, mencionalas de forma resumida, por ejemplo modelos, rango de recamaras o amenidades destacadas, sin copiar bloques demasiado largos.",
+        "Evita parrafos largos. Prefiere frases cortas y bullets cortos.",
         "Cuando respondas con esta ficha, usa formato de WhatsApp bien estructurado: parrafos cortos, listas simples cuando haya caracteristicas y *negritas* solo en la informacion importante.",
         "Resalta en *negritas* lo mas relevante, por ejemplo: nombre del desarrollo, ubicacion, recamaras, banos, amenidades, precio o beneficio principal si aparece en la ficha.",
     ]
