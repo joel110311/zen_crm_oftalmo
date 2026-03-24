@@ -3,6 +3,11 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Zen CRM",
   description: "Advanced WhatsApp CRM with AI capabilities",
+  icons: {
+    icon: "/brand/zen-favicon.svg",
+    shortcut: "/brand/zen-favicon.svg",
+    apple: "/brand/zen-favicon.svg",
+  },
 };
 
 import { ThemeProvider } from "@/components/theme-provider"

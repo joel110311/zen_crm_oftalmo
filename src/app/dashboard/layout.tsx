@@ -1,6 +1,7 @@
 import { Sidebar } from "@/components/layout/sidebar";
 import { Header } from "@/components/layout/header";
 import { InboxNotifier } from "@/components/layout/inbox-notifier";
+import { UnreadTabBadge } from "@/components/layout/unread-tab-badge";
 import { SessionProvider } from "@/components/providers/session-provider";
 import { auth } from "@/lib/auth";
 
@@ -19,6 +20,7 @@ export default async function DashboardLayout({
         <SessionProvider session={session}>
             <div className="flex h-screen overflow-hidden bg-background w-full">
                 <InboxNotifier />
+                <UnreadTabBadge />
                 <Sidebar />
                 <div className="flex flex-col flex-1 overflow-hidden pt-14 md:pt-0">
                     <Header />

@@ -30,6 +30,7 @@ import { TemplatePicker } from "@/components/inbox/template-picker";
 import { WhatsAppFormattedText } from "@/components/shared/whatsapp-formatted-text";
 import { getSafeMediaUrl } from "@/lib/media-url";
 import { TemplateRecord, extractTemplateSlashQuery, renderTemplateContent } from "@/lib/templates";
+import { readUnreadCounts, writeUnreadCounts } from "@/lib/inbox-browser-badge";
 
 const REACTION_EMOJIS = [
     "👍", "👎", "❤️", "🩵", "🔥", "✨", "🎉", "👏",
@@ -933,6 +934,7 @@ export default function InboxPage() {
 
     // Unread message count tracking (per conversation)
     const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
+    const [hasLoadedUnreadCounts, setHasLoadedUnreadCounts] = useState(false);
     const isFirstFetchRef = useRef(true);
     const prevConvTimestampsRef = useRef<Record<string, string>>({});
 
@@ -940,6 +942,35 @@ export default function InboxPage() {
     const selectedChatIdRef = useRef<string | null>(null);
     useEffect(() => {
         selectedChatIdRef.current = selectedChat?.id ?? null;
+    }, [selectedChat?.id]);
+
+    useEffect(() => {
+        setUnreadCounts(readUnreadCounts());
+        setHasLoadedUnreadCounts(true);
+    }, []);
+
+    useEffect(() => {
+        if (!hasLoadedUnreadCounts) {
+            return;
+        }
+
+        writeUnreadCounts(unreadCounts);
+    }, [hasLoadedUnreadCounts, unreadCounts]);
+
+    useEffect(() => {
+        if (!selectedChat?.id) {
+            return;
+        }
+
+        setUnreadCounts((prev) => {
+            if (!(selectedChat.id in prev)) {
+                return prev;
+            }
+
+            const next = { ...prev };
+            delete next[selectedChat.id];
+            return next;
+        });
     }, [selectedChat?.id]);
 
     useEffect(() => {

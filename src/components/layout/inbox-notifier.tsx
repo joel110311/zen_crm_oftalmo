@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
 import { maybePlayNotification } from "@/lib/notificationSounds";
+import { incrementUnreadCounts } from "@/lib/inbox-browser-badge";
 
 type ConversationSnapshot = {
     id: string;
@@ -31,6 +32,7 @@ export function InboxNotifier() {
 
                 const nextTimestamps: Record<string, string> = {};
                 let playedSound = false;
+                const changedInboundConversationIds: string[] = [];
 
                 for (const conversation of conversations) {
                     const timestamp = new Date(conversation.updatedAt || Date.now()).toISOString();
@@ -43,12 +45,19 @@ export function InboxNotifier() {
                     if (
                         previousTimestampsRef.current[conversation.id] &&
                         previousTimestampsRef.current[conversation.id] !== timestamp &&
-                        conversation.lastMessageDirection === "inbound" &&
-                        !playedSound
+                        conversation.lastMessageDirection === "inbound"
                     ) {
-                        maybePlayNotification(Boolean(conversation.isMuted));
-                        playedSound = true;
+                        changedInboundConversationIds.push(conversation.id);
+
+                        if (!playedSound) {
+                            maybePlayNotification(Boolean(conversation.isMuted));
+                            playedSound = true;
+                        }
                     }
+                }
+
+                if (changedInboundConversationIds.length > 0) {
+                    incrementUnreadCounts(changedInboundConversationIds);
                 }
 
                 previousTimestampsRef.current = nextTimestamps;
