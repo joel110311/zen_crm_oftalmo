@@ -1033,12 +1033,12 @@ export default function InboxPage() {
                             if (conv.id === currentId) continue;
                             const prevTime = prevTimestamps[conv.id];
                             const newTime = new Date(conv.updatedAt).toISOString();
-                            if (prevTime && newTime !== prevTime) {
-                                // Conversation has new activity
+                            const hasInboundActivity = conv.messages[0]?.direction === "inbound";
+                            if (prevTime && newTime !== prevTime && hasInboundActivity) {
+                                // Conversation has a new inbound message
                                 next[conv.id] = (next[conv.id] || 0) + 1;
 
-                                // Play sound if it was an INBOUND message from the customer
-                                if (!playedSound && conv.messages[0]?.direction === "inbound") {
+                                if (!playedSound) {
                                     maybePlayNotification(conv.isMuted);
                                     playedSound = true;
                                 }
