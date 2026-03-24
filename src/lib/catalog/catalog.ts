@@ -32,6 +32,11 @@ const MAX_IMPORT_IMAGES = 10;
 const MAX_CATALOG_MATCHES = 3;
 const MIN_VECTOR_SIMILARITY = 0.62;
 
+type DeduplicatedCatalogRowsResult = {
+    rows: CatalogImportRow[];
+    duplicateExternalIds: string[];
+};
+
 function normalizeHeader(value: string) {
     return value
         .trim()
@@ -261,9 +266,27 @@ function mapCsvRows(source: string) {
         .filter((row): row is CatalogImportRow => Boolean(row));
 }
 
+function deduplicateImportRows(rows: CatalogImportRow[]): DeduplicatedCatalogRowsResult {
+    const byExternalId = new Map<string, CatalogImportRow>();
+    const duplicateExternalIds = new Set<string>();
+
+    for (const row of rows) {
+        if (byExternalId.has(row.externalId)) {
+            duplicateExternalIds.add(row.externalId);
+        }
+        byExternalId.set(row.externalId, row);
+    }
+
+    return {
+        rows: [...byExternalId.values()],
+        duplicateExternalIds: [...duplicateExternalIds.values()],
+    };
+}
+
 export async function importCatalogCsv(buffer: Buffer) {
     const source = buffer.toString("utf-8");
-    const rows = mapCsvRows(source);
+    const mappedRows = mapCsvRows(source);
+    const { rows, duplicateExternalIds } = deduplicateImportRows(mappedRows);
 
     if (rows.length === 0) {
         throw new Error("No encontre filas validas en el CSV del catalogo.");
@@ -278,36 +301,103 @@ export async function importCatalogCsv(buffer: Buffer) {
 
     await prisma.$transaction(async (tx) => {
         await tx.catalogConversationState.deleteMany();
-        await tx.catalogAsset.deleteMany();
-        await tx.catalogItem.deleteMany();
 
-        for (let index = 0; index < rows.length; index += 1) {
-            const row = rows[index];
-            const item = await tx.catalogItem.create({
-                data: {
-                    externalId: row.externalId,
-                    development: row.development,
-                    location: row.location,
-                    question: row.question,
-                    answer: row.answer,
-                    searchableText: row.searchableText,
-                    isActive: row.isActive,
-                    assets: {
-                        create: row.assets.map((asset) => ({
-                            type: asset.type,
-                            url: asset.url,
-                            label: asset.label || null,
-                            sortOrder: asset.sortOrder,
-                        })),
+        const existingItems = await tx.catalogItem.findMany({
+            select: {
+                id: true,
+                externalId: true,
+            },
+        });
+
+        const existingByExternalId = new Map(
+            existingItems.map((item) => [item.externalId, item]),
+        );
+        const incomingExternalIds = new Set(rows.map((row) => row.externalId));
+        const staleItemIds = existingItems
+            .filter((item) => !incomingExternalIds.has(item.externalId))
+            .map((item) => item.id);
+
+        if (staleItemIds.length > 0) {
+            await tx.catalogAsset.deleteMany({
+                where: {
+                    itemId: {
+                        in: staleItemIds,
                     },
                 },
             });
+
+            await tx.catalogItem.deleteMany({
+                where: {
+                    id: {
+                        in: staleItemIds,
+                    },
+                },
+            });
+        }
+
+        for (let index = 0; index < rows.length; index += 1) {
+            const row = rows[index];
+            const existingItem = existingByExternalId.get(row.externalId);
+
+            if (existingItem) {
+                await tx.catalogAsset.deleteMany({
+                    where: {
+                        itemId: existingItem.id,
+                    },
+                });
+            }
+
+            const item = existingItem
+                ? await tx.catalogItem.update({
+                    where: { id: existingItem.id },
+                    data: {
+                        development: row.development,
+                        location: row.location,
+                        question: row.question,
+                        answer: row.answer,
+                        searchableText: row.searchableText,
+                        isActive: row.isActive,
+                        assets: {
+                            create: row.assets.map((asset) => ({
+                                type: asset.type,
+                                url: asset.url,
+                                label: asset.label || null,
+                                sortOrder: asset.sortOrder,
+                            })),
+                        },
+                    },
+                })
+                : await tx.catalogItem.create({
+                    data: {
+                        externalId: row.externalId,
+                        development: row.development,
+                        location: row.location,
+                        question: row.question,
+                        answer: row.answer,
+                        searchableText: row.searchableText,
+                        isActive: row.isActive,
+                        assets: {
+                            create: row.assets.map((asset) => ({
+                                type: asset.type,
+                                url: asset.url,
+                                label: asset.label || null,
+                                sortOrder: asset.sortOrder,
+                            })),
+                        },
+                    },
+                });
 
             if (embeddings[index]?.length) {
                 const vectorLiteral = `[${embeddings[index].join(",")}]`;
                 await tx.$executeRaw`
                     UPDATE "CatalogItem"
                     SET embedding = ${vectorLiteral}::vector
+                    WHERE id = ${item.id}
+                `;
+            } else {
+                await tx.$executeRaw`
+                    UPDATE "CatalogItem"
+                    SET embedding = NULL
                     WHERE id = ${item.id}
                 `;
             }
@@ -317,6 +407,7 @@ export async function importCatalogCsv(buffer: Buffer) {
     return {
         importedCount: rows.length,
         assetCount: rows.reduce((sum, row) => sum + row.assets.length, 0),
+        duplicateCount: duplicateExternalIds.length,
     };
 }
 
