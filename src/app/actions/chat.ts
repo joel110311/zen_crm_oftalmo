@@ -239,6 +239,14 @@ function buildCatalogLinkMessage(
 function buildCatalogAvailabilityReply(summary: Awaited<ReturnType<typeof findCatalogAvailabilitySummary>>) {
     if (!summary) return null;
 
+    if (summary.noDirectMatches && summary.requestedLocation) {
+        return [
+            `Por ahora no tengo propiedades cargadas exactamente en *${summary.requestedLocation}*.`,
+            "Si quieres, puedo buscarte opciones cercanas o en otra zona de Merida.",
+            "¿Prefieres que te muestre opciones del norte, poniente, oriente o sur?",
+        ].join("\n\n");
+    }
+
     const lines = summary.developments.map((item) =>
         item.location
             ? `- *${item.development}* (${item.location})`
@@ -854,19 +862,28 @@ async function maybeSendAutomatedReply(
                         latestUserMessage,
                     )
                     : null;
-            const catalogAvailabilitySummary = shouldStickToCurrentDevelopment
+            const latestCatalogAvailabilitySummary = shouldStickToCurrentDevelopment
                 ? null
-                : await findCatalogAvailabilitySummary(latestUserMessage) ||
-                    (
-                        catalogLookupQuery !== latestUserMessage
-                            ? await findCatalogAvailabilitySummary(catalogLookupQuery)
-                            : null
-                    );
+                : await findCatalogAvailabilitySummary(latestUserMessage);
+            const latestRequestedLocation = latestCatalogAvailabilitySummary?.requestedLocation || null;
+            const catalogAvailabilitySummary = latestCatalogAvailabilitySummary ||
+                (
+                    !shouldStickToCurrentDevelopment &&
+                    catalogLookupQuery !== latestUserMessage &&
+                    !latestRequestedLocation
+                        ? await findCatalogAvailabilitySummary(catalogLookupQuery)
+                        : null
+                );
+            const shouldSuppressCatalogItemLookup = Boolean(catalogAvailabilitySummary?.noDirectMatches);
             catalogItem =
-                developmentScopedCatalogItem ||
+                shouldSuppressCatalogItemLookup
+                    ? null
+                    : developmentScopedCatalogItem ||
                 await findBestCatalogItem(latestUserMessage) ||
                 (
-                    !shouldStickToCurrentDevelopment && catalogLookupQuery !== latestUserMessage
+                    !shouldStickToCurrentDevelopment &&
+                    !shouldSuppressCatalogItemLookup &&
+                    catalogLookupQuery !== latestUserMessage
                         ? await findBestCatalogItem(catalogLookupQuery)
                         : null
                 ) ||

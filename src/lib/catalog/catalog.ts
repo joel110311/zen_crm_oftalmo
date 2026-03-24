@@ -30,6 +30,8 @@ type CatalogSearchResult = {
 
 export type CatalogAvailabilitySummary = {
     locationHint: string | null;
+    requestedLocation: string | null;
+    noDirectMatches: boolean;
     developments: Array<{
         development: string;
         location: string | null;
@@ -63,6 +65,24 @@ const CATALOG_GENERIC_AVAILABILITY_TERMS = [
     "casa", "casas", "departamento", "departamentos", "depa", "depas", "terreno",
     "terrenos", "lote", "lotes", "vivienda", "viviendas",
 ];
+const LOCATION_QUERY_PREFIXES = [
+    "cerca de ",
+    "por la zona de ",
+    "por el rumbo de ",
+    "por la colonia ",
+    "en la colonia ",
+    "zona de ",
+    "rumbo a ",
+    "por ",
+    "en ",
+];
+const LOCATION_NOISE_TOKENS = new Set([
+    "cerca", "colonia", "fraccionamiento", "zona", "rumbo", "ubicacion", "ubicado",
+    "ubicada", "opcion", "opciones", "algo", "casa", "casas", "propiedad", "propiedades",
+    "desarrollo", "desarrollos", "proyecto", "proyectos", "departamento", "departamentos",
+    "depa", "depas", "lote", "lotes", "vivienda", "viviendas", "de", "del", "la", "las",
+    "el", "los", "y",
+]);
 
 type DeduplicatedCatalogRowsResult = {
     rows: CatalogImportRow[];
@@ -189,16 +209,75 @@ function isGenericAvailabilityQuery(query: string) {
     const hasCatalogNoun = CATALOG_GENERIC_AVAILABILITY_TERMS.some((term) =>
         normalized.includes(term),
     );
+    const hasSpecificLocation = Boolean(extractSpecificLocationHint(query));
     const hasAvailabilityIntent =
-        /\b(donde|hay|tienes|manejas|ofreces|ubicad|zona|areas|lugares|disponibles)\b/.test(normalized);
+        /\b(donde|hay|tienes|manejas|ofreces|ubicad|zona|areas|lugares|disponibles|algo|opciones)\b/.test(normalized);
 
-    return hasCatalogNoun && hasAvailabilityIntent;
+    return (hasCatalogNoun || hasSpecificLocation) && hasAvailabilityIntent;
 }
 
 function extractAvailabilityHintTokens(query: string) {
+    const specificLocationHint = extractSpecificLocationHint(query);
+    if (specificLocationHint) {
+        return specificLocationHint.tokens;
+    }
+
     return tokenizeCatalogQuery(query).filter(
-        (token) => !CATALOG_GENERIC_AVAILABILITY_TERMS.includes(token),
+        (token) =>
+            !CATALOG_GENERIC_AVAILABILITY_TERMS.includes(token) &&
+            !LOCATION_NOISE_TOKENS.has(token),
     );
+}
+
+function formatLocationLabel(value: string) {
+    return value
+        .split(" ")
+        .filter(Boolean)
+        .map((word) => (
+            ["de", "del", "la", "las", "el", "los", "y"].includes(word)
+                ? word
+                : `${word.charAt(0).toUpperCase()}${word.slice(1)}`
+        ))
+        .join(" ");
+}
+
+function extractSpecificLocationHint(query: string) {
+    const normalized = normalizeSearchText(query);
+    if (!normalized) return null;
+
+    let bestCandidate: string | null = null;
+    let bestIndex = -1;
+
+    for (const prefix of LOCATION_QUERY_PREFIXES) {
+        const index = normalized.lastIndexOf(prefix);
+        if (index === -1) continue;
+
+        const candidate = normalized.slice(index + prefix.length).trim();
+        if (!candidate || candidate.length < 3) continue;
+
+        if (index > bestIndex) {
+            bestIndex = index;
+            bestCandidate = candidate;
+        }
+    }
+
+    if (!bestCandidate) {
+        return null;
+    }
+
+    const tokens = bestCandidate
+        .split(" ")
+        .filter((token) => token.length >= 3 && !LOCATION_NOISE_TOKENS.has(token));
+
+    if (tokens.length === 0) {
+        return null;
+    }
+
+    return {
+        raw: formatLocationLabel(bestCandidate),
+        normalized: bestCandidate,
+        tokens,
+    };
 }
 
 function resolveAvailabilityLocationHint(
@@ -941,6 +1020,7 @@ export async function findCatalogAvailabilitySummary(query: string): Promise<Cat
         return null;
     }
 
+    const specificLocationHint = extractSpecificLocationHint(normalizedQuery);
     const hintTokens = extractAvailabilityHintTokens(normalizedQuery);
     const items = await prisma.catalogItem.findMany({
         where: { isActive: true },
@@ -959,25 +1039,66 @@ export async function findCatalogAvailabilitySummary(query: string): Promise<Cat
         const haystack = normalizeSearchText(
             [item.development, item.location || "", item.searchableText].filter(Boolean).join(" "),
         );
+        const normalizedLocation = normalizeSearchText(item.location);
+        const normalizedDevelopment = normalizeSearchText(item.development);
 
         let score = 0;
+        let matchedLocationOrDevelopmentTokens = 0;
         if (hintTokens.length > 0) {
-            for (const token of hintTokens) {
-                if (haystack.includes(token)) {
-                    score += 20;
+            if (specificLocationHint) {
+                for (const token of hintTokens) {
+                    let matchedToken = false;
+
+                    if (normalizedLocation.includes(token)) {
+                        score += 36;
+                        matchedToken = true;
+                    }
+                    if (normalizedDevelopment.includes(token)) {
+                        score += 16;
+                        matchedToken = true;
+                    }
+
+                    if (matchedToken) {
+                        matchedLocationOrDevelopmentTokens += 1;
+                    }
                 }
-                if (normalizeSearchText(item.location).includes(token)) {
-                    score += 28;
+
+                if (normalizedLocation.includes(specificLocationHint.normalized)) {
+                    score += 140;
                 }
-                if (normalizeSearchText(item.development).includes(token)) {
-                    score += 20;
+                if (normalizedDevelopment.includes(specificLocationHint.normalized)) {
+                    score += 80;
+                }
+
+                const minimumStrictMatches = specificLocationHint.tokens.length >= 2 ? 2 : 1;
+                if (matchedLocationOrDevelopmentTokens < minimumStrictMatches) {
+                    continue;
+                }
+            } else {
+                for (const token of hintTokens) {
+                    let matchedToken = false;
+
+                    if (normalizedLocation.includes(token)) {
+                        score += 28;
+                        matchedToken = true;
+                    }
+                    if (normalizedDevelopment.includes(token)) {
+                        score += 20;
+                        matchedToken = true;
+                    }
+                    if (matchedToken) {
+                        matchedLocationOrDevelopmentTokens += 1;
+                    }
+                    if (haystack.includes(token)) {
+                        score += 6;
+                    }
                 }
             }
         } else {
             score = 10;
         }
 
-        if (hintTokens.length > 0 && score === 0) {
+        if (hintTokens.length > 0 && (score === 0 || matchedLocationOrDevelopmentTokens === 0)) {
             continue;
         }
 
@@ -1003,11 +1124,22 @@ export async function findCatalogAvailabilitySummary(query: string): Promise<Cat
         }));
 
     if (developments.length === 0) {
+        if (specificLocationHint) {
+            return {
+                locationHint: specificLocationHint.raw,
+                requestedLocation: specificLocationHint.raw,
+                noDirectMatches: true,
+                developments: [],
+            };
+        }
+
         return null;
     }
 
     return {
         locationHint: resolveAvailabilityLocationHint(hintTokens, developments),
+        requestedLocation: specificLocationHint?.raw || null,
+        noDirectMatches: false,
         developments,
     };
 }
