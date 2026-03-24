@@ -42,6 +42,8 @@ export async function updateSystemSettings(data: {
     captureLeadName?: boolean;
     captureLeadEmail?: boolean;
     leadInterestThreshold?: number;
+    escalationEnabled?: boolean;
+    escalationPhone?: string;
     catalogOfferImages?: boolean;
     catalogOfferPdf?: boolean;
     catalogAskBeforeSending?: boolean;

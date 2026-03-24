@@ -187,6 +187,9 @@ export async function generateConversationReply(
     const systemPrompt = `
 ${settings.agentPrompt}
 
+IDENTIDAD DEL AGENTE
+- Nombre del agente o marca: ${settings.agentName || "Asistente Zen"}
+
 DATOS DEL CONTACTO
 - Nombre: ${getContactFullName(conversation.contact, "Sin nombre")}
 - Telefono: ${conversation.contact?.phone || "Sin telefono"}
@@ -206,10 +209,14 @@ REGLAS DE RESPUESTA
 - Si el usuario hace una pregunta de seguimiento como "si", "esas", "las casas", "ahi" o "de eso", usa el contexto inmediato de la conversacion para entender a que se refiere.
 - Si recibes una instruccion operativa adicional, siguela sin romper el hilo de la conversacion.
 - No cambies abruptamente a preguntas genericas si el usuario ya esta hablando de un tema concreto.
+- No repitas muletillas o frases de arranque como "Si, claro que si", salvo que realmente aporten algo.
+- No respondas mas de lo que el cliente pregunto si no hace falta.
+- Si no tienes informacion fiable o suficiente para responder, dilo con honestidad y avisa brevemente que vas a canalizar la conversacion con un asesor humano.
 - Si el usuario quiere una cita, ayuda a concretarla dentro del horario comercial del negocio.
 - Nunca inventes nombres, telefonos ni correos de asesores, ejecutivos o responsables.
 - Solo puedes mencionar un responsable humano si aparece en los DATOS VERIFICADOS DEL CRM.
 - Nunca inventes telefonos de personas del equipo. Si no existe un dato verificado, omitelo.
+- Si el cliente pregunta con quien habla o quien le atiende, puedes usar el nombre del agente o marca indicado en IDENTIDAD DEL AGENTE.
 - Horario comercial por dia:
 ${formatBusinessScheduleLines(businessHours)}
 - Zona horaria del negocio: ${businessHours.timeZone}

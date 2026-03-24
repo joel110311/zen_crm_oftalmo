@@ -6,6 +6,7 @@ import { enrichContactFromMessage } from "@/lib/ai-enrichment";
 import { resolveMediaToDataUrl } from "@/lib/media-data-url";
 import {
     findBestCatalogItem,
+    findBestCatalogItemInDevelopment,
     findCatalogAvailabilitySummary,
     getCatalogDevelopmentContext,
     parseCatalogAssetIntent,
@@ -17,8 +18,10 @@ import { getSystemSettingsOrDefaults } from "@/lib/system-settings";
 import { buildInboundMediaContext, shouldSkipAutoReplyText } from "@/lib/ai/media-understanding";
 import { maybeHandleAppointmentBooking } from "@/lib/ai/appointment-booking";
 import { processLeadAutomationTurn } from "@/lib/ai/lead-intelligence";
+import { renderTemplateContent } from "@/lib/templates";
 
 const CATALOG_OFFER_EXPIRY_MS = 1000 * 60 * 90;
+const WELCOME_RESET_MS = 1000 * 60 * 60 * 24;
 
 type CatalogItemMatch = NonNullable<Awaited<ReturnType<typeof findBestCatalogItem>>>;
 
@@ -47,6 +50,10 @@ function normalizeCatalogComparableText(value: string | null | undefined) {
         .replace(/[^a-z0-9]+/g, " ")
         .replace(/\s+/g, " ")
         .trim();
+}
+
+function sanitizeComparablePhone(value: string | null | undefined) {
+    return (value || "").replace(/\D/g, "");
 }
 
 function buildCatalogLookupQuery(
@@ -81,6 +88,33 @@ function latestMessageMentionsDevelopment(
     return Boolean(normalizedMessage && normalizedDevelopment && normalizedMessage.includes(normalizedDevelopment));
 }
 
+function isCatalogDetailFollowUp(latestUserMessage: string) {
+    const normalized = normalizeCatalogComparableText(latestUserMessage);
+    if (!normalized) return false;
+
+    if (
+        /\b(recamara|recamaras|habitacion|habitaciones|bano|banos|amenidad|amenidades|modelo|tipologia|tipologias|metros|m2|superficie|medidas|precio|financiamiento|detalle|detalles|informacion|ubicacion|caracteristicas)\b/.test(
+            normalized,
+        )
+    ) {
+        return true;
+    }
+
+    if (/\bde\s+\d+\s*(recamara|recamaras|habitacion|habitaciones|m2|metros)\b/.test(normalized)) {
+        return true;
+    }
+
+    if (
+        /\b(dame mas|dame info|quiero saber mas|quiero mas informacion|mas informacion|mas detalles)\b/.test(
+            normalized,
+        )
+    ) {
+        return true;
+    }
+
+    return false;
+}
+
 function hasRecentCatalogOffer(offeredAt: Date | null | undefined) {
     if (!offeredAt) return false;
     return Date.now() - offeredAt.getTime() <= CATALOG_OFFER_EXPIRY_MS;
@@ -112,16 +146,21 @@ function buildCatalogInstruction(
             `Ficha ${index + 1}: ${entry.question} -> ${entry.answer}`,
         ),
         "Usa esta ficha como fuente prioritaria si la consulta del cliente corresponde a este desarrollo.",
+        "Si el cliente esta dando seguimiento a este desarrollo o a una tipologia/modelo de este desarrollo, mantente en este mismo desarrollo y no vuelvas a sugerir otros desarrollos o zonas.",
+        "Si el cliente menciona una variante concreta, como numero de recamaras, metros, tipologia o modelo, enfocate primero en esa variante especifica.",
         "No inventes caracteristicas, precios, amenidades ni ubicaciones que no esten en estas fichas.",
         "No menciones ni ofrezcas imagenes, PDF o ligas dentro del cuerpo principal de la respuesta; el sistema los ofrece aparte cuando corresponde.",
+        "Esta prohibido volver a ofrecer imagenes, catalogos, brochures o ligas dentro del cuerpo principal de la respuesta.",
         "No repitas textual las preguntas del catalogo. Sintetiza la informacion en una sola respuesta bien organizada.",
         "Da una respuesta resumida y facil de leer. A la mayoria de los clientes no les gusta leer demasiado.",
         "Si el usuario solo pide informacion general del desarrollo, responde en formato breve: una introduccion corta, maximo 3 o 4 puntos clave y una pregunta final para continuar la conversacion.",
         "No enumeres todas las amenidades ni todas las caracteristicas si no te las pidieron. Prioriza solo lo mas vendedor y util.",
         "Si hay cantidades importantes, mencionalas de forma resumida, por ejemplo modelos, rango de recamaras o amenidades destacadas, sin copiar bloques demasiado largos.",
         "Evita parrafos largos. Prefiere frases cortas y bullets cortos.",
+        "No abras siempre con frases repetitivas como 'Si, claro que si', 'Claro que si' o 'Con gusto'. Entra directo al punto con un tono vendedor y natural.",
         "Cuando respondas con esta ficha, usa formato de WhatsApp bien estructurado: parrafos cortos, listas simples cuando haya caracteristicas y *negritas* solo en la informacion importante.",
         "Resalta en *negritas* lo mas relevante, por ejemplo: nombre del desarrollo, ubicacion, recamaras, banos, amenidades, precio o beneficio principal si aparece en la ficha.",
+        "No cierres la conversacion. Termina con una pregunta abierta breve que ayude a seguir vendiendo.",
     ]
         .filter(Boolean)
         .join(" ");
@@ -161,11 +200,11 @@ function shouldAppendCatalogOffer(
     const normalized = normalizeCatalogComparableText(reply);
     if (!normalized) return true;
 
-    if (params.offerImages && /\bimagen(?:es)?\b/.test(normalized)) {
+    if (params.offerImages && /\b(imagen(?:es)?|foto(?:s)?|galeria)\b/.test(normalized)) {
         return false;
     }
 
-    if (params.offerPdf && (/\bpdf\b/.test(normalized) || /\bcatalogo\b/.test(normalized))) {
+    if (params.offerPdf && (/\b(pdf|catalogo|brochure|ficha)\b/.test(normalized))) {
         return false;
     }
 
@@ -215,23 +254,109 @@ function buildCatalogAvailabilityReply(summary: Awaited<ReturnType<typeof findCa
             : "";
 
         return [
-            `Sí, claro que sí. Tengo información disponible de *${onlyDevelopment.development}*${locationFragment}.`,
-            "Si quieres, te platico más sobre este desarrollo y te comparto lo más importante.",
-            "¿Qué te gustaría conocer primero: ubicación, características, amenidades o imágenes?",
+            `Tengo informacion disponible de *${onlyDevelopment.development}*${locationFragment}.`,
+            "Si quieres, te platico mas sobre este desarrollo y te comparto lo mas importante.",
+            "¿Que te gustaria conocer primero: ubicacion, caracteristicas, amenidades o imagenes?",
         ].join("\n\n");
     }
 
     const intro = summary.locationHint
-        ? `Sí, claro que sí. Tenemos varios desarrollos en *${summary.locationHint}*.`
-        : "Sí, claro que sí. Tenemos varios desarrollos disponibles en esta zona.";
+        ? `Tenemos varias opciones disponibles en *${summary.locationHint}*.`
+        : "Tenemos varias opciones disponibles en esta zona.";
 
     return [
         intro,
         "Algunos de ellos son:",
         lines.join("\n"),
-        "Si quieres, te ayudo a encontrar la opción que mejor se ajuste a lo que buscas.",
-        "¿Te interesa conocer alguno en particular o prefieres que te recomiende una opción según ubicación, recámaras o tipo de propiedad?",
+        "Si quieres, te ayudo a encontrar la opcion que mejor se ajuste a lo que buscas.",
+        "¿Te interesa conocer alguno en particular o prefieres que te recomiende una opcion segun ubicacion, recamaras o tipo de propiedad?",
     ].join("\n\n");
+}
+
+function shouldEscalateUnknownReply(reply: string) {
+    const normalized = normalizeCatalogComparableText(reply);
+    if (!normalized) return false;
+
+    return [
+        /\bno (tengo|cuento con|dispongo de|encuentro|logro encontrar)(?: [a-z0-9 ]{0,40})?(informacion|dato|respuesta|contexto)\b/,
+        /\bno tengo informacion especifica\b/,
+        /\bno tengo una respuesta fiable\b/,
+        /\bno puedo confirmarlo\b/,
+        /\bno tengo suficiente informacion\b/,
+        /\bte voy a canalizar con un asesor\b/,
+        /\btransferirte con un asesor\b/,
+    ].some((pattern) => pattern.test(normalized));
+}
+
+function buildEscalationCustomerReply() {
+    return "Para darte una respuesta precisa, te voy a canalizar con un asesor humano y en un momento te atenderemos por aqui.";
+}
+
+function buildEscalationAlertMessage(params: {
+    brandName?: string | null;
+    contact: {
+        name?: string | null;
+        phone?: string | null;
+        company?: string | null;
+    };
+    latestUserMessage: string;
+    conversationId: string;
+}) {
+    const brandName = params.brandName?.trim() || "el CRM";
+    const contactName = normalizeContactName(params.contact.name) || "Sin nombre";
+    const company = params.contact.company?.trim();
+
+    return [
+        `🔔 *Escalacion automatica desde ${brandName}*`,
+        `Cliente: *${contactName}*`,
+        `Telefono: *${params.contact.phone || "Sin telefono"}*`,
+        company ? `Empresa: *${company}*` : null,
+        `Motivo: La IA no encontro una respuesta confiable para continuar sola.`,
+        `Ultimo mensaje del cliente:`,
+        params.latestUserMessage.trim() ? params.latestUserMessage.trim() : "(sin texto)",
+        `Conversacion: ${params.conversationId}`,
+    ]
+        .filter(Boolean)
+        .join("\n");
+}
+
+async function triggerHumanEscalation(params: {
+    conversationId: string;
+    escalationPhone: string;
+    contactPhone: string;
+    brandName?: string | null;
+    contact: {
+        name?: string | null;
+        phone?: string | null;
+        company?: string | null;
+    };
+    latestUserMessage: string;
+}) {
+    const escalationPhone = sanitizeComparablePhone(params.escalationPhone);
+    const contactPhone = sanitizeComparablePhone(params.contactPhone);
+
+    await prisma.conversation.update({
+        where: { id: params.conversationId },
+        data: { botActive: false, updatedAt: new Date() },
+    });
+
+    if (!escalationPhone || escalationPhone === contactPhone) {
+        return;
+    }
+
+    try {
+        await sendWuzapiTextMessage(
+            escalationPhone,
+            buildEscalationAlertMessage({
+                brandName: params.brandName,
+                contact: params.contact,
+                latestUserMessage: params.latestUserMessage,
+                conversationId: params.conversationId,
+            }),
+        );
+    } catch (error) {
+        console.error("[Escalation] Failed to notify escalation phone:", error);
+    }
 }
 
 async function touchAutomatedConversation(conversationId: string) {
@@ -242,6 +367,52 @@ async function touchAutomatedConversation(conversationId: string) {
 
     revalidatePath("/dashboard/inbox");
     revalidatePath("/dashboard/pipeline");
+}
+
+async function getAutomatedWelcomeMessage(params: {
+    contact: {
+        name?: string | null;
+        company?: string | null;
+        phone?: string | null;
+    } | null | undefined;
+    agentName?: string | null;
+}) {
+    const templateRepo = prisma.template as any;
+    const welcomeTemplate = await templateRepo.findFirst({
+        where: {
+            isActive: true,
+            shortcut: "bienvenida",
+            type: "text",
+        },
+        orderBy: [{ isFavorite: "desc" }, { updatedAt: "desc" }],
+    });
+
+    const content = welcomeTemplate?.content?.trim();
+    if (!content) {
+        const normalizedAgentName = params.agentName?.trim();
+        const brandLabel =
+            normalizedAgentName && normalizedAgentName.toLowerCase() !== "asistente zen"
+                ? ` *${normalizedAgentName}*`
+                : "";
+
+        return `👋 ¡Hola! Gracias por contactar${brandLabel ? ` a${brandLabel}` : "nos"}.\n\n¿En qué te podemos ayudar hoy?`;
+    }
+
+    return renderTemplateContent(content, {
+        contact: params.contact,
+        agentName: params.agentName,
+    }).trim() || null;
+}
+
+function shouldSendAutomatedWelcome(
+    currentInboundAt: Date,
+    previousInboundAt: Date | null | undefined,
+) {
+    if (!previousInboundAt) {
+        return true;
+    }
+
+    return currentInboundAt.getTime() - previousInboundAt.getTime() >= WELCOME_RESET_MS;
 }
 
 async function persistCatalogState(params: {
@@ -560,7 +731,7 @@ async function maybeSendAutomatedReply(
             await new Promise((resolve) => setTimeout(resolve, settings.autoReplyDelayMs));
         }
 
-        const [latestConversation, latestMessage] = await Promise.all([
+        const [latestConversation, latestMessage, previousInboundMessage] = await Promise.all([
             prisma.conversation.findUnique({
                 where: { id: conversationId },
                 include: {
@@ -597,11 +768,37 @@ async function maybeSendAutomatedReply(
                 where: { conversationId },
                 orderBy: { createdAt: "desc" },
             }),
+            prisma.message.findFirst({
+                where: {
+                    conversationId,
+                    direction: "inbound",
+                    id: { not: inboundMessageId },
+                },
+                orderBy: { createdAt: "desc" },
+                select: { createdAt: true },
+            }),
         ]);
 
         if (!latestConversation?.botActive || !latestConversation.contact?.phone) return;
         if (!latestMessage || latestMessage.id !== inboundMessageId || latestMessage.direction !== "inbound") {
             return;
+        }
+
+        if (shouldSendAutomatedWelcome(latestMessage.createdAt, previousInboundMessage?.createdAt)) {
+            const welcomeMessage = await getAutomatedWelcomeMessage({
+                contact: latestConversation.contact,
+                agentName: settings.agentName,
+            });
+
+            if (welcomeMessage) {
+                await sendAutomatedBotText({
+                    conversationId,
+                    phone: latestConversation.contact.phone,
+                    content: welcomeMessage,
+                });
+                await touchAutomatedConversation(conversationId);
+                return;
+            }
         }
 
         const handledCatalogReply = await maybeHandleCatalogAssetReply({
@@ -639,6 +836,7 @@ async function maybeSendAutomatedReply(
         let sendCatalogLinkNow = false;
         let usedCatalogAvailabilitySummary = false;
         let catalogDevelopmentContext: Awaited<ReturnType<typeof getCatalogDevelopmentContext>> | null = null;
+        let replyFromModel = false;
 
         if (
             appointmentResult.kind === "missing" ||
@@ -657,30 +855,54 @@ async function maybeSendAutomatedReply(
                     ].join(" ")
                     : null;
 
-            const catalogLookupQuery = buildCatalogLookupQuery(
-                latestConversation.messages.map((message) => ({
-                    content: message.content,
-                    direction: message.direction,
-                })),
-                latestUserMessage,
-            );
-            const catalogAvailabilitySummary =
-                await findCatalogAvailabilitySummary(latestUserMessage) ||
-                (
-                    catalogLookupQuery !== latestUserMessage
-                        ? await findCatalogAvailabilitySummary(catalogLookupQuery)
-                        : null
+            const activeCatalogItem = latestConversation.catalogState?.catalogItem || null;
+            const shouldStickToCurrentDevelopment = activeCatalogItem
+                ? (
+                    latestMessageMentionsDevelopment(latestUserMessage, activeCatalogItem.development) ||
+                    isCatalogDetailFollowUp(latestUserMessage)
+                )
+                : false;
+            const catalogLookupQuery = shouldStickToCurrentDevelopment
+                ? latestUserMessage
+                : buildCatalogLookupQuery(
+                    latestConversation.messages.map((message) => ({
+                        content: message.content,
+                        direction: message.direction,
+                    })),
+                    latestUserMessage,
                 );
+            const developmentScopedCatalogItem =
+                shouldStickToCurrentDevelopment && activeCatalogItem
+                    ? await findBestCatalogItemInDevelopment(
+                        activeCatalogItem.development,
+                        latestUserMessage,
+                    )
+                    : null;
+            const catalogAvailabilitySummary = shouldStickToCurrentDevelopment
+                ? null
+                : await findCatalogAvailabilitySummary(latestUserMessage) ||
+                    (
+                        catalogLookupQuery !== latestUserMessage
+                            ? await findCatalogAvailabilitySummary(catalogLookupQuery)
+                            : null
+                    );
             catalogItem =
+                developmentScopedCatalogItem ||
                 await findBestCatalogItem(latestUserMessage) ||
                 (
-                    catalogLookupQuery !== latestUserMessage
+                    !shouldStickToCurrentDevelopment && catalogLookupQuery !== latestUserMessage
                         ? await findBestCatalogItem(catalogLookupQuery)
+                        : null
+                ) ||
+                (
+                    shouldStickToCurrentDevelopment
+                        ? activeCatalogItem
                         : null
                 );
             const catalogIntent = parseCatalogAssetIntent(latestUserMessage);
             const shouldPreferCatalogSummary =
                 Boolean(catalogAvailabilitySummary) &&
+                !shouldStickToCurrentDevelopment &&
                 (!catalogItem || !latestMessageMentionsDevelopment(latestUserMessage, catalogItem.development));
 
             if (shouldPreferCatalogSummary) {
@@ -688,7 +910,11 @@ async function maybeSendAutomatedReply(
                 catalogItem = null;
                 usedCatalogAvailabilitySummary = true;
             } else if (catalogItem) {
-                catalogDevelopmentContext = await getCatalogDevelopmentContext(catalogItem.id);
+                catalogDevelopmentContext = await getCatalogDevelopmentContext(
+                    catalogItem.id,
+                    6,
+                    latestUserMessage,
+                );
                 const { imageAssets, pdfAsset, linkAsset } = splitCatalogAssets(
                     catalogItem.assets,
                     settings.catalogMaxImagesToSend,
@@ -749,10 +975,28 @@ async function maybeSendAutomatedReply(
                     latestUserMessage,
                     automationInstruction,
                 );
+                replyFromModel = true;
             }
         }
 
         if (!reply) return;
+
+        const shouldEscalate =
+            replyFromModel &&
+            settings.escalationEnabled &&
+            Boolean(settings.escalationPhone?.trim()) &&
+            shouldEscalateUnknownReply(reply);
+
+        if (shouldEscalate) {
+            reply = buildEscalationCustomerReply();
+            catalogItem = null;
+            pendingCatalogImages = false;
+            pendingCatalogPdf = false;
+            pendingCatalogLink = false;
+            sendCatalogImagesNow = false;
+            sendCatalogPdfNow = false;
+            sendCatalogLinkNow = false;
+        }
 
         if (catalogItem && settings.catalogAskBeforeSending) {
             const offerText = buildCatalogOfferText({
@@ -776,6 +1020,17 @@ async function maybeSendAutomatedReply(
             phone: latestConversation.contact.phone,
             content: reply,
         });
+
+        if (shouldEscalate) {
+            await triggerHumanEscalation({
+                conversationId,
+                escalationPhone: settings.escalationPhone || "",
+                contactPhone: latestConversation.contact.phone,
+                brandName: settings.agentName,
+                contact: latestConversation.contact,
+                latestUserMessage,
+            });
+        }
 
         if (catalogItem) {
             const { imageAssets, pdfAsset, linkAsset } = splitCatalogAssets(

@@ -38,6 +38,8 @@ Cuando detectes intencion comercial o de seguimiento, guia la conversacion hacia
     captureLeadName: false,
     captureLeadEmail: false,
     leadInterestThreshold: 45,
+    escalationEnabled: false,
+    escalationPhone: "",
     catalogOfferImages: true,
     catalogOfferPdf: true,
     catalogAskBeforeSending: true,

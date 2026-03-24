@@ -374,6 +374,8 @@ model SystemSettings {
   captureLeadName Boolean @default(false)
   captureLeadEmail Boolean @default(false)
   leadInterestThreshold Int @default(45)
+  escalationEnabled Boolean @default(false)
+  escalationPhone String?
   catalogOfferImages Boolean @default(true)
   catalogOfferPdf Boolean @default(true)
   catalogAskBeforeSending Boolean @default(true)

@@ -45,6 +45,8 @@ export default function BrainConfigPage() {
     const [captureLeadName, setCaptureLeadName] = useState(false);
     const [captureLeadEmail, setCaptureLeadEmail] = useState(false);
     const [leadInterestThreshold, setLeadInterestThreshold] = useState([45]);
+    const [escalationEnabled, setEscalationEnabled] = useState(false);
+    const [escalationPhone, setEscalationPhone] = useState("");
     const [catalogOfferImages, setCatalogOfferImages] = useState(true);
     const [catalogOfferPdf, setCatalogOfferPdf] = useState(true);
     const [catalogAskBeforeSending, setCatalogAskBeforeSending] = useState(true);
@@ -77,6 +79,8 @@ export default function BrainConfigPage() {
                     setCaptureLeadName(settings.captureLeadName ?? false);
                     setCaptureLeadEmail(settings.captureLeadEmail ?? false);
                     setLeadInterestThreshold([settings.leadInterestThreshold || 45]);
+                    setEscalationEnabled(settings.escalationEnabled ?? false);
+                    setEscalationPhone(settings.escalationPhone || "");
                     setCatalogOfferImages(settings.catalogOfferImages ?? true);
                     setCatalogOfferPdf(settings.catalogOfferPdf ?? true);
                     setCatalogAskBeforeSending(settings.catalogAskBeforeSending ?? true);
@@ -131,6 +135,8 @@ export default function BrainConfigPage() {
                 captureLeadName,
                 captureLeadEmail,
                 leadInterestThreshold: leadInterestThreshold[0] || 45,
+                escalationEnabled,
+                escalationPhone,
                 catalogOfferImages,
                 catalogOfferPdf,
                 catalogAskBeforeSending,
@@ -371,6 +377,44 @@ export default function BrainConfigPage() {
                             </CardContent>
                         </Card>
                     </div>
+
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Escalacion humana</CardTitle>
+                            <CardDescription>
+                                Si la IA no encuentra una respuesta confiable, pausara el bot en esa conversacion y notificara por WhatsApp al numero configurado para que una persona continue la atencion.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <div className="flex items-center justify-between rounded-xl border bg-background px-4 py-4">
+                                <div className="pr-4">
+                                    <Label htmlFor="escalation-enabled" className="text-base font-medium">
+                                        Activar escalacion automatica
+                                    </Label>
+                                    <p className="mt-1 text-sm text-muted-foreground">
+                                        Se activa cuando el bot responde que no tiene informacion fiable o suficiente para contestar con seguridad.
+                                    </p>
+                                </div>
+                                <Switch
+                                    id="escalation-enabled"
+                                    checked={escalationEnabled}
+                                    onCheckedChange={setEscalationEnabled}
+                                />
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label>Numero de WhatsApp para escalar</Label>
+                                <Input
+                                    value={escalationPhone}
+                                    onChange={(event) => setEscalationPhone(event.target.value)}
+                                    placeholder="5219991234567"
+                                />
+                                <p className="text-xs text-muted-foreground">
+                                    Usa el numero que recibira la alerta interna. Ejemplo: 5219991234567 o +52 1 999 123 4567.
+                                </p>
+                            </div>
+                        </CardContent>
+                    </Card>
 
                     <Card>
                         <CardHeader>

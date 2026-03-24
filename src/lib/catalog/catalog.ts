@@ -757,6 +757,7 @@ async function getCatalogItemWithAssets(id: string) {
 export async function getCatalogDevelopmentContext(
     itemId: string,
     maxEntries = 6,
+    query?: string,
 ): Promise<CatalogDevelopmentContext | null> {
     const baseItem = await prisma.catalogItem.findUnique({
         where: { id: itemId },
@@ -789,6 +790,29 @@ export async function getCatalogDevelopmentContext(
     });
 
     const orderedItems = relatedItems.sort((left, right) => {
+        const leftScore = (left.id === itemId ? 40 : 0) + (query ? scoreCatalogTextMatch({
+            development: baseItem.development,
+            location: left.location,
+            question: left.question,
+            answer: left.answer,
+            searchableText: [baseItem.development, left.location || "", left.question, left.answer]
+                .filter(Boolean)
+                .join("\n"),
+        }, query) : 0);
+        const rightScore = (right.id === itemId ? 40 : 0) + (query ? scoreCatalogTextMatch({
+            development: baseItem.development,
+            location: right.location,
+            question: right.question,
+            answer: right.answer,
+            searchableText: [baseItem.development, right.location || "", right.question, right.answer]
+                .filter(Boolean)
+                .join("\n"),
+        }, query) : 0);
+
+        if (rightScore !== leftScore) {
+            return rightScore - leftScore;
+        }
+
         if (left.id === itemId) return -1;
         if (right.id === itemId) return 1;
         return left.question.localeCompare(right.question, "es", { sensitivity: "base" });
@@ -865,6 +889,50 @@ export async function findBestCatalogItem(query: string) {
     }
 
     return null;
+}
+
+export async function findBestCatalogItemInDevelopment(
+    development: string,
+    query: string,
+) {
+    const normalizedDevelopment = development.trim();
+    const normalizedQuery = query.trim();
+    if (!normalizedDevelopment || !normalizedQuery) {
+        return null;
+    }
+
+    const rows = await prisma.catalogItem.findMany({
+        where: {
+            isActive: true,
+            development: {
+                equals: normalizedDevelopment,
+                mode: "insensitive",
+            },
+        },
+        select: {
+            id: true,
+            development: true,
+            location: true,
+            question: true,
+            answer: true,
+            searchableText: true,
+        },
+        take: 80,
+    });
+
+    const ranked = rows
+        .map((row) => ({
+            id: row.id,
+            score: scoreCatalogTextMatch(row, normalizedQuery),
+        }))
+        .filter((row) => row.score >= 18)
+        .sort((left, right) => right.score - left.score);
+
+    if (ranked.length === 0) {
+        return null;
+    }
+
+    return getCatalogItemWithAssets(ranked[0].id);
 }
 
 export async function findCatalogAvailabilitySummary(query: string): Promise<CatalogAvailabilitySummary | null> {
