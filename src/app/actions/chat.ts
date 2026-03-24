@@ -4,7 +4,12 @@ import { prisma } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 import { enrichContactFromMessage } from "@/lib/ai-enrichment";
 import { resolveMediaToDataUrl } from "@/lib/media-data-url";
-import { findBestCatalogItem, parseCatalogAssetIntent, splitCatalogAssets } from "@/lib/catalog/catalog";
+import {
+    findBestCatalogItem,
+    findCatalogAvailabilitySummary,
+    parseCatalogAssetIntent,
+    splitCatalogAssets,
+} from "@/lib/catalog/catalog";
 import { sendWuzapiMediaMessage, sendWuzapiTextMessage } from "@/lib/wuzapi";
 import { generateConversationReply } from "@/lib/ai/chatbot";
 import { getSystemSettingsOrDefaults } from "@/lib/system-settings";
@@ -33,6 +38,16 @@ function appendSection(base: string, extra: string | null) {
     return `${trimmedBase}\n\n${trimmedExtra}`;
 }
 
+function normalizeCatalogComparableText(value: string | null | undefined) {
+    return (value || "")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+}
+
 function buildCatalogLookupQuery(
     history: Array<{ content: string; direction: string }>,
     latestUserMessage: string,
@@ -53,6 +68,16 @@ function buildCatalogLookupQuery(
     }
 
     return pieces.join("\n");
+}
+
+function latestMessageMentionsDevelopment(
+    latestUserMessage: string,
+    development: string,
+) {
+    const normalizedMessage = normalizeCatalogComparableText(latestUserMessage);
+    const normalizedDevelopment = normalizeCatalogComparableText(development);
+
+    return Boolean(normalizedMessage && normalizedDevelopment && normalizedMessage.includes(normalizedDevelopment));
 }
 
 function hasRecentCatalogOffer(offeredAt: Date | null | undefined) {
@@ -140,6 +165,29 @@ function buildCatalogLinkMessage(
     linkAsset: { url: string },
 ) {
     return `Tambien te dejo la liga de ${development}:\n${linkAsset.url}`;
+}
+
+function buildCatalogAvailabilityReply(summary: Awaited<ReturnType<typeof findCatalogAvailabilitySummary>>) {
+    if (!summary) return null;
+
+    const header =
+        summary.developments.length === 1
+            ? "Si, tengo informacion de este desarrollo disponible:"
+            : summary.locationHint
+                ? `Si, tengo informacion de desarrollos en ${summary.locationHint}:`
+                : "Si, tengo informacion de estos desarrollos disponibles:";
+
+    const lines = summary.developments.map((item) =>
+        item.location
+            ? `- ${item.development} (${item.location})`
+            : `- ${item.development}`,
+    );
+
+    return [
+        header,
+        lines.join("\n"),
+        "Si quieres, te cuento mas de alguno en particular. Solo dime el nombre del desarrollo.",
+    ].join("\n\n");
 }
 
 async function touchAutomatedConversation(conversationId: string) {
@@ -545,6 +593,7 @@ async function maybeSendAutomatedReply(
         let sendCatalogImagesNow = false;
         let sendCatalogPdfNow = false;
         let sendCatalogLinkNow = false;
+        let usedCatalogAvailabilitySummary = false;
 
         if (
             appointmentResult.kind === "missing" ||
@@ -570,13 +619,21 @@ async function maybeSendAutomatedReply(
                 })),
                 latestUserMessage,
             );
+            const catalogAvailabilitySummary = await findCatalogAvailabilitySummary(catalogLookupQuery);
             catalogItem = await findBestCatalogItem(catalogLookupQuery);
             const catalogIntent = parseCatalogAssetIntent(latestUserMessage);
             const catalogInstruction = catalogItem
                 ? buildCatalogInstruction(catalogItem, settings.catalogMaxImagesToSend)
                 : null;
+            const shouldPreferCatalogSummary =
+                Boolean(catalogAvailabilitySummary) &&
+                (!catalogItem || !latestMessageMentionsDevelopment(latestUserMessage, catalogItem.development));
 
-            if (catalogItem) {
+            if (shouldPreferCatalogSummary) {
+                reply = buildCatalogAvailabilityReply(catalogAvailabilitySummary);
+                catalogItem = null;
+                usedCatalogAvailabilitySummary = true;
+            } else if (catalogItem) {
                 const { imageAssets, pdfAsset, linkAsset } = splitCatalogAssets(
                     catalogItem.assets,
                     settings.catalogMaxImagesToSend,
@@ -622,17 +679,19 @@ async function maybeSendAutomatedReply(
                     (pendingCatalogImages || pendingCatalogPdf);
             }
 
-            const automationInstruction = [leadAutomation.instruction, appointmentInstruction]
-                .concat(catalogInstruction ? [catalogInstruction] : [])
-                .filter(Boolean)
-                .join(" ")
-                .trim() || null;
+            if (!reply) {
+                const automationInstruction = [leadAutomation.instruction, appointmentInstruction]
+                    .concat(catalogInstruction ? [catalogInstruction] : [])
+                    .filter(Boolean)
+                    .join(" ")
+                    .trim() || null;
 
-            reply = await generateConversationReply(
-                conversationId,
-                latestUserMessage,
-                automationInstruction,
-            );
+                reply = await generateConversationReply(
+                    conversationId,
+                    latestUserMessage,
+                    automationInstruction,
+                );
+            }
         }
 
         if (!reply) return;
@@ -689,6 +748,16 @@ async function maybeSendAutomatedReply(
                     sendCatalogImagesNow || sendCatalogPdfNow || sendCatalogLinkNow
                         ? new Date()
                         : latestConversation.catalogState?.lastSentAt || null,
+            });
+        } else if (usedCatalogAvailabilitySummary) {
+            await persistCatalogState({
+                conversationId,
+                catalogItemId: null,
+                pendingImages: false,
+                pendingPdf: false,
+                pendingLink: false,
+                offeredAt: null,
+                lastSentAt: latestConversation.catalogState?.lastSentAt || null,
             });
         }
 

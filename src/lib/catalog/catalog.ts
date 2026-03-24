@@ -28,9 +28,32 @@ type CatalogSearchResult = {
     similarity: number;
 };
 
+export type CatalogAvailabilitySummary = {
+    locationHint: string | null;
+    developments: Array<{
+        development: string;
+        location: string | null;
+    }>;
+};
+
 const MAX_IMPORT_IMAGES = 10;
 const MAX_CATALOG_MATCHES = 3;
 const MIN_VECTOR_SIMILARITY = 0.62;
+const MAX_AVAILABILITY_SUMMARY_ITEMS = 8;
+const CATALOG_QUERY_STOPWORDS = new Set([
+    "a", "ahi", "alli", "algun", "alguna", "algunas", "algunos", "ando", "asi", "ayuda",
+    "busca", "buscar", "como", "con", "cual", "cuales", "de", "del", "dime", "donde",
+    "en", "esa", "esas", "ese", "eso", "esos", "estas", "este", "esto", "estos",
+    "favor", "hay", "hola", "la", "las", "lo", "los", "manejas", "me", "muestrame",
+    "ofreces", "oye", "para", "podrias", "por", "propiedad", "propiedades", "proyecto",
+    "proyectos", "que", "quiero", "tendra", "tendras", "tendrás", "tener", "tienes",
+    "un", "una", "unas", "unos", "ver",
+]);
+const CATALOG_GENERIC_AVAILABILITY_TERMS = [
+    "propiedad", "propiedades", "desarrollo", "desarrollos", "proyecto", "proyectos",
+    "casa", "casas", "departamento", "departamentos", "depa", "depas", "terreno",
+    "terrenos", "lote", "lotes", "vivienda", "viviendas",
+];
 
 type DeduplicatedCatalogRowsResult = {
     rows: CatalogImportRow[];
@@ -49,6 +72,124 @@ function normalizeHeader(value: string) {
 
 function normalizeCell(value: string | undefined) {
     return (value || "").trim();
+}
+
+function normalizeSearchText(value: string | null | undefined) {
+    return (value || "")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+}
+
+function tokenizeCatalogQuery(query: string) {
+    return normalizeSearchText(query)
+        .split(" ")
+        .filter((token) => token.length >= 3 && !CATALOG_QUERY_STOPWORDS.has(token));
+}
+
+function buildCatalogHaystack(item: {
+    development: string;
+    location: string | null;
+    question: string;
+    answer: string;
+    searchableText: string;
+}) {
+    return {
+        development: normalizeSearchText(item.development),
+        location: normalizeSearchText(item.location),
+        question: normalizeSearchText(item.question),
+        answer: normalizeSearchText(item.answer),
+        searchableText: normalizeSearchText(item.searchableText),
+    };
+}
+
+function scoreCatalogTextMatch(
+    item: {
+        development: string;
+        location: string | null;
+        question: string;
+        answer: string;
+        searchableText: string;
+    },
+    query: string,
+) {
+    const normalizedQuery = normalizeSearchText(query);
+    const tokens = tokenizeCatalogQuery(query);
+
+    if (tokens.length === 0) {
+        return 0;
+    }
+
+    const haystack = buildCatalogHaystack(item);
+    let score = 0;
+    let matchedTokens = 0;
+
+    for (const token of tokens) {
+        let tokenMatched = false;
+
+        if (haystack.development.includes(token)) {
+            score += 24;
+            tokenMatched = true;
+        }
+        if (haystack.location.includes(token)) {
+            score += 30;
+            tokenMatched = true;
+        }
+        if (haystack.question.includes(token)) {
+            score += 16;
+            tokenMatched = true;
+        }
+        if (haystack.answer.includes(token)) {
+            score += 8;
+            tokenMatched = true;
+        }
+        if (haystack.searchableText.includes(token)) {
+            score += 3;
+            tokenMatched = true;
+        }
+
+        if (tokenMatched) {
+            matchedTokens += 1;
+        }
+    }
+
+    if (haystack.location && normalizedQuery.includes(haystack.location)) {
+        score += 90;
+    }
+
+    if (haystack.development && normalizedQuery.includes(haystack.development)) {
+        score += 80;
+    }
+
+    if (haystack.question && normalizedQuery.includes(haystack.question)) {
+        score += 55;
+    }
+
+    score += matchedTokens * 10;
+
+    return matchedTokens === 0 ? 0 : score;
+}
+
+function isGenericAvailabilityQuery(query: string) {
+    const normalized = normalizeSearchText(query);
+    if (!normalized) return false;
+
+    const hasCatalogNoun = CATALOG_GENERIC_AVAILABILITY_TERMS.some((term) =>
+        normalized.includes(term),
+    );
+    const hasAvailabilityIntent =
+        /\b(donde|hay|tienes|manejas|ofreces|ubicad|zona|areas|lugares|disponibles)\b/.test(normalized);
+
+    return hasCatalogNoun && hasAvailabilityIntent;
+}
+
+function extractAvailabilityHintTokens(query: string) {
+    return tokenizeCatalogQuery(query).filter(
+        (token) => !CATALOG_GENERIC_AVAILABILITY_TERMS.includes(token),
+    );
 }
 
 function countMatches(source: string, pattern: RegExp) {
@@ -517,6 +658,45 @@ async function vectorSearchCatalog(query: string) {
     `;
 }
 
+async function lexicalCatalogSearch(query: string) {
+    const rows = await prisma.catalogItem.findMany({
+        where: { isActive: true },
+        select: {
+            id: true,
+            development: true,
+            location: true,
+            question: true,
+            answer: true,
+            searchableText: true,
+        },
+        take: 400,
+    });
+
+    const ranked = rows
+        .map((row) => ({
+            id: row.id,
+            score: scoreCatalogTextMatch(row, query),
+        }))
+        .filter((row) => row.score >= 28)
+        .sort((left, right) => right.score - left.score);
+
+    return ranked[0] || null;
+}
+
+async function getCatalogItemWithAssets(id: string) {
+    return prisma.catalogItem.findUnique({
+        where: { id },
+        include: {
+            assets: {
+                orderBy: [
+                    { type: "asc" },
+                    { sortOrder: "asc" },
+                ],
+            },
+        },
+    });
+}
+
 export async function findBestCatalogItem(query: string) {
     const normalizedQuery = query.trim();
     if (!normalizedQuery) return null;
@@ -529,50 +709,108 @@ export async function findBestCatalogItem(query: string) {
         console.warn("[Catalog] Falling back to keyword search", error);
     }
 
-    if (candidates.length === 0) {
-        const fallback = await prisma.catalogItem.findMany({
-            where: {
-                isActive: true,
-                OR: [
-                    { development: { contains: normalizedQuery, mode: "insensitive" } },
-                    { location: { contains: normalizedQuery, mode: "insensitive" } },
-                    { question: { contains: normalizedQuery, mode: "insensitive" } },
-                    { answer: { contains: normalizedQuery, mode: "insensitive" } },
-                ],
-            },
-            include: {
-                assets: {
-                    orderBy: [
-                        { type: "asc" },
-                        { sortOrder: "asc" },
-                    ],
-                },
-            },
-            take: 1,
-        });
+    const lexicalMatch = await lexicalCatalogSearch(normalizedQuery);
 
-        return fallback[0] || null;
+    if (candidates.length === 0) {
+        if (!lexicalMatch) {
+            return null;
+        }
+
+        return getCatalogItemWithAssets(lexicalMatch.id);
     }
 
     const bestCandidate = candidates[0];
-    const loweredQuery = normalizedQuery.toLowerCase();
-    const developmentMentioned = loweredQuery.includes(bestCandidate.development.toLowerCase());
+    const loweredQuery = normalizeSearchText(normalizedQuery);
+    const developmentMentioned = loweredQuery.includes(
+        normalizeSearchText(bestCandidate.development),
+    );
 
-    if (!developmentMentioned && bestCandidate.similarity < MIN_VECTOR_SIMILARITY) {
+    if (developmentMentioned || bestCandidate.similarity >= MIN_VECTOR_SIMILARITY) {
+        return getCatalogItemWithAssets(bestCandidate.id);
+    }
+
+    if (lexicalMatch) {
+        return getCatalogItemWithAssets(lexicalMatch.id);
+    }
+
+    return null;
+}
+
+export async function findCatalogAvailabilitySummary(query: string): Promise<CatalogAvailabilitySummary | null> {
+    const normalizedQuery = query.trim();
+    if (!normalizedQuery || !isGenericAvailabilityQuery(normalizedQuery)) {
         return null;
     }
 
-    return prisma.catalogItem.findUnique({
-        where: { id: bestCandidate.id },
-        include: {
-            assets: {
-                orderBy: [
-                    { type: "asc" },
-                    { sortOrder: "asc" },
-                ],
-            },
+    const hintTokens = extractAvailabilityHintTokens(normalizedQuery);
+    const items = await prisma.catalogItem.findMany({
+        where: { isActive: true },
+        select: {
+            development: true,
+            location: true,
+            searchableText: true,
         },
+        take: 500,
     });
+
+    const grouped = new Map<string, { development: string; location: string | null; score: number }>();
+
+    for (const item of items) {
+        const key = `${normalizeSearchText(item.development)}::${normalizeSearchText(item.location)}`;
+        const haystack = normalizeSearchText(
+            [item.development, item.location || "", item.searchableText].filter(Boolean).join(" "),
+        );
+
+        let score = 0;
+        if (hintTokens.length > 0) {
+            for (const token of hintTokens) {
+                if (haystack.includes(token)) {
+                    score += 20;
+                }
+                if (normalizeSearchText(item.location).includes(token)) {
+                    score += 28;
+                }
+                if (normalizeSearchText(item.development).includes(token)) {
+                    score += 20;
+                }
+            }
+        } else {
+            score = 10;
+        }
+
+        if (hintTokens.length > 0 && score === 0) {
+            continue;
+        }
+
+        const current = grouped.get(key);
+        if (!current || score > current.score) {
+            grouped.set(key, {
+                development: item.development,
+                location: item.location,
+                score,
+            });
+        }
+    }
+
+    const developments = [...grouped.values()]
+        .sort((left, right) => {
+            if (right.score !== left.score) return right.score - left.score;
+            return left.development.localeCompare(right.development, "es", { sensitivity: "base" });
+        })
+        .slice(0, MAX_AVAILABILITY_SUMMARY_ITEMS)
+        .map((item) => ({
+            development: item.development,
+            location: item.location,
+        }));
+
+    if (developments.length === 0) {
+        return null;
+    }
+
+    return {
+        locationHint: hintTokens.length > 0 ? hintTokens.join(" ") : null,
+        developments,
+    };
 }
 
 export function splitCatalogAssets(
