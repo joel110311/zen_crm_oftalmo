@@ -137,7 +137,26 @@ type ExtractedMessageDetails = {
 };
 
 function isLidAddress(value: unknown) {
-    return typeof value === "string" && value.includes("@lid");
+    if (!value) return false;
+
+    if (typeof value === "string") {
+        return normalizeJidValue(value).toLowerCase().includes("@lid");
+    }
+
+    if (typeof value === "object") {
+        const maybeObject = value as Record<string, unknown>;
+        const server = maybeObject.Server || maybeObject.server || maybeObject.RawServer || maybeObject.rawServer;
+        if (typeof server === "string" && server.toLowerCase().includes("lid")) {
+            return true;
+        }
+
+        const jidString = maybeObject.String || maybeObject.string;
+        if (typeof jidString === "string" && isLidAddress(jidString)) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 function normalizeJidValue(value: string) {
@@ -146,6 +165,7 @@ function normalizeJidValue(value: string) {
 
 function extractJidPhone(value: unknown): string {
     if (!value) return "";
+    if (isLidAddress(value)) return "";
 
     if (typeof value === "string") {
         const normalized = normalizeJidValue(value);
