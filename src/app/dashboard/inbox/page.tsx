@@ -54,6 +54,88 @@ export type Message = {
     reaction?: string | null;
 };
 
+function normalizeMessageRecord(raw: any): Message {
+    return {
+        id: raw.id,
+        content: raw.content,
+        senderId: raw.senderId ?? null,
+        direction: raw.direction,
+        createdAt: raw.createdAt instanceof Date ? raw.createdAt : new Date(raw.createdAt),
+        type: raw.type,
+        senderType: raw.senderType ?? null,
+        mediaUrl: raw.mediaUrl ?? null,
+        mediaType: raw.mediaType ?? null,
+        mediaFileName: raw.mediaFileName ?? null,
+        reaction: raw.reaction ?? null,
+    };
+}
+
+function isTemporaryMessage(message: Message) {
+    return message.id.startsWith("temp-");
+}
+
+function areLikelySameMessage(left: Message, right: Message) {
+    if (left.id === right.id) return true;
+
+    const leftCreatedAt = left.createdAt instanceof Date ? left.createdAt.getTime() : new Date(left.createdAt).getTime();
+    const rightCreatedAt = right.createdAt instanceof Date ? right.createdAt.getTime() : new Date(right.createdAt).getTime();
+
+    return (
+        left.direction === right.direction &&
+        (left.senderType || null) === (right.senderType || null) &&
+        left.type === right.type &&
+        (left.content || "") === (right.content || "") &&
+        (left.mediaUrl || null) === (right.mediaUrl || null) &&
+        (left.mediaFileName || null) === (right.mediaFileName || null) &&
+        Math.abs(leftCreatedAt - rightCreatedAt) <= 15000
+    );
+}
+
+function replaceOptimisticMessage(
+    prev: Message[],
+    optimisticId: string,
+    persistedMessage: Message,
+) {
+    let replaced = false;
+    const next = prev.map((message) => {
+        if (message.id === optimisticId) {
+            replaced = true;
+            return persistedMessage;
+        }
+
+        return message;
+    });
+
+    return replaced ? next : [...next, persistedMessage];
+}
+
+function mergeFetchedMessages(prev: Message[], incoming: Message[]) {
+    if (incoming.length === 0) return prev;
+
+    let next = [...prev];
+
+    for (const incomingMessage of incoming) {
+        const exactIndex = next.findIndex((message) => message.id === incomingMessage.id);
+        if (exactIndex >= 0) {
+            next[exactIndex] = incomingMessage;
+            continue;
+        }
+
+        const optimisticIndex = next.findIndex((message) =>
+            isTemporaryMessage(message) && areLikelySameMessage(message, incomingMessage),
+        );
+        if (optimisticIndex >= 0) {
+            next[optimisticIndex] = incomingMessage;
+            continue;
+        }
+
+        next.push(incomingMessage);
+    }
+
+    next.sort((left, right) => left.createdAt.getTime() - right.createdAt.getTime());
+    return next;
+}
+
 export type Conversation = {
     id: string;
     contact: {
@@ -327,45 +409,66 @@ function AudioPlayer({ src, isOutbound }: { src: string; isOutbound: boolean }) 
         const audio = audioRef.current;
         if (!audio) return;
 
-        const onDurationChange = () => {
+        const syncDuration = () => {
             const d = audio.duration;
-            if (d && isFinite(d) && d > 0) setDuration(d);
+            if (d && isFinite(d) && d > 0) {
+                setDuration((prev) => Math.max(prev, d));
+            }
         };
         const onTimeUpdate = () => {
             setCurrentTime(audio.currentTime);
-            // For files without duration metadata, grow our known duration
             const d = audio.duration;
-            if (d && isFinite(d) && d > 0) {
-                setDuration(d);
-            } else {
-                // Fallback: expand duration as we discover more of the file
-                setDuration(prev => Math.max(prev, audio.currentTime + 0.5));
+
+            // Some voice notes briefly report a too-short duration.
+            // If playback is still ongoing near the reported end, grow an estimate
+            // so the waveform does not look "finished" while audio keeps playing.
+            if (d && isFinite(d) && d > audio.currentTime + 0.25) {
+                setDuration((prev) => Math.max(prev, d));
+            } else if (!audio.ended) {
+                setDuration((prev) => Math.max(prev, audio.currentTime + 5));
             }
         };
         const onEnded = () => {
-            // We now know the exact duration
-            setDuration(prev => Math.max(prev, audio.currentTime));
+            setDuration((prev) => Math.max(prev, audio.currentTime));
             setIsPlaying(false);
             setCurrentTime(0);
         };
+        const onPlay = () => setIsPlaying(true);
+        const onPause = () => {
+            if (!audio.ended) setIsPlaying(false);
+        };
+        const onSeeked = () => setCurrentTime(audio.currentTime);
 
-        audio.addEventListener("loadedmetadata", onDurationChange);
-        audio.addEventListener("durationchange", onDurationChange);
+        audio.addEventListener("loadedmetadata", syncDuration);
+        audio.addEventListener("durationchange", syncDuration);
+        audio.addEventListener("canplay", syncDuration);
+        audio.addEventListener("progress", syncDuration);
         audio.addEventListener("timeupdate", onTimeUpdate);
         audio.addEventListener("ended", onEnded);
+        audio.addEventListener("play", onPlay);
+        audio.addEventListener("pause", onPause);
+        audio.addEventListener("seeked", onSeeked);
         return () => {
-            audio.removeEventListener("loadedmetadata", onDurationChange);
-            audio.removeEventListener("durationchange", onDurationChange);
+            audio.removeEventListener("loadedmetadata", syncDuration);
+            audio.removeEventListener("durationchange", syncDuration);
+            audio.removeEventListener("canplay", syncDuration);
+            audio.removeEventListener("progress", syncDuration);
             audio.removeEventListener("timeupdate", onTimeUpdate);
             audio.removeEventListener("ended", onEnded);
+            audio.removeEventListener("play", onPlay);
+            audio.removeEventListener("pause", onPause);
+            audio.removeEventListener("seeked", onSeeked);
         };
     }, [src]);
 
     const togglePlay = () => {
         const audio = audioRef.current;
         if (!audio) return;
-        if (isPlaying) { audio.pause(); } else { audio.play(); }
-        setIsPlaying(!isPlaying);
+        if (isPlaying) {
+            audio.pause();
+        } else {
+            void audio.play();
+        }
     };
 
     const formatTime = (s: number) => {
@@ -1109,24 +1212,26 @@ export default function InboxPage() {
                 }
 
                 const response = await fetch(url.toString());
-                const newMessages = await response.json();
+                const rawMessages = await response.json();
+                const newMessages = Array.isArray(rawMessages)
+                    ? rawMessages.map(normalizeMessageRecord)
+                    : [];
 
                 if (newMessages.length > 0) {
-                    lastMessageDate = newMessages[newMessages.length - 1].createdAt;
+                    lastMessageDate = newMessages[newMessages.length - 1].createdAt.toISOString();
 
                     if (isInitial) {
                         setMessages(newMessages);
                     } else {
-                        // Deduplicate: Because the API looks back 1 second to handle Postgres truncation, 
-                        // it will return some messages we already have. Filter them out by ID.
                         setMessages((prev) => {
-                            const existingIds = new Set(prev.map(m => m.id));
-                            const uniqueNew = newMessages.filter((m: any) => !existingIds.has(m.id));
+                            const mergedMessages = mergeFetchedMessages(prev, newMessages);
+                            const existingIds = new Set(prev.map((m) => m.id));
+                            const uniqueNew = mergedMessages.filter((m) => !existingIds.has(m.id));
 
                             if (uniqueNew.length === 0) return prev;
 
                             // If there are genuinely new messages, show notifications or auto-scroll
-                            if (prev.length > 0 && uniqueNew.some((m: any) => m.direction === "inbound")) {
+                            if (prev.length > 0 && uniqueNew.some((m) => m.direction === "inbound")) {
                                 // Play sound for incoming message in the active chat
                                 maybePlayNotification(selectedChat.isMuted);
 
@@ -1135,14 +1240,14 @@ export default function InboxPage() {
                                     const threshold = 150;
                                     const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < threshold;
                                     if (!atBottom) {
-                                        setNewMessageCount((c) => c + uniqueNew.filter((m: any) => m.direction === "inbound").length);
+                                        setNewMessageCount((c) => c + uniqueNew.filter((m) => m.direction === "inbound").length);
                                     } else {
                                         setTimeout(() => scrollToBottom("smooth"), 100);
                                     }
                                 }
                             }
 
-                            return [...prev, ...uniqueNew];
+                            return mergedMessages;
                         });
                     }
                 }
@@ -1654,11 +1759,11 @@ export default function InboxPage() {
                 throw new Error(errData.error || "Failed to send message");
             }
 
-            const msgRes = await fetch(`/api/chat?conversationId=${selectedChat.id}`);
-            const updatedMessages = await msgRes.json();
-
-            // simple diff to avoid full re-render flickering if possible, but for now just replace
-            setMessages(updatedMessages);
+            const result = await res.json();
+            if (result?.message) {
+                const persistedMessage = normalizeMessageRecord(result.message);
+                setMessages((prev) => replaceOptimisticMessage(prev, optimisticId, persistedMessage));
+            }
 
         } catch (error: any) {
             console.error("sendMediaMessage error:", error);
@@ -1701,10 +1806,14 @@ export default function InboxPage() {
                 body: JSON.stringify({ conversationId: selectedChat.id, content: fullContent, direction: "outbound" }),
             });
             if (!res.ok) throw new Error("Failed");
-            const msgRes = await fetch(`/api/chat?conversationId=${selectedChat.id}`);
-            setMessages(await msgRes.json());
+            const result = await res.json();
+            if (result?.message) {
+                const persistedMessage = normalizeMessageRecord(result.message);
+                setMessages((prev) => replaceOptimisticMessage(prev, optimistic.id, persistedMessage));
+            }
         } catch (error) {
             console.error("sendMessage error:", error);
+            setMessages((prev) => prev.filter((message) => message.id !== optimistic.id));
         }
     };
 
