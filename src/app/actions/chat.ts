@@ -18,6 +18,7 @@ import { getSystemSettingsOrDefaults } from "@/lib/system-settings";
 import { buildInboundMediaContext, shouldSkipAutoReplyText } from "@/lib/ai/media-understanding";
 import { maybeHandleAppointmentBooking } from "@/lib/ai/appointment-booking";
 import { processLeadAutomationTurn } from "@/lib/ai/lead-intelligence";
+import { buildPhoneMatchClauses, normalizePhoneDigits } from "@/lib/phone";
 
 const CATALOG_OFFER_EXPIRY_MS = 1000 * 60 * 90;
 
@@ -1226,17 +1227,23 @@ export async function processInboundMessage(
     providerMessageId?: string,
 ) {
     try {
+        const normalizedFrom = normalizePhoneDigits(from);
+        if (!normalizedFrom) {
+            return;
+        }
+
         const normalizedCustomerName = normalizeContactName(customerName);
+        const phoneClauses = buildPhoneMatchClauses([normalizedFrom]);
 
         // Find or create contact by phone number
-        let contact = await prisma.contact.findUnique({
-            where: { phone: from },
-        });
+        let contact = phoneClauses.length > 0 ? await prisma.contact.findFirst({
+            where: { OR: phoneClauses },
+        }) : null;
 
         if (!contact) {
             contact = await prisma.contact.create({
                 data: {
-                    phone: from,
+                    phone: normalizedFrom,
                     name: normalizedCustomerName,
                     status: "lead",
                 },

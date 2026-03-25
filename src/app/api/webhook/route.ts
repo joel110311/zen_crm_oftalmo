@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { processInboundMessage } from "@/app/actions/chat";
+import { buildPhoneMatchClauses, normalizePhoneDigits, uniquePhoneCandidates } from "@/lib/phone";
 import { getSystemSettingsOrDefaults } from "@/lib/system-settings";
 import { downloadWuzapiMedia } from "@/lib/wuzapi";
 
@@ -151,14 +152,14 @@ function extractJidPhone(value: unknown): string {
         const candidate = normalized.includes("@")
             ? normalized.split("@")[0]
             : normalized;
-        return candidate.replace(/\D/g, "");
+        return normalizePhoneDigits(candidate);
     }
 
     if (typeof value === "object") {
         const maybeObject = value as Record<string, unknown>;
         const user = maybeObject.User || maybeObject.user;
         if (typeof user === "string") {
-            return user.replace(/\D/g, "");
+            return normalizePhoneDigits(user);
         }
 
         const jidString = maybeObject.String || maybeObject.string;
@@ -374,11 +375,46 @@ function extractMessageDetails(messageNode: unknown): ExtractedMessageDetails {
 }
 
 function resolvePhoneFromInfo(info: JsonObject, isFromMe: boolean) {
-    return extractJidPhone(
-        isFromMe
-            ? pickPreferredOutboundPhoneSource(info)
-            : pickPreferredPhoneSource(info),
-    );
+    return resolvePhoneCandidatesFromInfo(info, isFromMe)[0] || "";
+}
+
+function resolvePhoneCandidatesFromInfo(info: JsonObject, isFromMe: boolean) {
+    const candidates = isFromMe
+        ? [
+            info["RecipientAlt"],
+            info["recipientAlt"],
+            info["Recipient"],
+            info["recipient"],
+            info["Chat"],
+            info["chat"],
+            info["RemoteJid"],
+            info["remoteJid"],
+            info["SenderAlt"],
+            info["senderAlt"],
+        ]
+        : [
+            info["Chat"],
+            info["chat"],
+            info["SenderAlt"],
+            info["senderAlt"],
+            info["RecipientAlt"],
+            info["recipientAlt"],
+            info["Sender"],
+            info["sender"],
+        ];
+
+    return uniquePhoneCandidates(candidates.map((candidate) => extractJidPhone(candidate)));
+}
+
+async function findContactByPhoneCandidates(phoneCandidates: string[]) {
+    const phoneClauses = buildPhoneMatchClauses(phoneCandidates);
+    if (phoneClauses.length === 0) return null;
+
+    return prisma.contact.findFirst({
+        where: {
+            OR: phoneClauses,
+        },
+    });
 }
 
 function resolveProviderMessageId(info: JsonObject) {
@@ -542,26 +578,28 @@ async function saveIncomingMedia(payload: WuzapiWebhookPayload, details: Extract
 }
 
 async function storeOutboundEcho(
-    phone: string,
+    phoneCandidates: string[],
     text: string,
     media: MediaPayload,
     providerMessageId?: string,
 ) {
-    const normalizedPhone = phone.replace(/\D/g, "");
-    const phoneSuffix = normalizedPhone.slice(-10);
-    let contact = await prisma.contact.findFirst({
-        where: {
-            OR: [
-                { phone: normalizedPhone },
-                ...(phoneSuffix ? [{ phone: { endsWith: phoneSuffix } }] : []),
-            ],
-        },
-    });
+    const normalizedCandidates = uniquePhoneCandidates(phoneCandidates);
+    if (normalizedCandidates.length === 0) return;
+
+    let contact = await findContactByPhoneCandidates(normalizedCandidates);
 
     if (!contact) {
+        if (normalizedCandidates.length > 1) {
+            console.warn("[Webhook] Ignoring ambiguous outbound echo without matched contact", {
+                providerMessageId,
+                phoneCandidates: normalizedCandidates,
+            });
+            return;
+        }
+
         contact = await prisma.contact.create({
             data: {
-                phone: normalizedPhone,
+                phone: normalizedCandidates[0],
                 status: "lead",
             },
         });
@@ -663,7 +701,8 @@ export async function POST(req: NextRequest) {
             : undefined;
 
         const isFromMe = getBoolean(info, "IsFromMe") ?? getBoolean(info, "isFromMe") ?? false;
-        const phone = resolvePhoneFromInfo(info, isFromMe);
+        const phoneCandidates = resolvePhoneCandidatesFromInfo(info, isFromMe);
+        const phone = phoneCandidates[0] || "";
         const providerMessageId = resolveProviderMessageId(info);
 
         if (!phone) {
@@ -677,7 +716,7 @@ export async function POST(req: NextRequest) {
         }
 
         if (isFromMe) {
-            await storeOutboundEcho(phone, messageDetails.text, media || {}, providerMessageId);
+            await storeOutboundEcho(phoneCandidates, messageDetails.text, media || {}, providerMessageId);
             return new NextResponse("EVENT_RECEIVED", { status: 200 });
         }
 

@@ -106,7 +106,7 @@ function replaceOptimisticMessage(
         return message;
     });
 
-    return replaced ? next : [...next, persistedMessage];
+    return collapseMessageDuplicates(replaced ? next : [...next, persistedMessage]);
 }
 
 function mergeFetchedMessages(prev: Message[], incoming: Message[]) {
@@ -132,8 +132,38 @@ function mergeFetchedMessages(prev: Message[], incoming: Message[]) {
         next.push(incomingMessage);
     }
 
-    next.sort((left, right) => left.createdAt.getTime() - right.createdAt.getTime());
-    return next;
+    return collapseMessageDuplicates(next);
+}
+
+function collapseMessageDuplicates(messages: Message[]) {
+    const collapsed: Message[] = [];
+
+    for (const message of messages) {
+        const exactIndex = collapsed.findIndex((existing) => existing.id === message.id);
+        if (exactIndex >= 0) {
+            collapsed[exactIndex] = message;
+            continue;
+        }
+
+        const optimisticMatchIndex = collapsed.findIndex((existing) =>
+            existing.id !== message.id &&
+            (isTemporaryMessage(existing) || isTemporaryMessage(message)) &&
+            areLikelySameMessage(existing, message),
+        );
+
+        if (optimisticMatchIndex >= 0) {
+            const existing = collapsed[optimisticMatchIndex];
+            collapsed[optimisticMatchIndex] = isTemporaryMessage(existing) && !isTemporaryMessage(message)
+                ? message
+                : existing;
+            continue;
+        }
+
+        collapsed.push(message);
+    }
+
+    collapsed.sort((left, right) => left.createdAt.getTime() - right.createdAt.getTime());
+    return collapsed;
 }
 
 export type Conversation = {
@@ -402,34 +432,40 @@ function getCleanMediaUrl(url: string | null | undefined): string | undefined {
 function AudioPlayer({ src, isOutbound }: { src: string; isOutbound: boolean }) {
     const audioRef = useRef<HTMLAudioElement>(null);
     const [isPlaying, setIsPlaying] = useState(false);
-    const [duration, setDuration] = useState(0);
+    const [reportedDuration, setReportedDuration] = useState(0);
+    const [estimatedDuration, setEstimatedDuration] = useState(0);
     const [currentTime, setCurrentTime] = useState(0);
 
     useEffect(() => {
         const audio = audioRef.current;
         if (!audio) return;
 
+        setIsPlaying(false);
+        setCurrentTime(0);
+        setReportedDuration(0);
+        setEstimatedDuration(0);
+
         const syncDuration = () => {
             const d = audio.duration;
             if (d && isFinite(d) && d > 0) {
-                setDuration((prev) => Math.max(prev, d));
+                setReportedDuration(d);
             }
         };
         const onTimeUpdate = () => {
             setCurrentTime(audio.currentTime);
             const d = audio.duration;
 
-            // Some voice notes briefly report a too-short duration.
-            // If playback is still ongoing near the reported end, grow an estimate
-            // so the waveform does not look "finished" while audio keeps playing.
-            if (d && isFinite(d) && d > audio.currentTime + 0.25) {
-                setDuration((prev) => Math.max(prev, d));
-            } else if (!audio.ended) {
-                setDuration((prev) => Math.max(prev, audio.currentTime + 5));
+            // Some voice notes report a too-short duration while still playing.
+            // Keep a separate estimate so the progress dot does not rush to the end.
+            if (!audio.ended && (!d || !isFinite(d) || d <= audio.currentTime + 1)) {
+                setEstimatedDuration((prev) => {
+                    const paddedEstimate = audio.currentTime + Math.max(12, audio.currentTime * 0.4);
+                    return Math.max(prev, paddedEstimate);
+                });
             }
         };
         const onEnded = () => {
-            setDuration((prev) => Math.max(prev, audio.currentTime));
+            setEstimatedDuration((prev) => Math.max(prev, audio.currentTime));
             setIsPlaying(false);
             setCurrentTime(0);
         };
@@ -476,6 +512,10 @@ function AudioPlayer({ src, isOutbound }: { src: string; isOutbound: boolean }) 
         return `${Math.floor(s / 60)}:${Math.floor(s % 60).toString().padStart(2, "0")}`;
     };
 
+    const hasReliableDuration = reportedDuration > currentTime + 1;
+    const duration = hasReliableDuration
+        ? reportedDuration
+        : Math.max(estimatedDuration, currentTime + 12);
     const progress = duration > 0 && isFinite(duration) ? (currentTime / duration) * 100 : 0;
 
     // Generate pseudo-random waveform bar heights (deterministic per src)
