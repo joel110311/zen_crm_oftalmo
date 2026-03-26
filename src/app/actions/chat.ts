@@ -19,6 +19,7 @@ import { buildInboundMediaContext, shouldSkipAutoReplyText } from "@/lib/ai/medi
 import { maybeHandleAppointmentBooking } from "@/lib/ai/appointment-booking";
 import { processLeadAutomationTurn } from "@/lib/ai/lead-intelligence";
 import { buildPhoneMatchClauses, normalizePhoneDigits } from "@/lib/phone";
+import { markBulkCampaignReplyForContact } from "@/lib/bulk-campaigns";
 
 const CATALOG_OFFER_EXPIRY_MS = 1000 * 60 * 90;
 
@@ -1292,6 +1293,8 @@ export async function processInboundMessage(
                 updatedAt: new Date(),
             },
         });
+
+        await markBulkCampaignReplyForContact(contact.id, conversation.id, message.createdAt);
 
         const botInputText = await buildInboundMediaContext({
             text,

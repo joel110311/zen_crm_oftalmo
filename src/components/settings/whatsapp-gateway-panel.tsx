@@ -1,11 +1,19 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { CheckCircle2, ChevronDown, Loader2, LogOut, QrCode, RefreshCw, Save, Smartphone, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
 
 type Props = {
@@ -31,7 +39,12 @@ export function WhatsAppGatewayPanel(props: Props) {
     const { toast } = useToast();
     const [session, setSession] = useState<SessionState>({ configured: false });
     const [isWorking, setIsWorking] = useState(false);
+    const [isImportingHistory, setIsImportingHistory] = useState(false);
     const [showAdvanced, setShowAdvanced] = useState(false);
+    const [historyImportMonths, setHistoryImportMonths] = useState("0");
+    const [pendingHistoryImportMonths, setPendingHistoryImportMonths] = useState<number | null>(null);
+    const [clearChatsOnDelete, setClearChatsOnDelete] = useState(false);
+    const wasLoggedInRef = useRef(false);
 
     const loadSession = async (includeQr = false) => {
         try {
@@ -56,7 +69,63 @@ export function WhatsAppGatewayPanel(props: Props) {
         return () => clearInterval(interval);
     }, []);
 
-    const executeAction = async (action: "provision" | "connect" | "disconnect" | "logout" | "delete") => {
+    const runHistoryImport = useCallback(async (months: number, source: "manual" | "connect" = "manual") => {
+        if (months < 1 || months > 3) return;
+
+        setIsImportingHistory(true);
+        try {
+            const response = await fetch("/api/whatsapp/session", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    action: "importHistory",
+                    months,
+                }),
+            });
+            const payload = await response.json();
+
+            if (!response.ok) {
+                throw new Error(payload.error || "No se pudo importar el historial.");
+            }
+
+            const summary = payload.summary as {
+                chatsImported?: number;
+                messagesCreated?: number;
+                contactsCreated?: number;
+                contactsUpdated?: number;
+            } | undefined;
+
+            toast({
+                title: source === "connect" ? "Historial importado al vincular" : "Historial importado",
+                description: summary
+                    ? `${summary.chatsImported || 0} chats, ${summary.messagesCreated || 0} mensajes y ${((summary.contactsCreated || 0) + (summary.contactsUpdated || 0))} contactos sincronizados sin disparar pipelines.`
+                    : "La importacion historica termino correctamente.",
+            });
+        } catch (error) {
+            toast({
+                title: "Importacion fallida",
+                description: error instanceof Error ? error.message : "No se pudo importar el historial.",
+                variant: "destructive",
+            });
+        } finally {
+            setPendingHistoryImportMonths(null);
+            setIsImportingHistory(false);
+        }
+    }, [toast]);
+
+    useEffect(() => {
+        const justLoggedIn = Boolean(session.loggedIn) && !wasLoggedInRef.current;
+        if (justLoggedIn && pendingHistoryImportMonths && !isImportingHistory) {
+            const monthsToImport = pendingHistoryImportMonths;
+            void runHistoryImport(monthsToImport, "connect");
+        }
+        wasLoggedInRef.current = Boolean(session.loggedIn);
+    }, [isImportingHistory, pendingHistoryImportMonths, runHistoryImport, session.loggedIn]);
+
+    const executeAction = async (
+        action: "provision" | "connect" | "disconnect" | "logout" | "delete",
+        extra: Record<string, unknown> = {},
+    ) => {
         setIsWorking(true);
         try {
             const saved = await props.onSave();
@@ -65,7 +134,7 @@ export function WhatsAppGatewayPanel(props: Props) {
             const response = await fetch("/api/whatsapp/session", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ action }),
+                body: JSON.stringify({ action, ...extra }),
             });
             const payload = await response.json();
 
@@ -76,7 +145,9 @@ export function WhatsAppGatewayPanel(props: Props) {
             if (action === "delete") {
                 toast({
                     title: "Canal eliminado",
-                    description: "Se borro la vinculacion actual. Podras crear una nueva conexion cuando lo necesites.",
+                    description: extra.clearChats
+                        ? "Se borro la vinculacion y tambien se limpio la seccion Chats del CRM."
+                        : "Se borro la vinculacion actual. Podras crear una nueva conexion cuando lo necesites.",
                 });
             } else if (action === "disconnect") {
                 toast({
@@ -88,12 +159,20 @@ export function WhatsAppGatewayPanel(props: Props) {
             } else if (action === "provision") {
                 toast({ title: "Canal preparado", description: "La conexion ya quedo lista para generar el QR y recibir mensajes." });
             } else {
-                toast({ title: "Conexion iniciada", description: "Escanea el QR con el telefono y espera unos segundos." });
+                toast({
+                    title: "Conexion iniciada",
+                    description: historyImportMonths !== "0"
+                        ? `Escanea el QR. Al quedar activo, importaremos hasta ${historyImportMonths} ${historyImportMonths === "1" ? "mes" : "meses"} de chats sin disparar pipelines.`
+                        : "Escanea el QR con el telefono y espera unos segundos.",
+                });
             }
 
             setSession(payload);
             await loadSession(true);
         } catch (error) {
+            if (action === "connect") {
+                setPendingHistoryImportMonths(null);
+            }
             toast({
                 title: "Accion fallida",
                 description: error instanceof Error ? error.message : "Fallo al ejecutar la accion del canal.",
@@ -109,6 +188,20 @@ export function WhatsAppGatewayPanel(props: Props) {
         : session.connected
             ? "Esperando QR"
             : "Sin conectar";
+
+    const handleConnect = () => {
+        const monthsToImport = Number.parseInt(historyImportMonths, 10);
+        setPendingHistoryImportMonths(monthsToImport >= 1 && monthsToImport <= 3 ? monthsToImport : null);
+        void executeAction("connect");
+    };
+
+    const handleDelete = () => {
+        const description = clearChatsOnDelete
+            ? "Esto eliminara la vinculacion y limpiara la seccion Chats del CRM. Esta accion no se puede deshacer."
+            : "Esto eliminara la vinculacion actual. Podras crear una nueva conexion despues.";
+        if (!window.confirm(description)) return;
+        void executeAction("delete", { clearChats: clearChatsOnDelete });
+    };
 
     return (
         <div className="space-y-5">
@@ -168,6 +261,63 @@ export function WhatsAppGatewayPanel(props: Props) {
                         </div>
                     ) : null}
 
+                    <div className="space-y-4 rounded-2xl border bg-muted/20 p-4">
+                        <div>
+                            <p className="font-medium">Importacion al vincular</p>
+                            <p className="text-sm text-muted-foreground">
+                                Puedes traer hasta 3 meses de chats y contactos sin disparar pipelines ni crear automatizaciones por el historial.
+                            </p>
+                        </div>
+
+                        <div className="grid gap-3 md:grid-cols-[1fr_auto]">
+                            <div className="space-y-2">
+                                <Label>Historial a importar</Label>
+                                <Select value={historyImportMonths} onValueChange={setHistoryImportMonths}>
+                                    <SelectTrigger className="w-full">
+                                        <SelectValue placeholder="Selecciona un rango" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="0">No importar historial</SelectItem>
+                                        <SelectItem value="1">1 mes</SelectItem>
+                                        <SelectItem value="2">2 meses</SelectItem>
+                                        <SelectItem value="3">3 meses</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
+                            <div className="flex items-end">
+                                <Button
+                                    variant="outline"
+                                    onClick={() => void runHistoryImport(Number.parseInt(historyImportMonths, 10), "manual")}
+                                    disabled={!session.loggedIn || historyImportMonths === "0" || isImportingHistory || isWorking}
+                                >
+                                    {isImportingHistory ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+                                    Importar ahora
+                                </Button>
+                            </div>
+                        </div>
+
+                        <p className="text-xs text-muted-foreground">
+                            Si eliges 1, 2 o 3 meses antes de escanear el QR, la importacion corre sola cuando el numero quede activo.
+                        </p>
+                    </div>
+
+                    <div className="flex items-start gap-3 rounded-2xl border border-destructive/20 bg-destructive/5 p-4">
+                        <Checkbox
+                            id="clear-chats-on-delete"
+                            checked={clearChatsOnDelete}
+                            onCheckedChange={(checked) => setClearChatsOnDelete(Boolean(checked))}
+                        />
+                        <div className="space-y-1">
+                            <Label htmlFor="clear-chats-on-delete" className="text-sm font-medium">
+                                Al eliminar este numero, limpiar tambien Chats del CRM
+                            </Label>
+                            <p className="text-xs text-muted-foreground">
+                                Solo vacia conversaciones y mensajes del inbox. No elimina los contactos ya importados.
+                            </p>
+                        </div>
+                    </div>
+
                     <div className="flex flex-wrap gap-2">
                         <Button onClick={props.onSave} disabled={props.isSaving || isWorking} variant="outline">
                             {props.isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
@@ -177,7 +327,7 @@ export function WhatsAppGatewayPanel(props: Props) {
                             {isWorking ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
                             Preparar canal
                         </Button>
-                        <Button onClick={() => executeAction("connect")} disabled={props.isSaving || isWorking}>
+                        <Button onClick={handleConnect} disabled={props.isSaving || isWorking || isImportingHistory}>
                             <QrCode className="mr-2 h-4 w-4" />
                             Conectar por QR
                         </Button>
@@ -186,7 +336,7 @@ export function WhatsAppGatewayPanel(props: Props) {
                             Desconectar
                         </Button>
                         <Button
-                            onClick={() => executeAction("delete")}
+                            onClick={handleDelete}
                             disabled={props.isSaving || isWorking}
                             variant="ghost"
                             className="text-destructive hover:text-destructive"

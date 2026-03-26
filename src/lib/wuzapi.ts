@@ -43,10 +43,40 @@ type DownloadMediaParams = {
     FileLength: number;
 };
 
+export type WuzapiContactRecord = {
+    BusinessName?: string;
+    FirstName?: string;
+    Found?: boolean;
+    FullName?: string;
+    PushName?: string;
+};
+
+export type WuzapiHistoryIndexRecord = {
+    chat_jid?: string;
+    last_updated?: string;
+    ChatJID?: string;
+    LastUpdated?: string;
+};
+
+export type WuzapiHistoryMessageRecord = {
+    id?: number;
+    user_id?: string;
+    chat_jid?: string;
+    sender_jid?: string;
+    message_id?: string;
+    timestamp?: string;
+    message_type?: string;
+    text_content?: string;
+    media_link?: string;
+    quoted_message_id?: string;
+    data_json?: string;
+};
+
 const WUZAPI_RETRYABLE_SEND_ERRORS = [
     "cannot start a transaction within a transaction",
     "failed to save cached sessions",
 ];
+const WUZAPI_SUBSCRIBED_EVENTS = ["Message", "HistorySync"];
 
 let wuzapiRecoveryPromise: Promise<void> | null = null;
 
@@ -202,6 +232,7 @@ async function retryWuzapiSend<T>(operation: () => Promise<T>) {
 export async function provisionWuzapiInstance(appBaseUrl?: string) {
     const config = await getWuzapiConfig();
     const webhookUrl = buildWebhookUrl(appBaseUrl);
+    const events = WUZAPI_SUBSCRIBED_EVENTS.join(",");
     const users = await requestWuzapi<WuzapiUser[]>("admin", "/admin/users", { method: "GET" });
     const existingUser = users.find(
         (user) => user.token === config.userToken || user.name === config.instanceName,
@@ -214,7 +245,7 @@ export async function provisionWuzapiInstance(appBaseUrl?: string) {
                 name: config.instanceName,
                 token: config.userToken,
                 webhook: webhookUrl,
-                events: "Message",
+                events,
             }),
         });
     } else if (existingUser.id) {
@@ -224,7 +255,7 @@ export async function provisionWuzapiInstance(appBaseUrl?: string) {
                 name: config.instanceName,
                 token: config.userToken,
                 webhook: webhookUrl,
-                events: "Message",
+                events,
             }),
         }).catch(() => {
             // Older WuzAPI builds do not expose update via admin; webhook will be refreshed below.
@@ -264,7 +295,7 @@ export async function connectWuzapiSession() {
     }>("user", "/session/connect", {
         method: "POST",
         body: JSON.stringify({
-            Subscribe: ["Message"],
+            Subscribe: WUZAPI_SUBSCRIBED_EVENTS,
             Immediate: false,
         }),
     });
@@ -466,6 +497,86 @@ export async function downloadWuzapiMedia(kind: DownloadMediaKind, payload: Down
         method: "POST",
         body: JSON.stringify(payload),
     });
+}
+
+export async function getWuzapiContacts() {
+    return requestWuzapi<Record<string, WuzapiContactRecord>>("user", "/user/contacts", {
+        method: "GET",
+    });
+}
+
+export async function setWuzapiHistoryLimit(limit: number) {
+    return requestWuzapi<{ Details?: string; History?: number }>("user", "/session/history", {
+        method: "POST",
+        body: JSON.stringify({
+            history: Math.max(0, Number.parseInt(String(limit), 10) || 0),
+        }),
+    });
+}
+
+export async function requestWuzapiHistorySync(params?: {
+    count?: number;
+    chatJid?: string;
+    oldestMessageId?: string;
+    oldestMessageFromMe?: boolean;
+    oldestMessageTimestamp?: number;
+}) {
+    const searchParams = new URLSearchParams();
+
+    if (params?.count && params.count > 0) {
+        searchParams.set("count", String(params.count));
+    }
+    if (params?.chatJid) {
+        searchParams.set("chat_jid", params.chatJid);
+    }
+    if (params?.oldestMessageId) {
+        searchParams.set("oldest_msg_id", params.oldestMessageId);
+    }
+    if (typeof params?.oldestMessageFromMe === "boolean") {
+        searchParams.set("oldest_msg_from_me", params.oldestMessageFromMe ? "true" : "false");
+    }
+    if (typeof params?.oldestMessageTimestamp === "number" && Number.isFinite(params.oldestMessageTimestamp)) {
+        searchParams.set("oldest_msg_timestamp", String(Math.trunc(params.oldestMessageTimestamp)));
+    }
+
+    const path = searchParams.size > 0
+        ? `/session/history?${searchParams.toString()}`
+        : "/session/history";
+
+    return requestWuzapi<{
+        details?: string;
+        timestamp?: number;
+        count?: number;
+        chat_jid?: string;
+        oldest_msg_id?: string;
+        oldest_msg_from_me?: boolean;
+        oldest_msg_timestamp?: number;
+    }>("user", path, {
+        method: "GET",
+    });
+}
+
+export async function getWuzapiHistoryIndex() {
+    const payload = await requestWuzapi<Record<string, WuzapiHistoryIndexRecord[]>>(
+        "user",
+        "/chat/history?chat_jid=index",
+        { method: "GET" },
+    );
+
+    return Object.values(payload || {}).flatMap((entries) => entries || []);
+}
+
+export async function getWuzapiChatHistory(chatJid: string, limit = 5000) {
+    const searchParams = new URLSearchParams({
+        chat_jid: chatJid,
+        limit: String(Math.max(1, Math.trunc(limit))),
+    });
+
+    return requestWuzapi<WuzapiHistoryMessageRecord[]>(
+        "user",
+        `/chat/history?${searchParams.toString()}`,
+        { method: "GET" },
+    );
 }
 
 export async function ensureWuzapiUserToken() {

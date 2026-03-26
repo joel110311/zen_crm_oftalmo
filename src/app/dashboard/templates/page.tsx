@@ -1,8 +1,10 @@
 "use client";
 
 import { useSession } from "next-auth/react";
-import { LayoutTemplate, Loader2, ShieldAlert } from "lucide-react";
+import { LayoutTemplate, Loader2, Megaphone, ShieldAlert } from "lucide-react";
+import { BulkCampaignManagerPanel } from "@/components/settings/bulk-campaign-manager-panel";
 import { TemplateManagerPanel } from "@/components/settings/template-manager-panel";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export default function TemplatesPage() {
     const { data: session, status } = useSession();
@@ -50,11 +52,30 @@ export default function TemplatesPage() {
                     Plantillas
                 </h1>
                 <p className="text-sm text-muted-foreground">
-                    Administra respuestas guardadas con texto, imagen y documentos para el inbox.
+                    Administra respuestas guardadas y campañas de envios masivos desde un mismo lugar.
                 </p>
             </div>
 
-            <TemplateManagerPanel />
+            <Tabs defaultValue="templates" className="space-y-6">
+                <TabsList variant="line" className="rounded-2xl border bg-card p-1">
+                    <TabsTrigger value="templates" className="gap-2 rounded-xl px-4">
+                        <LayoutTemplate className="h-4 w-4" />
+                        Respuestas guardadas
+                    </TabsTrigger>
+                    <TabsTrigger value="campaigns" className="gap-2 rounded-xl px-4">
+                        <Megaphone className="h-4 w-4" />
+                        Envios masivos
+                    </TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="templates">
+                    <TemplateManagerPanel />
+                </TabsContent>
+
+                <TabsContent value="campaigns">
+                    <BulkCampaignManagerPanel />
+                </TabsContent>
+            </Tabs>
         </div>
     );
 }

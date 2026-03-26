@@ -1,0 +1,485 @@
+import { prisma } from "@/lib/db";
+import { buildPhoneMatchClauses, getPhoneSuffix, normalizePhoneDigits } from "@/lib/phone";
+import {
+    getWuzapiChatHistory,
+    getWuzapiContacts,
+    getWuzapiHistoryIndex,
+    getWuzapiSessionStatus,
+    requestWuzapiHistorySync,
+    setWuzapiHistoryLimit,
+    type WuzapiContactRecord,
+    type WuzapiHistoryIndexRecord,
+    type WuzapiHistoryMessageRecord,
+} from "@/lib/wuzapi";
+
+const HISTORY_FETCH_LIMIT_BY_MONTHS: Record<1 | 2 | 3, number> = {
+    1: 1500,
+    2: 3000,
+    3: 5000,
+};
+
+const HISTORY_SYNC_REQUEST_COUNT_BY_MONTHS: Record<1 | 2 | 3, number> = {
+    1: 150,
+    2: 300,
+    3: 450,
+};
+
+type ImportWhatsAppHistoryOptions = {
+    months: 1 | 2 | 3;
+};
+
+type ImportWhatsAppHistorySummary = {
+    months: 1 | 2 | 3;
+    cutoffAt: string;
+    syncRequested: boolean;
+    chatsDiscovered: number;
+    chatsImported: number;
+    contactsCreated: number;
+    contactsUpdated: number;
+    conversationsCreated: number;
+    messagesCreated: number;
+    messagesSkipped: number;
+};
+
+function sleep(ms: number) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function normalizeImportedContactName(value: string | null | undefined) {
+    const normalized = (value || "").trim().replace(/\s+/g, " ");
+    if (!normalized) return null;
+    if (/^(unknown|desconocido|sin nombre|null|undefined|n\/a|na)$/i.test(normalized)) {
+        return null;
+    }
+    return normalized;
+}
+
+function normalizeHistoryMonths(value: number) {
+    if (value >= 3) return 3;
+    if (value >= 2) return 2;
+    return 1;
+}
+
+function resolveCutoffDate(months: 1 | 2 | 3) {
+    const cutoff = new Date();
+    cutoff.setMonth(cutoff.getMonth() - months);
+    return cutoff;
+}
+
+function resolveHistoryIndexChatJid(entry: WuzapiHistoryIndexRecord) {
+    return (entry.chat_jid || entry.ChatJID || "").trim();
+}
+
+function isDirectChatJid(value: string) {
+    const normalized = value.trim().toLowerCase();
+    if (!normalized) return false;
+    if (normalized.includes("@g.us")) return false;
+    if (normalized.includes("@broadcast")) return false;
+    if (normalized.includes("@newsletter")) return false;
+    if (normalized.includes("@lid")) return false;
+    return normalized.includes("@s.whatsapp.net");
+}
+
+function getPhoneFromChatJid(chatJid: string) {
+    const normalized = chatJid.replace(/:\d+@/, "@");
+    const phone = normalized.includes("@")
+        ? normalized.split("@")[0]
+        : normalized;
+    return normalizePhoneDigits(phone);
+}
+
+function phonesLikelyMatch(left: string, right: string) {
+    const normalizedLeft = normalizePhoneDigits(left);
+    const normalizedRight = normalizePhoneDigits(right);
+    if (!normalizedLeft || !normalizedRight) return false;
+    if (normalizedLeft === normalizedRight) return true;
+    return getPhoneSuffix(normalizedLeft) === getPhoneSuffix(normalizedRight);
+}
+
+function resolveDirection(chatPhone: string, senderJid: string) {
+    if (senderJid === "me") return "outbound";
+    return phonesLikelyMatch(chatPhone, senderJid)
+        ? "inbound"
+        : "outbound";
+}
+
+function parseHistoryTimestamp(value: string | undefined) {
+    if (!value) return null;
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function mapHistoryMessageType(value: string | undefined) {
+    const normalized = (value || "").trim().toLowerCase();
+    if (normalized === "image" || normalized === "audio" || normalized === "video" || normalized === "document") {
+        return normalized;
+    }
+    return "text";
+}
+
+function normalizeHistoryContent(message: WuzapiHistoryMessageRecord) {
+    const messageType = (message.message_type || "").trim().toLowerCase();
+    const rawContent = (message.text_content || "").trim();
+
+    if (rawContent === ":image:") return "[Imagen]";
+    if (rawContent === ":video:") return "[Video]";
+    if (rawContent === ":audio:") return "[Audio]";
+    if (rawContent === ":document:") return "[Documento]";
+    if (rawContent === ":sticker:") return "[Sticker]";
+    if (rawContent === ":contact:") return "[Contacto]";
+    if (rawContent === ":location:") return "[Ubicacion]";
+
+    if (rawContent) return rawContent;
+
+    if (messageType === "reaction") {
+        return "[Reaccion]";
+    }
+
+    if (messageType === "buttons_response" || messageType === "list_response") {
+        return "[Respuesta interactiva]";
+    }
+
+    if (messageType === "image") return "[Imagen]";
+    if (messageType === "video") return "[Video]";
+    if (messageType === "audio") return "[Audio]";
+    if (messageType === "document") return "[Documento]";
+
+    return "[Mensaje de WhatsApp]";
+}
+
+function getNameFromHistoryPayload(dataJson: string | undefined) {
+    if (!dataJson) return null;
+
+    try {
+        const parsed = JSON.parse(dataJson) as {
+            Info?: {
+                PushName?: string;
+                FullName?: string;
+            };
+        };
+
+        return normalizeImportedContactName(
+            parsed?.Info?.PushName || parsed?.Info?.FullName || null,
+        );
+    } catch {
+        return null;
+    }
+}
+
+function getNameFromWuzapiContact(contact: WuzapiContactRecord | undefined) {
+    return normalizeImportedContactName(
+        contact?.BusinessName ||
+        contact?.FullName ||
+        contact?.PushName ||
+        contact?.FirstName ||
+        null,
+    );
+}
+
+async function waitForHistoryIndex() {
+    let latestEntries: WuzapiHistoryIndexRecord[] = [];
+    let lastSignature = "";
+    let stableReads = 0;
+
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+        if (attempt > 0) {
+            await sleep(3500);
+        }
+
+        const nextEntries = await getWuzapiHistoryIndex().catch(() => latestEntries);
+        const deduplicated = new Map<string, WuzapiHistoryIndexRecord>();
+
+        for (const entry of nextEntries) {
+            const chatJid = resolveHistoryIndexChatJid(entry);
+            if (!isDirectChatJid(chatJid)) continue;
+            deduplicated.set(chatJid, entry);
+        }
+
+        latestEntries = [...deduplicated.values()];
+        const signature = latestEntries
+            .map((entry) => `${resolveHistoryIndexChatJid(entry)}:${entry.last_updated || entry.LastUpdated || ""}`)
+            .sort()
+            .join("|");
+
+        if (signature && signature === lastSignature) {
+            stableReads += 1;
+        } else {
+            stableReads = 0;
+        }
+
+        lastSignature = signature;
+
+        if (signature && stableReads >= 1) {
+            break;
+        }
+    }
+
+    return latestEntries;
+}
+
+async function importDirectChatHistory(params: {
+    chatJid: string;
+    cutoff: Date;
+    historyLimit: number;
+    contactsByJid: Record<string, WuzapiContactRecord>;
+}) {
+    const phone = getPhoneFromChatJid(params.chatJid);
+    if (!phone) {
+        return {
+            imported: false,
+            contactsCreated: 0,
+            contactsUpdated: 0,
+            conversationsCreated: 0,
+            messagesCreated: 0,
+            messagesSkipped: 0,
+        };
+    }
+
+    const rawMessages = await getWuzapiChatHistory(params.chatJid, params.historyLimit);
+    const relevantMessages = rawMessages
+        .map((message) => ({
+            ...message,
+            parsedTimestamp: parseHistoryTimestamp(message.timestamp),
+        }))
+        .filter((message) => message.parsedTimestamp && message.parsedTimestamp >= params.cutoff)
+        .sort((left, right) => left.parsedTimestamp!.getTime() - right.parsedTimestamp!.getTime());
+
+    if (relevantMessages.length === 0) {
+        return {
+            imported: false,
+            contactsCreated: 0,
+            contactsUpdated: 0,
+            conversationsCreated: 0,
+            messagesCreated: 0,
+            messagesSkipped: rawMessages.length,
+        };
+    }
+
+    const fallbackName = relevantMessages
+        .map((message) => getNameFromHistoryPayload(message.data_json))
+        .find(Boolean);
+    const resolvedName = getNameFromWuzapiContact(params.contactsByJid[params.chatJid]) || fallbackName || null;
+
+    let contactsCreated = 0;
+    let contactsUpdated = 0;
+    let conversationsCreated = 0;
+    let messagesCreated = 0;
+    let messagesSkipped = 0;
+
+    await prisma.$transaction(async (tx) => {
+        let contact = await tx.contact.findFirst({
+            where: {
+                OR: buildPhoneMatchClauses([phone]),
+            },
+        });
+
+        if (!contact) {
+            contact = await tx.contact.create({
+                data: {
+                    phone,
+                    name: resolvedName,
+                    status: "lead",
+                },
+            });
+            contactsCreated += 1;
+        } else if (resolvedName && !normalizeImportedContactName(contact.name)) {
+            contact = await tx.contact.update({
+                where: { id: contact.id },
+                data: {
+                    name: resolvedName,
+                },
+            });
+            contactsUpdated += 1;
+        }
+
+        let conversation = await tx.conversation.findFirst({
+            where: {
+                contactId: contact.id,
+                status: "active",
+            },
+            orderBy: {
+                updatedAt: "desc",
+            },
+        });
+
+        const createdConversation = !conversation;
+        if (!conversation) {
+            conversation = await tx.conversation.create({
+                data: {
+                    contactId: contact.id,
+                    status: "active",
+                },
+            });
+            conversationsCreated += 1;
+        }
+        const activeConversation = conversation;
+
+        const providerMessageIds = relevantMessages
+            .map((message) => (message.message_id || "").trim())
+            .filter(Boolean);
+        const existingMessages = providerMessageIds.length > 0
+            ? await tx.message.findMany({
+                where: {
+                    providerMessageId: {
+                        in: providerMessageIds,
+                    },
+                },
+                select: {
+                    providerMessageId: true,
+                },
+            })
+            : [];
+        const existingMessageIds = new Set(
+            existingMessages
+                .map((message) => message.providerMessageId)
+                .filter((value): value is string => Boolean(value)),
+        );
+
+        const messagesToCreate = relevantMessages
+            .filter((message) => {
+                const providerMessageId = (message.message_id || "").trim();
+                return providerMessageId ? !existingMessageIds.has(providerMessageId) : false;
+            })
+            .map((message) => {
+                const direction = resolveDirection(phone, message.sender_jid || "");
+                return {
+                    conversationId: activeConversation.id,
+                    content: normalizeHistoryContent(message),
+                    direction,
+                    status: direction === "outbound" ? "sent" : "delivered",
+                    type: mapHistoryMessageType(message.message_type),
+                    senderType: direction === "outbound" ? "human" : null,
+                    providerMessageId: (message.message_id || "").trim() || null,
+                    createdAt: message.parsedTimestamp!,
+                };
+            });
+
+        messagesSkipped += relevantMessages.length - messagesToCreate.length;
+
+        if (messagesToCreate.length > 0) {
+            await tx.message.createMany({
+                data: messagesToCreate,
+            });
+            messagesCreated += messagesToCreate.length;
+        }
+
+        const firstImportedAt = relevantMessages[0]?.parsedTimestamp;
+        const lastImportedAt = relevantMessages[relevantMessages.length - 1]?.parsedTimestamp;
+
+        if (createdConversation && firstImportedAt && lastImportedAt) {
+            await tx.$executeRaw`
+                UPDATE "Conversation"
+                SET "createdAt" = ${firstImportedAt},
+                    "updatedAt" = ${lastImportedAt}
+                WHERE id = ${activeConversation.id}
+            `;
+        } else if (lastImportedAt && lastImportedAt > activeConversation.updatedAt) {
+            await tx.$executeRaw`
+                UPDATE "Conversation"
+                SET "updatedAt" = ${lastImportedAt}
+                WHERE id = ${activeConversation.id}
+            `;
+        }
+    });
+
+    return {
+        imported: true,
+        contactsCreated,
+        contactsUpdated,
+        conversationsCreated,
+        messagesCreated,
+        messagesSkipped,
+    };
+}
+
+export async function importWhatsAppHistory(
+    options: ImportWhatsAppHistoryOptions,
+): Promise<ImportWhatsAppHistorySummary> {
+    const months = normalizeHistoryMonths(options.months) as 1 | 2 | 3;
+    const cutoff = resolveCutoffDate(months);
+    const session = await getWuzapiSessionStatus();
+
+    if (!session.loggedIn) {
+        throw new Error("Conecta y vincula el numero primero para poder importar el historial.");
+    }
+    if (!session.connected) {
+        throw new Error("La sesion esta pausada. Reconecta el canal antes de importar el historial.");
+    }
+
+    await setWuzapiHistoryLimit(HISTORY_FETCH_LIMIT_BY_MONTHS[months]);
+
+    let syncRequested = false;
+    try {
+        await requestWuzapiHistorySync({
+            count: HISTORY_SYNC_REQUEST_COUNT_BY_MONTHS[months],
+        });
+        syncRequested = true;
+    } catch (error) {
+        console.warn("[WhatsAppHistoryImport] History sync request failed, continuing with cached history", error);
+    }
+
+    const contactsByJid = await getWuzapiContacts().catch(() => ({}));
+    const historyIndex = await waitForHistoryIndex();
+
+    let chatsImported = 0;
+    let contactsCreated = 0;
+    let contactsUpdated = 0;
+    let conversationsCreated = 0;
+    let messagesCreated = 0;
+    let messagesSkipped = 0;
+
+    for (const entry of historyIndex) {
+        const chatJid = resolveHistoryIndexChatJid(entry);
+        if (!isDirectChatJid(chatJid)) {
+            continue;
+        }
+
+        const result = await importDirectChatHistory({
+            chatJid,
+            cutoff,
+            historyLimit: HISTORY_FETCH_LIMIT_BY_MONTHS[months],
+            contactsByJid,
+        });
+
+        if (result.imported) {
+            chatsImported += 1;
+        }
+        contactsCreated += result.contactsCreated;
+        contactsUpdated += result.contactsUpdated;
+        conversationsCreated += result.conversationsCreated;
+        messagesCreated += result.messagesCreated;
+        messagesSkipped += result.messagesSkipped;
+    }
+
+    return {
+        months,
+        cutoffAt: cutoff.toISOString(),
+        syncRequested,
+        chatsDiscovered: historyIndex.length,
+        chatsImported,
+        contactsCreated,
+        contactsUpdated,
+        conversationsCreated,
+        messagesCreated,
+        messagesSkipped,
+    };
+}
+
+export async function clearCrmChatHistory() {
+    await prisma.$transaction(async (tx) => {
+        await tx.bulkCampaignRecipient.updateMany({
+            where: {
+                conversationId: {
+                    not: null,
+                },
+            },
+            data: {
+                conversationId: null,
+            },
+        });
+
+        await tx.message.deleteMany();
+        await tx.catalogConversationState.deleteMany();
+        await tx.conversation.deleteMany();
+    });
+}

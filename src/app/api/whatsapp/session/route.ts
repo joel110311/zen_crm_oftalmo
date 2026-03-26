@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import {
     WuzapiConfigError,
     connectWuzapiSession,
@@ -10,6 +11,7 @@ import {
     logoutWuzapiSession,
     provisionWuzapiInstance,
 } from "@/lib/wuzapi";
+import { clearCrmChatHistory, importWhatsAppHistory } from "@/lib/whatsapp-history-import";
 
 export async function GET(request: NextRequest) {
     try {
@@ -48,7 +50,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
     try {
-        const { action } = await request.json();
+        const { action, months, clearChats } = await request.json();
 
         if (!action) {
             return NextResponse.json({ error: "action es requerido" }, { status: 400 });
@@ -98,7 +100,32 @@ export async function POST(request: NextRequest) {
 
         if (action === "delete") {
             await deleteWuzapiInstance();
-            return NextResponse.json({ success: true, deleted: true });
+            if (clearChats) {
+                await clearCrmChatHistory();
+                revalidatePath("/dashboard/inbox");
+                revalidatePath("/dashboard/contacts");
+            }
+
+            return NextResponse.json({
+                success: true,
+                deleted: true,
+                clearedChats: Boolean(clearChats),
+            });
+        }
+
+        if (action === "importHistory") {
+            const summary = await importWhatsAppHistory({
+                months: months === 3 ? 3 : months === 2 ? 2 : 1,
+            });
+
+            revalidatePath("/dashboard/inbox");
+            revalidatePath("/dashboard/contacts");
+            revalidatePath("/dashboard/templates");
+
+            return NextResponse.json({
+                success: true,
+                summary,
+            });
         }
 
         return NextResponse.json({ error: "Accion no soportada" }, { status: 400 });

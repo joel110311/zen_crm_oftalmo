@@ -19,6 +19,7 @@ model User {
   
   appointments Appointment[]
   assignedConversations Conversation[] @relation("ConversationAssignee")
+  bulkCampaigns BulkCampaign[]
 }
 
 enum Role {
@@ -42,6 +43,7 @@ model Contact {
   conversations Conversation[]
   appointments  Appointment[]
   deals         Deal[]
+  bulkCampaignRecipients BulkCampaignRecipient[]
 }
 
 model Conversation {
@@ -62,6 +64,7 @@ model Conversation {
   
   messages   Message[]
   catalogState CatalogConversationState?
+  bulkCampaignRecipients BulkCampaignRecipient[]
 
   @@index([updatedAt(sort: Desc)])
   @@index([contactId])
@@ -238,6 +241,88 @@ model Template {
 
   @@index([isActive, category])
   @@index([isFavorite, updatedAt(sort: Desc)])
+}
+
+model BulkCampaign {
+  id               String   @id @default(cuid())
+  name             String
+  description      String?
+  status           String   @default("draft") // draft, running, paused, completed, cancelled, failed
+  audienceFilters  Json?
+  type             String   @default("text") // text, image, document
+  mediaUrl         String?
+  mediaType        String?
+  mediaFileName    String?
+  batchSize        Int      @default(3)
+  batchDelayMinutes Int     @default(5)
+  respectBusinessHours Boolean @default(true)
+  stopOnReply      Boolean  @default(true)
+  senderStrategy   String   @default("primary")
+  totalRecipients  Int      @default(0)
+  sentCount        Int      @default(0)
+  failedCount      Int      @default(0)
+  repliedCount     Int      @default(0)
+  skippedCount     Int      @default(0)
+  startedAt        DateTime?
+  completedAt      DateTime?
+  lastProcessedAt  DateTime?
+  nextRunAt        DateTime?
+  workerLockId     String?
+  workerLockExpiresAt DateTime?
+  createdById      String?
+  createdBy        User?    @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  variants         BulkCampaignVariant[]
+  recipients       BulkCampaignRecipient[]
+
+  @@index([status, nextRunAt])
+  @@index([createdAt(sort: Desc)])
+}
+
+model BulkCampaignVariant {
+  id          String   @id @default(cuid())
+  campaignId  String
+  campaign    BulkCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  label       String
+  content     String
+  weight      Int      @default(1)
+  sortOrder   Int      @default(0)
+  variables   Json?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  recipients  BulkCampaignRecipient[]
+
+  @@index([campaignId, sortOrder])
+}
+
+model BulkCampaignRecipient {
+  id              String   @id @default(cuid())
+  campaignId      String
+  campaign        BulkCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  contactId       String
+  contact         Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  conversationId  String?
+  conversation    Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  variantId       String?
+  variant         BulkCampaignVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
+  status          String   @default("queued") // queued, sent, failed, replied, skipped, cancelled
+  sequenceIndex   Int
+  sentAt          DateTime?
+  repliedAt       DateTime?
+  lastInboundAt   DateTime?
+  lastError       String?
+  renderedContent String?
+  providerMessageId String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([campaignId, contactId])
+  @@index([campaignId, status, sequenceIndex])
+  @@index([contactId, status])
 }
 
 model PipelineStage {
