@@ -7,7 +7,7 @@ import {
     Search, MoreVertical, Phone, Video, Paperclip, Send, Mic, X,
     FileText, Download, Square, Star, BellOff, Bell, Archive, Trash2,
     Info, Users, MessageSquare, ChevronRight, ChevronDown, Mail, Tag, Clock,
-    Eraser, Image as ImageIcon, Play, Pause, Bot, User as UserIcon,
+    Eraser, Image as ImageIcon, Play, Pause, Bot, User as UserIcon, AlertTriangle,
     Reply, Copy, SmilePlus, Forward
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -198,6 +198,15 @@ type TeamUser = {
     name: string | null;
     email: string;
     role: string;
+};
+
+type WhatsAppSessionStatus = {
+    configured: boolean;
+    connected?: boolean;
+    loggedIn?: boolean;
+    jid?: string | null;
+    qrCode?: string | null;
+    error?: string;
 };
 
 type LeadIntelligenceSnapshot = {
@@ -939,6 +948,7 @@ export default function InboxPage() {
     const [showContactInfo, setShowContactInfo] = useState(false);
     const [searchQuery, setSearchQuery] = useState("");
     const [viewFilter, setViewFilter] = useState<"all" | "mine" | "unassigned">("all");
+    const [whatsAppSession, setWhatsAppSession] = useState<WhatsAppSessionStatus | null>(null);
     const [confirmAction, setConfirmAction] = useState<ConfirmActionState | null>(null);
     const [viewerMessageId, setViewerMessageId] = useState<string | null>(null);
     // Reply, React & Forward state
@@ -957,6 +967,28 @@ export default function InboxPage() {
         () => messages.find((message) => message.id === emojiPickerMsgId) || null,
         [messages, emojiPickerMsgId],
     );
+    const isWhatsAppTransportReady = Boolean(
+        whatsAppSession?.configured &&
+        whatsAppSession?.connected &&
+        whatsAppSession?.loggedIn &&
+        whatsAppSession?.jid,
+    );
+    const shouldShowWhatsAppWarning = whatsAppSession !== null && !isWhatsAppTransportReady;
+    const whatsAppWarningText = useMemo(() => {
+        if (whatsAppSession?.error) {
+            return whatsAppSession.error;
+        }
+
+        if (!whatsAppSession?.configured) {
+            return "Configura el canal en Configuracion para poder enviar y recibir mensajes desde el inbox.";
+        }
+
+        if (whatsAppSession?.loggedIn && !whatsAppSession?.connected) {
+            return "Hay un numero vinculado, pero el canal esta pausado. Reconectalo antes de responder desde Chats.";
+        }
+
+        return "No hay un numero de WhatsApp vinculado al CRM. Conectalo en Configuracion para enviar mensajes, usar plantillas y adjuntar archivos.";
+    }, [whatsAppSession]);
 
     const slashQuery = extractTemplateSlashQuery(inputText);
     const slashTemplateMatches = useMemo(() => {
@@ -1146,6 +1178,33 @@ export default function InboxPage() {
         };
 
         fetchTemplates();
+    }, []);
+
+    useEffect(() => {
+        const fetchWhatsAppSession = async () => {
+            try {
+                const response = await fetch("/api/whatsapp/session", { cache: "no-store" });
+                const payload = await response.json();
+
+                setWhatsAppSession({
+                    configured: Boolean(payload?.configured),
+                    connected: payload?.connected ?? false,
+                    loggedIn: payload?.loggedIn ?? false,
+                    jid: payload?.jid || null,
+                    qrCode: payload?.qrCode || null,
+                    error: payload?.error || undefined,
+                });
+            } catch (error) {
+                setWhatsAppSession({
+                    configured: false,
+                    error: error instanceof Error ? error.message : "No se pudo consultar el canal de WhatsApp.",
+                });
+            }
+        };
+
+        void fetchWhatsAppSession();
+        const interval = setInterval(fetchWhatsAppSession, 5000);
+        return () => clearInterval(interval);
     }, []);
 
     useEffect(() => {
@@ -1506,6 +1565,7 @@ export default function InboxPage() {
     };
 
     const handleMicClick = () => {
+        if (!isWhatsAppTransportReady) return;
         if (isRecording) { stopRecording(); return; }
         if (!micPermissionGranted) {
             navigator.permissions?.query({ name: "microphone" as PermissionName })
@@ -1520,6 +1580,7 @@ export default function InboxPage() {
     };
 
     const startRecording = async () => {
+        if (!isWhatsAppTransportReady) return;
         try {
             const stream = await navigator.mediaDevices.getUserMedia({
                 audio: { echoCancellation: true, noiseSuppression: true }
@@ -1610,7 +1671,7 @@ export default function InboxPage() {
     };
 
     const uploadAndSendAudio = async (audioBlob: Blob, ext: string, mimeType: string) => {
-        if (!selectedChat) return;
+        if (!selectedChat || !isWhatsAppTransportReady) return;
         setIsUploading(true);
         try {
             const formData = new FormData();
@@ -1631,6 +1692,7 @@ export default function InboxPage() {
 
     // ──── File Upload ────
     const uploadSelectedFile = async (file: File) => {
+        if (!isWhatsAppTransportReady) return;
         setIsUploading(true);
         try {
             const formData = new FormData();
@@ -1663,7 +1725,7 @@ export default function InboxPage() {
     };
 
     const handleComposerPaste = async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
-        if (!selectedChat || isUploading) return;
+        if (!selectedChat || !isWhatsAppTransportReady || isUploading) return;
 
         const imageItem = Array.from(e.clipboardData.items).find(
             (item) => item.kind === "file" && item.type.startsWith("image/")
@@ -1768,7 +1830,7 @@ export default function InboxPage() {
 
     // ──── Send Media ────
     const sendMediaMessage = async (mediaUrl: string, mediaCategory: string, fileName?: string, mimeType?: string, caption?: string) => {
-        if (!selectedChat) return;
+        if (!selectedChat || !isWhatsAppTransportReady) return;
 
         // Optimistic update
         const optimisticId = "temp-" + Date.now();
@@ -1816,6 +1878,7 @@ export default function InboxPage() {
 
     // ──── Send Text ────
     const handleSendMessage = async () => {
+        if (!isWhatsAppTransportReady) return;
         if (pendingFile) {
             await sendMediaMessage(pendingFile.url, pendingFile.mediaCategory, pendingFile.fileName, pendingFile.mimeType, inputText.trim() || undefined);
             setInputText("");
@@ -1859,7 +1922,7 @@ export default function InboxPage() {
 
     // ──── Forward Message ────
     const handleForward = async (targetConvId: string) => {
-        if (!forwardMsg) return;
+        if (!forwardMsg || !isWhatsAppTransportReady) return;
         try {
             await fetch("/api/send-message", {
                 method: "POST",
@@ -1974,6 +2037,19 @@ export default function InboxPage() {
                                 </button>
                             ))}
                         </div>
+                        {shouldShowWhatsAppWarning && (
+                            <div className="rounded-[1.2rem] border border-amber-200/80 bg-amber-50/95 px-4 py-3 text-amber-950 shadow-[0_16px_34px_-28px_rgba(217,119,6,0.35)]">
+                                <div className="flex items-start gap-3">
+                                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+                                    <div>
+                                        <p className="text-sm font-semibold">WhatsApp no esta listo en este CRM</p>
+                                        <p className="mt-1 text-xs leading-relaxed text-amber-900/80">
+                                            {whatsAppWarningText}
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                     </div>
 
                     <ScrollArea
@@ -2445,6 +2521,19 @@ export default function InboxPage() {
                             ) : (
                                 /* ═══ UNLOCKED: Normal input area ═══ */
                                 <div className="shrink-0 border-t border-border/50 bg-card/72 p-4 backdrop-blur-2xl">
+                                    {shouldShowWhatsAppWarning && (
+                                        <div className="mx-auto mb-3 max-w-[54rem] rounded-[1.35rem] border border-amber-200/80 bg-amber-50/95 px-4 py-3 text-amber-950 shadow-[0_18px_40px_-28px_rgba(217,119,6,0.35)]">
+                                            <div className="flex items-start gap-3">
+                                                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+                                                <div>
+                                                    <p className="text-sm font-semibold">No puedes responder todavia desde este chat</p>
+                                                    <p className="mt-1 text-xs leading-relaxed text-amber-900/80">
+                                                        {whatsAppWarningText}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
                                     {replyingTo && (
                                         <div className="mb-2">
                                             <div className="mx-auto flex max-w-[54rem] items-center gap-2 rounded-t-[1.2rem] border border-b-0 border-border/50 bg-background/75 px-4 py-2 shadow-[0_16px_28px_-24px_rgba(15,23,42,0.35)]">
@@ -2523,23 +2612,24 @@ export default function InboxPage() {
                                                 onChange={handleFileSelect}
                                             />
                                             <div className="flex gap-1 pb-1 pl-1">
-                                                <TemplatePicker templates={templates} onApply={(template) => { void applyTemplate(template); }} disabled={!selectedChat || isUploading} />
+                                                <TemplatePicker templates={templates} onApply={(template) => { void applyTemplate(template); }} disabled={!selectedChat || isUploading || !isWhatsAppTransportReady} />
                                                 <Button variant="ghost" size="icon" className="h-10 w-10 shrink-0 rounded-full border border-transparent text-muted-foreground hover:border-border/50 hover:text-foreground hover:bg-muted/50"
-                                                    onClick={() => fileInputRef.current?.click()} disabled={isUploading} title="Adjuntar archivo">
+                                                    onClick={() => fileInputRef.current?.click()} disabled={isUploading || !isWhatsAppTransportReady} title="Adjuntar archivo">
                                                     {isUploading
                                                         ? <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
                                                         : <Paperclip className="h-5 w-5" />}
                                                 </Button>
                                                 <Button variant="ghost" size="icon" className="h-10 w-10 shrink-0 rounded-full border border-transparent text-muted-foreground hover:border-border/50 hover:text-foreground hover:bg-muted/50"
-                                                    onClick={() => imageInputRef.current?.click()} disabled={isUploading} title="Enviar imagen">
+                                                    onClick={() => imageInputRef.current?.click()} disabled={isUploading || !isWhatsAppTransportReady} title="Enviar imagen">
                                                     <ImageIcon className="h-5 w-5" />
                                                 </Button>
                                             </div>
                                             <div className="mb-1 flex-1 rounded-[1.25rem] border border-transparent bg-muted/20 p-1 transition-all focus-within:border-border/60 focus-within:bg-background/92 focus-within:ring-1 ring-primary/30">
                                                 <Textarea
                                                     rows={1}
-                                                    placeholder={pendingFile ? "Agregar descripción..." : "Escribe un mensaje..."}
+                                                    placeholder={isWhatsAppTransportReady ? (pendingFile ? "Agregar descripción..." : "Escribe un mensaje...") : "Conecta un numero de WhatsApp para responder desde este chat..."}
                                                     className="min-h-[44px] max-h-32 resize-none border-0 bg-transparent px-3 py-3 text-base shadow-none focus-visible:ring-0"
+                                                    disabled={!isWhatsAppTransportReady}
                                                     value={inputText}
                                                     onChange={(e) => setInputText(e.target.value)}
                                                     onPaste={handleComposerPaste}
@@ -2548,11 +2638,11 @@ export default function InboxPage() {
                                             </div>
                                             <div className="pb-1 pr-1 shrink-0">
                                                 {(inputText.trim() || pendingFile) ? (
-                                                    <Button size="icon" className="h-12 w-12 rounded-full animate-in zoom-in-50 duration-200 bg-foreground text-background shadow-[0_20px_45px_-24px_rgba(15,23,42,0.65)] hover:bg-foreground/90" onClick={handleSendMessage}>
+                                                    <Button size="icon" className="h-12 w-12 rounded-full animate-in zoom-in-50 duration-200 bg-foreground text-background shadow-[0_20px_45px_-24px_rgba(15,23,42,0.65)] hover:bg-foreground/90" onClick={handleSendMessage} disabled={!isWhatsAppTransportReady}>
                                                         <Send className="h-5 w-5 ml-0.5" />
                                                     </Button>
                                                 ) : (
-                                                    <Button size="icon" className="h-12 w-12 rounded-full shrink-0 bg-foreground text-background shadow-[0_20px_45px_-24px_rgba(15,23,42,0.65)] hover:bg-foreground/90" onClick={handleMicClick} title="Nota de voz">
+                                                    <Button size="icon" className="h-12 w-12 rounded-full shrink-0 bg-foreground text-background shadow-[0_20px_45px_-24px_rgba(15,23,42,0.65)] hover:bg-foreground/90" onClick={handleMicClick} title="Nota de voz" disabled={!isWhatsAppTransportReady}>
                                                         <Mic className="h-5 w-5" />
                                                     </Button>
                                                 )}

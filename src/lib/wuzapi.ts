@@ -91,6 +91,32 @@ function normalizeBaseUrl(value: string) {
     return value.trim().replace(/\/+$/, "");
 }
 
+function isObjectRecord(value: unknown): value is Record<string, unknown> {
+    return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function normalizeObjectList<T extends object>(payload: unknown): T[] {
+    if (Array.isArray(payload)) {
+        return payload.filter((entry): entry is T => Boolean(entry) && typeof entry === "object");
+    }
+
+    if (!isObjectRecord(payload)) {
+        return [];
+    }
+
+    return Object.values(payload).flatMap((entry) => {
+        if (Array.isArray(entry)) {
+            return entry.filter((item): item is T => Boolean(item) && typeof item === "object");
+        }
+
+        if (entry && typeof entry === "object") {
+            return [entry as T];
+        }
+
+        return [];
+    });
+}
+
 function unwrapResponse<T>(payload: unknown): T {
     if (payload && typeof payload === "object" && "data" in payload) {
         return (payload as { data: T }).data;
@@ -500,9 +526,22 @@ export async function downloadWuzapiMedia(kind: DownloadMediaKind, payload: Down
 }
 
 export async function getWuzapiContacts() {
-    return requestWuzapi<Record<string, WuzapiContactRecord>>("user", "/user/contacts", {
+    const payload = await requestWuzapi<unknown>("user", "/user/contacts", {
         method: "GET",
     });
+
+    if (!isObjectRecord(payload)) {
+        return {};
+    }
+
+    const contactsByJid: Record<string, WuzapiContactRecord> = {};
+    for (const [jid, entry] of Object.entries(payload)) {
+        if (entry && typeof entry === "object" && !Array.isArray(entry)) {
+            contactsByJid[jid] = entry as WuzapiContactRecord;
+        }
+    }
+
+    return contactsByJid;
 }
 
 export async function setWuzapiHistoryLimit(limit: number) {
@@ -557,13 +596,13 @@ export async function requestWuzapiHistorySync(params?: {
 }
 
 export async function getWuzapiHistoryIndex() {
-    const payload = await requestWuzapi<Record<string, WuzapiHistoryIndexRecord[]>>(
+    const payload = await requestWuzapi<unknown>(
         "user",
         "/chat/history?chat_jid=index",
         { method: "GET" },
     );
 
-    return Object.values(payload || {}).flatMap((entries) => entries || []);
+    return normalizeObjectList<WuzapiHistoryIndexRecord>(payload);
 }
 
 export async function getWuzapiChatHistory(chatJid: string, limit = 5000) {
@@ -572,11 +611,13 @@ export async function getWuzapiChatHistory(chatJid: string, limit = 5000) {
         limit: String(Math.max(1, Math.trunc(limit))),
     });
 
-    return requestWuzapi<WuzapiHistoryMessageRecord[]>(
+    const payload = await requestWuzapi<unknown>(
         "user",
         `/chat/history?${searchParams.toString()}`,
         { method: "GET" },
     );
+
+    return normalizeObjectList<WuzapiHistoryMessageRecord>(payload);
 }
 
 export async function ensureWuzapiUserToken() {

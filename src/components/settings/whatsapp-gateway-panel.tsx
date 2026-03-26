@@ -44,7 +44,7 @@ export function WhatsAppGatewayPanel(props: Props) {
     const [historyImportMonths, setHistoryImportMonths] = useState("0");
     const [pendingHistoryImportMonths, setPendingHistoryImportMonths] = useState<number | null>(null);
     const [clearChatsOnDelete, setClearChatsOnDelete] = useState(false);
-    const wasLoggedInRef = useRef(false);
+    const wasReadyRef = useRef(false);
 
     const loadSession = async (includeQr = false) => {
         try {
@@ -114,13 +114,14 @@ export function WhatsAppGatewayPanel(props: Props) {
     }, [toast]);
 
     useEffect(() => {
-        const justLoggedIn = Boolean(session.loggedIn) && !wasLoggedInRef.current;
-        if (justLoggedIn && pendingHistoryImportMonths && !isImportingHistory) {
+        const isSessionReady = Boolean(session.loggedIn && session.connected && session.jid);
+        const justBecameReady = isSessionReady && !wasReadyRef.current;
+        if (justBecameReady && pendingHistoryImportMonths && !isImportingHistory) {
             const monthsToImport = pendingHistoryImportMonths;
             void runHistoryImport(monthsToImport, "connect");
         }
-        wasLoggedInRef.current = Boolean(session.loggedIn);
-    }, [isImportingHistory, pendingHistoryImportMonths, runHistoryImport, session.loggedIn]);
+        wasReadyRef.current = isSessionReady;
+    }, [isImportingHistory, pendingHistoryImportMonths, runHistoryImport, session.connected, session.jid, session.loggedIn]);
 
     const executeAction = async (
         action: "provision" | "connect" | "disconnect" | "logout" | "delete",
@@ -289,7 +290,7 @@ export function WhatsAppGatewayPanel(props: Props) {
                                 <Button
                                     variant="outline"
                                     onClick={() => void runHistoryImport(Number.parseInt(historyImportMonths, 10), "manual")}
-                                    disabled={!session.loggedIn || historyImportMonths === "0" || isImportingHistory || isWorking}
+                                    disabled={!session.loggedIn || !session.connected || !session.jid || historyImportMonths === "0" || isImportingHistory || isWorking}
                                 >
                                     {isImportingHistory ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
                                     Importar ahora

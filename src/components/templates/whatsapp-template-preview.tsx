@@ -91,60 +91,62 @@ export function WhatsAppTemplatePreview({
                 </div>
 
                 <div
-                    className="flex min-h-[488px] flex-col justify-between px-4 pb-4 pt-6"
+                    className="flex h-[36rem] flex-col justify-between px-4 pb-4 pt-6 sm:h-[38rem]"
                     style={{
                         backgroundImage: `${PHONE_WALLPAPER_PATTERN}, linear-gradient(180deg, #efe5d9 0%, #e8ddd1 100%)`,
                         backgroundRepeat: "repeat, no-repeat",
                         backgroundSize: "132px 132px, cover",
                     }}
                 >
-                    <div className="flex flex-1 items-end justify-end pb-6 pt-20">
-                        <div className="w-[88%] rounded-[1.45rem] rounded-br-md bg-white shadow-[0_24px_45px_-30px_rgba(15,23,42,0.24)]">
-                            {type === "image" ? (
-                                <div className="rounded-t-[1.45rem] px-3 pt-3">
-                                    {safeMediaUrl ? (
-                                        <img
-                                            src={safeMediaUrl}
-                                            alt={mediaFileName || "Vista previa"}
-                                            className="h-44 w-full rounded-[1rem] object-cover"
-                                        />
-                                    ) : (
-                                        <div className="flex h-44 w-full items-center justify-center rounded-[1rem] bg-slate-100 text-slate-400">
-                                            <ImageIcon className="h-9 w-9" />
-                                        </div>
-                                    )}
-                                </div>
-                            ) : null}
+                    <div className="flex-1 overflow-y-auto pr-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                        <div className="flex min-h-full flex-col justify-end pb-6 pt-20">
+                            <div className="ml-auto w-[88%] rounded-[1.45rem] rounded-br-md bg-white shadow-[0_24px_45px_-30px_rgba(15,23,42,0.24)]">
+                                {type === "image" ? (
+                                    <div className="rounded-t-[1.45rem] px-3 pt-3">
+                                        {safeMediaUrl ? (
+                                            <img
+                                                src={safeMediaUrl}
+                                                alt={mediaFileName || "Vista previa"}
+                                                className="h-44 w-full rounded-[1rem] object-cover"
+                                            />
+                                        ) : (
+                                            <div className="flex h-44 w-full items-center justify-center rounded-[1rem] bg-slate-100 text-slate-400">
+                                                <ImageIcon className="h-9 w-9" />
+                                            </div>
+                                        )}
+                                    </div>
+                                ) : null}
 
-                            {type === "document" ? (
-                                <div className="px-3 pt-3">
-                                    <div className="flex items-center gap-3 rounded-[1rem] border border-slate-200 bg-slate-50 px-3 py-3">
-                                        <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-sky-50 text-sky-600">
-                                            <FileText className="h-5 w-5" />
-                                        </div>
-                                        <div className="min-w-0 flex-1">
-                                            <p className="truncate text-sm font-semibold text-slate-800">
-                                                {mediaFileName || "Documento adjunto"}
-                                            </p>
-                                            <p className="truncate text-[11px] text-slate-500">
-                                                {mediaType || "application/octet-stream"}
-                                            </p>
+                                {type === "document" ? (
+                                    <div className="px-3 pt-3">
+                                        <div className="flex items-center gap-3 rounded-[1rem] border border-slate-200 bg-slate-50 px-3 py-3">
+                                            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-sky-50 text-sky-600">
+                                                <FileText className="h-5 w-5" />
+                                            </div>
+                                            <div className="min-w-0 flex-1">
+                                                <p className="truncate text-sm font-semibold text-slate-800">
+                                                    {mediaFileName || "Documento adjunto"}
+                                                </p>
+                                                <p className="truncate text-[11px] text-slate-500">
+                                                    {mediaType || "application/octet-stream"}
+                                                </p>
+                                            </div>
                                         </div>
                                     </div>
-                                </div>
-                            ) : null}
+                                ) : null}
 
-                            <div className={cn("px-4 pb-3", type !== "text" ? "pt-3" : "pt-4")}>
-                                {hasText ? (
-                                    <WhatsAppFormattedText
-                                        text={content}
-                                        className="text-[14px] leading-7 text-slate-700"
-                                    />
-                                ) : (
-                                    <p className="text-[13px] text-slate-400">
-                                        {type === "text" ? "Escribe el contenido de tu plantilla..." : "Sin mensaje adicional"}
-                                    </p>
-                                )}
+                                <div className={cn("px-4 pb-3", type !== "text" ? "pt-3" : "pt-4")}>
+                                    {hasText ? (
+                                        <WhatsAppFormattedText
+                                            text={content}
+                                            className="text-[14px] leading-7 text-slate-700"
+                                        />
+                                    ) : (
+                                        <p className="text-[13px] text-slate-400">
+                                            {type === "text" ? "Escribe el contenido de tu plantilla..." : "Sin mensaje adicional"}
+                                        </p>
+                                    )}
+                                </div>
                             </div>
                         </div>
                     </div>
