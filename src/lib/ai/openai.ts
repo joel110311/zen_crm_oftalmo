@@ -75,13 +75,23 @@ async function runGeminiInlineMediaPrompt(
     buffer: Buffer,
     mimeType: string,
 ) {
-    const settings = await prisma.systemSettings.findFirst();
     const apiKey = await resolveAiProviderKey("gemini");
 
     if (!apiKey) {
         throw new Error(
             "Gemini API Key not configured. Guardala en Configuracion > IA o habilita ALLOW_ENV_AI_FALLBACK.",
         );
+    }
+
+    let settings: { openaiModel: string | null } | null = null;
+    try {
+        settings = await prisma.systemSettings.findFirst({
+            select: {
+                openaiModel: true,
+            },
+        });
+    } catch (error) {
+        console.warn("[AI OCR] Could not read stored model selection, using Gemini fallback model:", error);
     }
 
     const selectedModel = resolveChatModelSelection(settings?.openaiModel);

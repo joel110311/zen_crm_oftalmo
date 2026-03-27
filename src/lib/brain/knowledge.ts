@@ -66,7 +66,7 @@ const BOT_USER_AGENT = "ZenCRMBot/1.0 (+https://zen-crm.local)";
 const BROWSER_USER_AGENT =
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36";
 const MAX_PDF_OCR_PAGES = 6;
-const PDF_OCR_RENDER_WIDTH = 1500;
+const PDF_OCR_RENDER_WIDTH = 1200;
 const PDF_PARSE_CJS_PATH = path.join(
     process.cwd(),
     "node_modules",
@@ -176,6 +176,24 @@ function hasMeaningfulPdfText(text: string) {
 
     const wordMatches = normalized.match(/[A-Za-zÁÉÍÓÚÑáéíóúñ0-9]{3,}/g) || [];
     return wordMatches.length >= 6;
+}
+
+function describePdfOcrFailure(error: unknown) {
+    const message = error instanceof Error ? error.message : String(error || "");
+    const normalized = message.toLowerCase();
+
+    if (
+        normalized.includes("api key not configured") ||
+        normalized.includes("systemsettings.findfirst") ||
+        normalized.includes("econnrefused") ||
+        normalized.includes("resolveaiproviderkey") ||
+        normalized.includes("gemini api error") ||
+        normalized.includes("openai")
+    ) {
+        return "El PDF parece estar escaneado y para leerlo necesito OCR activo. Revisa las claves de OpenAI o Gemini en Configuracion > IA y vuelve a intentarlo.";
+    }
+
+    return "El PDF no trae texto seleccionable y no pude completar el OCR de forma segura.";
 }
 
 function asMetadataRecord(metadata: unknown) {
@@ -347,24 +365,33 @@ async function extractPdfViaOcr(
     });
 
     const pageTexts: string[] = [];
+    const ocrErrors: string[] = [];
 
     for (const page of screenshots.pages) {
-        const ocrText = await extractTextFromImageBufferWithFallback(
-            Buffer.from(page.data),
-            "image/png",
-            [
-                `Esta es la pagina ${page.pageNumber} de un documento PDF.`,
-                "Extrae en espanol todo el texto visible y util.",
-                "Conserva encabezados, precio, ubicacion, caracteristicas, descripcion, datos de contacto y listas.",
-                "No inventes texto faltante. Si algo no se lee bien, deja fuera lo ilegible.",
-                "Devuelve solo el contenido extraido, limpio y listo para indexarse.",
-            ].join(" "),
-        );
+        try {
+            const ocrText = await extractTextFromImageBufferWithFallback(
+                Buffer.from(page.data),
+                "image/png",
+                [
+                    `Esta es la pagina ${page.pageNumber} de un documento PDF.`,
+                    "Extrae en espanol todo el texto visible y util.",
+                    "Conserva encabezados, precio, ubicacion, caracteristicas, descripcion, datos de contacto y listas.",
+                    "No inventes texto faltante. Si algo no se lee bien, deja fuera lo ilegible.",
+                    "Devuelve solo el contenido extraido, limpio y listo para indexarse.",
+                ].join(" "),
+            );
 
-        const cleanedText = trimContent(ocrText);
-        if (cleanedText) {
-            pageTexts.push(`[PAGINA ${page.pageNumber}]\n${cleanedText}`);
+            const cleanedText = trimContent(ocrText);
+            if (cleanedText) {
+                pageTexts.push(`[PAGINA ${page.pageNumber}]\n${cleanedText}`);
+            }
+        } catch (error) {
+            ocrErrors.push(describePdfOcrFailure(error));
         }
+    }
+
+    if (pageTexts.length === 0 && ocrErrors.length > 0) {
+        throw new Error(ocrErrors[0]);
     }
 
     return trimContent(pageTexts.join("\n\n"));
@@ -390,7 +417,13 @@ async function extractPdf(buffer: Buffer) {
             // Best effort only.
         }
 
-        const ocrText = await extractPdfViaOcr(parser, totalPagesHint);
+        let ocrText = "";
+        try {
+            ocrText = await extractPdfViaOcr(parser, totalPagesHint);
+        } catch (error) {
+            throw new Error(describePdfOcrFailure(error));
+        }
+
         if (hasMeaningfulPdfText(ocrText)) {
             return ocrText;
         }

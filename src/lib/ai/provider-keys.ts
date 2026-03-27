@@ -11,12 +11,24 @@ export function allowEnvironmentAiFallback() {
 }
 
 export async function resolveAiProviderKey(provider: "openai" | "gemini") {
-    const settings = await prisma.systemSettings.findFirst({
-        select: {
-            openaiApiKey: true,
-            geminiApiKey: true,
-        },
-    });
+    let settings:
+        | {
+            openaiApiKey: string | null;
+            geminiApiKey: string | null;
+        }
+        | null
+        = null;
+
+    try {
+        settings = await prisma.systemSettings.findFirst({
+            select: {
+                openaiApiKey: true,
+                geminiApiKey: true,
+            },
+        });
+    } catch (error) {
+        console.warn("[AI] Could not read stored provider keys, trying env fallback:", error);
+    }
 
     const storedKey =
         provider === "openai"

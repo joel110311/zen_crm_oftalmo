@@ -46,6 +46,20 @@ function sanitizeSourceMetadata(metadata?: Record<string, unknown>) {
     return Object.fromEntries(cleanedEntries) as Prisma.InputJsonValue;
 }
 
+function toKnowledgeActionErrorMessage(error: unknown) {
+    const message = error instanceof Error ? error.message : "No se pudo procesar la fuente.";
+
+    if (
+        message.includes("systemSettings.findFirst") ||
+        message.includes("ECONNREFUSED") ||
+        message.includes("API Key not configured")
+    ) {
+        return "El archivo parece requerir OCR para poder leerse. Revisa en Configuracion > IA que haya una clave valida de OpenAI o Gemini y vuelve a intentarlo.";
+    }
+
+    return message;
+}
+
 export async function getKnowledgeSources() {
     try {
         return await prisma.knowledgeSource.findMany({
@@ -91,7 +105,7 @@ export async function createKnowledgeSource(input: CreateKnowledgeSourceInput) {
     } catch (error) {
         return {
             success: false,
-            error: error instanceof Error ? error.message : "No se pudo crear la fuente.",
+            error: toKnowledgeActionErrorMessage(error),
         };
     }
 }
@@ -136,7 +150,7 @@ export async function uploadKnowledgeFile(formData: FormData) {
     } catch (error) {
         return {
             success: false,
-            error: error instanceof Error ? error.message : "No se pudo procesar el archivo.",
+            error: toKnowledgeActionErrorMessage(error),
         };
     }
 }
@@ -149,7 +163,7 @@ export async function reindexKnowledgeSource(sourceId: string) {
     } catch (error) {
         return {
             success: false,
-            error: error instanceof Error ? error.message : "No se pudo reindexar.",
+            error: toKnowledgeActionErrorMessage(error),
         };
     }
 }
@@ -164,7 +178,7 @@ export async function deleteKnowledgeSource(sourceId: string) {
     } catch (error) {
         return {
             success: false,
-            error: error instanceof Error ? error.message : "No se pudo eliminar la fuente.",
+            error: toKnowledgeActionErrorMessage(error),
         };
     }
 }
