@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useTransition } from "react";
-import { Download, FileSpreadsheet, Images, Loader2, RefreshCw, Trash2, Upload } from "lucide-react";
+import { Download, FileSpreadsheet, Images, KeyRound, Loader2, RefreshCw, Trash2, Upload } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -10,9 +10,11 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import {
+    autofillCatalogEntryFromUrl,
     createCatalogEntry,
     deleteCatalogEntries,
     getCatalogEntries,
+    importCatalogFromProtectedSource,
     uploadCatalogCsv,
 } from "@/app/actions/catalog";
 import { useToast } from "@/components/ui/use-toast";
@@ -34,6 +36,15 @@ type CatalogEntry = {
 export function CatalogBase() {
     const [entries, setEntries] = useState<CatalogEntry[]>([]);
     const [isPending, startTransition] = useTransition();
+    const [autofillUrl, setAutofillUrl] = useState("");
+    const [protectedImport, setProtectedImport] = useState({
+        indexUrl: "",
+        urlFilterText: "",
+        maxItems: "12",
+        authorizationHeader: "",
+        cookieHeader: "",
+        refererUrl: "",
+    });
     const [manualEntry, setManualEntry] = useState({
         externalId: "",
         development: "",
@@ -70,6 +81,7 @@ export function CatalogBase() {
             linkUrl: "",
             isActive: true,
         });
+        setAutofillUrl("");
     };
 
     const updateManualEntry = (
@@ -77,6 +89,16 @@ export function CatalogBase() {
         value: string | boolean,
     ) => {
         setManualEntry((current) => ({
+            ...current,
+            [key]: value,
+        }));
+    };
+
+    const updateProtectedImport = (
+        key: keyof typeof protectedImport,
+        value: string,
+    ) => {
+        setProtectedImport((current) => ({
             ...current,
             [key]: value,
         }));
@@ -143,6 +165,64 @@ export function CatalogBase() {
         });
     };
 
+    const handleProtectedImport = () => {
+        startTransition(async () => {
+            const result = await importCatalogFromProtectedSource({
+                indexUrl: protectedImport.indexUrl.trim(),
+                urlFilterText: protectedImport.urlFilterText.trim() || undefined,
+                maxItems: Number(protectedImport.maxItems) || 12,
+                authorizationHeader: protectedImport.authorizationHeader.trim() || undefined,
+                cookieHeader: protectedImport.cookieHeader.trim() || undefined,
+                refererUrl: protectedImport.refererUrl.trim() || undefined,
+            });
+
+            if (result.success && "discoveredCount" in result) {
+                toast({
+                    title: "Catalogo importado desde sesion protegida",
+                    description: `Se detectaron ${result.discoveredCount} ligas, se importaron ${result.importedCount} fichas y fallaron ${result.failedCount}.`,
+                });
+                loadEntries();
+            } else {
+                toast({
+                    title: "No se pudo importar desde la fuente protegida",
+                    description: result.error,
+                    variant: "destructive",
+                });
+            }
+        });
+    };
+
+    const handleAutofillFromUrl = () => {
+        startTransition(async () => {
+            const result = await autofillCatalogEntryFromUrl(autofillUrl.trim());
+
+            if (result.success && result.preview) {
+                setManualEntry((current) => ({
+                    ...current,
+                    externalId: result.preview.externalId || current.externalId,
+                    development: result.preview.development || current.development,
+                    location: result.preview.location || current.location,
+                    question: result.preview.question || current.question,
+                    answer: result.preview.answer || current.answer,
+                    imageUrls: result.preview.imageUrls.join("\n"),
+                    pdfUrl: result.preview.pdfUrl || "",
+                    linkUrl: result.preview.linkUrl || current.linkUrl,
+                }));
+                setAutofillUrl(result.preview.linkUrl || autofillUrl);
+                toast({
+                    title: "Ficha detectada",
+                    description: `Se cargaron ${result.preview.imageUrls.length} imagenes detectadas desde la URL. Revisa y ajusta antes de guardar.`,
+                });
+            } else {
+                toast({
+                    title: "No se pudo detectar la ficha",
+                    description: result.error,
+                    variant: "destructive",
+                });
+            }
+        });
+    };
+
     const handleClear = () => {
         startTransition(async () => {
             const result = await deleteCatalogEntries();
@@ -180,7 +260,7 @@ export function CatalogBase() {
                         Catalogo con assets
                     </CardTitle>
                     <CardDescription>
-                        Importa un CSV estructurado o crea fichas individuales para que el bot responda por desarrollo, direccion o producto y ofrezca imagenes o PDF cuando existan.
+                        Importa un CSV estructurado, detecta fichas desde una URL o trae varias desde una sesion protegida para que el bot responda por desarrollo, direccion o producto y ofrezca imagenes o PDF cuando existan.
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
@@ -203,10 +283,124 @@ export function CatalogBase() {
                     </div>
 
                     <div className="space-y-4 rounded-xl border bg-background p-4">
+                        <div className="flex items-start gap-3">
+                            <div className="mt-0.5 rounded-lg bg-primary/10 p-2 text-primary">
+                                <KeyRound className="h-4 w-4" />
+                            </div>
+                            <div>
+                                <p className="text-sm font-medium text-foreground">Importar desde cuenta o listado protegido</p>
+                                <p className="mt-1 text-xs text-muted-foreground">
+                                    Sirve para portales que te muestran login o bloquean al servidor. Puedes pegar una URL indice o incluso una ficha individual, junto con cookie, Authorization y Referer si hacen falta. La sesion se usa solo para esta importacion y no se guarda.
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label>URL de origen protegida</Label>
+                            <Input
+                                value={protectedImport.indexUrl}
+                                onChange={(event) => updateProtectedImport("indexUrl", event.target.value)}
+                                placeholder="https://www.zonaprop.com.ar/... o https://www.argenprop.com/..."
+                            />
+                        </div>
+
+                        <div className="grid gap-3 sm:grid-cols-2">
+                            <div className="space-y-2">
+                                <Label>Filtro opcional</Label>
+                                <Input
+                                    value={protectedImport.urlFilterText}
+                                    onChange={(event) => updateProtectedImport("urlFilterText", event.target.value)}
+                                    placeholder="slug, zona, id o texto de referencia"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Maximo de fichas</Label>
+                                <Input
+                                    type="number"
+                                    min={1}
+                                    max={30}
+                                    value={protectedImport.maxItems}
+                                    onChange={(event) => updateProtectedImport("maxItems", event.target.value)}
+                                />
+                            </div>
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label>Header Authorization opcional</Label>
+                            <Input
+                                value={protectedImport.authorizationHeader}
+                                onChange={(event) => updateProtectedImport("authorizationHeader", event.target.value)}
+                                placeholder="Bearer xxxx o Basic xxxxx"
+                            />
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label>Cookies de sesion</Label>
+                            <Textarea
+                                value={protectedImport.cookieHeader}
+                                onChange={(event) => updateProtectedImport("cookieHeader", event.target.value)}
+                                placeholder="cookie_a=valor; cookie_b=valor"
+                                className="min-h-[88px]"
+                            />
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label>Referer opcional</Label>
+                            <Input
+                                value={protectedImport.refererUrl}
+                                onChange={(event) => updateProtectedImport("refererUrl", event.target.value)}
+                                placeholder="https://dominio.com/login"
+                            />
+                        </div>
+
+                        <Button
+                            type="button"
+                            variant="outline"
+                            onClick={handleProtectedImport}
+                            disabled={isPending || !protectedImport.indexUrl.trim()}
+                        >
+                            {isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                            Importar desde fuente protegida
+                        </Button>
+
+                        <div className="rounded-xl border bg-muted/20 p-3 text-xs text-muted-foreground space-y-2">
+                            <p>
+                                Para sitios como Zonaprop o Argenprop, lo mas estable es abrir la cuenta en tu navegador, iniciar sesion ahi y pegar una cookie de sesion activa.
+                            </p>
+                            <p>
+                                Si la URL de origen ya es una ficha individual, tambien funciona: la toma como punto de partida y la importa sin borrar las demas fichas del catalogo.
+                            </p>
+                        </div>
+                    </div>
+
+                    <div className="space-y-4 rounded-xl border bg-background p-4">
                         <div>
                             <p className="text-sm font-medium text-foreground">O crear una ficha individual</p>
                             <p className="mt-1 text-xs text-muted-foreground">
-                                Ideal para propiedades o productos puntuales, incluso si la pagina original tiene 403. La ubicacion puede ser una direccion exacta, por ejemplo: Santo Tome al 5400, Monte Castro, Capital Federal.
+                                Ideal para propiedades o productos puntuales. Puedes intentar autocompletar desde URL y luego corregir la ficha antes de guardarla. Si la pagina original tiene 403, sigue sirviendo la carga manual.
+                            </p>
+                        </div>
+
+                        <div className="space-y-3 rounded-xl border bg-muted/20 p-3">
+                            <div className="space-y-2">
+                                <Label>URL de origen</Label>
+                                <Input
+                                    value={autofillUrl}
+                                    onChange={(event) => setAutofillUrl(event.target.value)}
+                                    placeholder="https://dominio.com/propiedad"
+                                />
+                            </div>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                onClick={handleAutofillFromUrl}
+                                disabled={isPending || !autofillUrl.trim()}
+                            >
+                                {isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                                Detectar desde URL
+                            </Button>
+                            <p className="text-xs text-muted-foreground">
+                                Intentara llenar nombre, direccion, resumen, imagenes y la liga final. Si el sitio bloquea el acceso del servidor, te lo avisara sin romper la ficha.
                             </p>
                         </div>
 

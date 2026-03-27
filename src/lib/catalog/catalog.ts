@@ -29,6 +29,40 @@ export type CatalogManualEntryInput = {
     isActive?: boolean;
 };
 
+export type CatalogUrlPreview = {
+    externalId: string;
+    development: string;
+    location: string | null;
+    question: string;
+    answer: string;
+    imageUrls: string[];
+    pdfUrl: string | null;
+    linkUrl: string;
+};
+
+export type CatalogFetchOptions = {
+    requestMode?: "standard" | "browser";
+    authorizationHeader?: string | null;
+    cookieHeader?: string | null;
+    refererUrl?: string | null;
+};
+
+export type CatalogBulkImportInput = CatalogFetchOptions & {
+    indexUrl: string;
+    urlFilterText?: string | null;
+    maxItems?: number;
+};
+
+export type CatalogBulkImportResult = {
+    importedCount: number;
+    assetCount: number;
+    discoveredCount: number;
+    processedCount: number;
+    failedCount: number;
+    duplicateCount: number;
+    failedUrls: string[];
+};
+
 type CatalogSearchResult = {
     id: string;
     externalId: string;
@@ -63,6 +97,11 @@ const MAX_IMPORT_IMAGES = 10;
 const MAX_CATALOG_MATCHES = 3;
 const MIN_VECTOR_SIMILARITY = 0.62;
 const MAX_AVAILABILITY_SUMMARY_ITEMS = 8;
+const DEFAULT_CATALOG_BULK_IMPORT_ITEMS = 12;
+const MAX_CATALOG_BULK_IMPORT_ITEMS = 30;
+const CATALOG_BOT_USER_AGENT = "ZenCRMCatalog/1.0 (+https://zen-crm.local)";
+const CATALOG_BROWSER_USER_AGENT =
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36";
 const CATALOG_QUERY_STOPWORDS = new Set([
     "a", "ahi", "alli", "algun", "alguna", "algunas", "algunos", "ando", "asi", "ayuda",
     "busca", "buscar", "como", "con", "cual", "cuales", "de", "del", "dime", "donde",
@@ -113,6 +152,33 @@ function normalizeHeader(value: string) {
 
 function normalizeCell(value: string | undefined) {
     return (value || "").trim();
+}
+
+function sanitizeOptionalCatalogString(value: string | null | undefined) {
+    const normalized = normalizeCell(value || "");
+    return normalized || undefined;
+}
+
+function clampCatalogInteger(value: number | undefined, fallback: number, minimum: number, maximum: number) {
+    const normalized = Number.isFinite(value) ? Math.trunc(value as number) : fallback;
+    return Math.min(maximum, Math.max(minimum, normalized));
+}
+
+function normalizeCatalogFetchOptions(options?: CatalogFetchOptions): Required<CatalogFetchOptions> {
+    return {
+        requestMode: options?.requestMode === "browser" ? "browser" : "standard",
+        authorizationHeader: sanitizeOptionalCatalogString(options?.authorizationHeader) || "",
+        cookieHeader: sanitizeOptionalCatalogString(options?.cookieHeader) || "",
+        refererUrl: sanitizeOptionalCatalogString(options?.refererUrl) || "",
+    };
+}
+
+function normalizeMultilineCatalogText(value: string) {
+    return (value || "")
+        .replace(/\r/g, "\n")
+        .replace(/[ \t]+\n/g, "\n")
+        .replace(/\n{3,}/g, "\n\n")
+        .trim();
 }
 
 function sanitizeUrlList(urls: string[] | undefined) {
@@ -537,6 +603,158 @@ function buildCatalogExternalId(parts: Array<string | null | undefined>) {
     return normalized || `catalog_${Date.now()}`;
 }
 
+function dedupeCatalogStrings(values: string[]) {
+    const seen = new Set<string>();
+    const unique: string[] = [];
+
+    for (const value of values) {
+        const trimmed = normalizeCell(value);
+        if (!trimmed) continue;
+        const key = normalizeSearchText(trimmed);
+        if (!key || seen.has(key)) continue;
+        seen.add(key);
+        unique.push(trimmed);
+    }
+
+    return unique;
+}
+
+function toAbsoluteCatalogUrl(baseUrl: string, maybeRelativeUrl: string) {
+    try {
+        return new URL(maybeRelativeUrl, baseUrl).toString();
+    } catch {
+        return null;
+    }
+}
+
+function isLikelyDecorativeAsset(url: string, hint = "") {
+    const normalized = `${url} ${hint}`.toLowerCase();
+    return /logo|icon|avatar|favicon|sprite|placeholder|googlemaps|whatsapp|instagram|facebook/.test(normalized);
+}
+
+function collectJsonLdNodes(source: unknown, bucket: Array<Record<string, unknown>> = []) {
+    if (!source) {
+        return bucket;
+    }
+
+    if (Array.isArray(source)) {
+        for (const item of source) {
+            collectJsonLdNodes(item, bucket);
+        }
+        return bucket;
+    }
+
+    if (typeof source === "object") {
+        const record = source as Record<string, unknown>;
+        bucket.push(record);
+
+        if (record["@graph"]) {
+            collectJsonLdNodes(record["@graph"], bucket);
+        }
+    }
+
+    return bucket;
+}
+
+function extractJsonLdImageUrls(
+    nodes: Array<Record<string, unknown>>,
+    baseUrl: string,
+) {
+    const urls: string[] = [];
+    const pushUrl = (value: unknown) => {
+        if (typeof value === "string") {
+            const absolute = toAbsoluteCatalogUrl(baseUrl, value);
+            if (absolute && !isLikelyDecorativeAsset(absolute)) {
+                urls.push(absolute);
+            }
+            return;
+        }
+
+        if (Array.isArray(value)) {
+            for (const item of value) {
+                pushUrl(item);
+            }
+            return;
+        }
+
+        if (value && typeof value === "object") {
+            const record = value as Record<string, unknown>;
+            pushUrl(record.url);
+            pushUrl(record.contentUrl);
+            pushUrl(record.embedUrl);
+        }
+    };
+
+    for (const node of nodes) {
+        pushUrl(node.image);
+        pushUrl(node.images);
+        pushUrl(node.photo);
+        pushUrl(node.photos);
+        pushUrl(node.associatedMedia);
+    }
+
+    return dedupeCatalogStrings(urls).slice(0, MAX_IMPORT_IMAGES);
+}
+
+function extractJsonLdLocation(nodes: Array<Record<string, unknown>>) {
+    const collectAddress = (value: unknown): string | null => {
+        if (typeof value === "string") {
+            return normalizeCell(value) || null;
+        }
+
+        if (!value || typeof value !== "object") {
+            return null;
+        }
+
+        const record = value as Record<string, unknown>;
+        const parts = [
+            record.streetAddress,
+            record.addressLocality,
+            record.addressRegion,
+            record.addressCountry,
+        ]
+            .map((part) => (typeof part === "string" ? normalizeCell(part) : ""))
+            .filter(Boolean);
+
+        if (parts.length > 0) {
+            return parts.join(", ");
+        }
+
+        return typeof record.name === "string" ? normalizeCell(record.name) || null : null;
+    };
+
+    for (const node of nodes) {
+        const directAddress = collectAddress(node.address);
+        if (directAddress) return directAddress;
+
+        const directLocation = collectAddress(node.location);
+        if (directLocation) return directLocation;
+    }
+
+    return null;
+}
+
+function cleanCatalogPageTitle(title: string) {
+    const segments = title
+        .split(/\s+[|\-–]\s+/)
+        .map((segment) => normalizeCell(segment))
+        .filter(Boolean);
+
+    return segments[0] || normalizeCell(title);
+}
+
+function extractBodyLocationCandidate(text: string) {
+    const lines = normalizeMultilineCatalogText(text)
+        .split("\n")
+        .map((line) => normalizeCell(line))
+        .filter(Boolean);
+
+    return (
+        lines.find((line) => /\b\d{3,5}\b/.test(line) && line.includes(",") && line.length <= 180) ||
+        null
+    );
+}
+
 function buildCatalogAssets(params: {
     imageUrls: string[];
     pdfUrl?: string | null;
@@ -580,6 +798,368 @@ function buildCatalogAssets(params: {
     }
 
     return assets;
+}
+
+function buildCatalogRequestHeaders(options?: CatalogFetchOptions) {
+    const normalizedOptions = normalizeCatalogFetchOptions(options);
+    const headers = new Headers();
+    const isBrowserMode = normalizedOptions.requestMode === "browser";
+
+    headers.set("User-Agent", isBrowserMode ? CATALOG_BROWSER_USER_AGENT : CATALOG_BOT_USER_AGENT);
+    headers.set(
+        "Accept",
+        isBrowserMode
+            ? "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8"
+            : "*/*",
+    );
+    headers.set("Accept-Language", "es-AR,es;q=0.9,es-MX;q=0.8,en;q=0.7");
+    headers.set("Cache-Control", "no-cache");
+
+    if (isBrowserMode) {
+        headers.set("Pragma", "no-cache");
+        headers.set("Upgrade-Insecure-Requests", "1");
+    }
+
+    if (normalizedOptions.authorizationHeader) {
+        headers.set("Authorization", normalizedOptions.authorizationHeader);
+    }
+
+    if (normalizedOptions.cookieHeader) {
+        headers.set("Cookie", normalizedOptions.cookieHeader);
+    }
+
+    if (normalizedOptions.refererUrl) {
+        headers.set("Referer", normalizedOptions.refererUrl);
+    }
+
+    return headers;
+}
+
+async function fetchCatalogResponse(url: string, options?: CatalogFetchOptions) {
+    return fetch(url, {
+        headers: buildCatalogRequestHeaders(options),
+        cache: "no-store",
+    });
+}
+
+function buildCatalogFetchErrorMessage(status: number, options?: CatalogFetchOptions) {
+    const normalizedOptions = normalizeCatalogFetchOptions(options);
+
+    if (status === 403) {
+        return normalizedOptions.cookieHeader || normalizedOptions.authorizationHeader
+            ? "La pagina devolvio 403 incluso con la sesion proporcionada. Revisa que la cookie siga vigente o usa otra URL de origen."
+            : "La pagina devolvio 403 y no se pudo leer automaticamente. Ese sitio parece bloquear el acceso del servidor; para sitios privados prueba con cookie de sesion o sigue usando la ficha manual.";
+    }
+
+    if (status === 401) {
+        return "La pagina pidio autenticacion. Prueba con una cookie de sesion valida o con un header Authorization.";
+    }
+
+    return `No pude leer la URL (${status}).`;
+}
+
+function looksLikeCatalogLoginPage(pageText: string) {
+    const normalized = normalizeSearchText(pageText);
+    if (!normalized) {
+        return false;
+    }
+
+    const score = [
+        "iniciar sesion",
+        "inicia sesion",
+        "ingresa tu e mail",
+        "email",
+        "contrasena",
+        "continuar con google",
+        "acceder con google",
+        "continuar con facebook",
+        "continuar con apple",
+        "crear una cuenta",
+        "ingresar",
+        "olvidaste tu contrasena",
+        "no estas registrado",
+    ].reduce((sum, hint) => sum + (normalized.includes(hint) ? 1 : 0), 0);
+
+    return score >= 2;
+}
+
+function normalizeCatalogHost(hostname: string) {
+    return hostname.trim().toLowerCase().replace(/^www\./, "");
+}
+
+function scoreCatalogCandidateUrl(url: string, label: string, filterText: string) {
+    const normalizedUrl = url.toLowerCase();
+    const normalizedLabel = normalizeSearchText(label);
+    const normalizedFilter = normalizeSearchText(filterText);
+
+    if (!/^https?:\/\//.test(normalizedUrl)) {
+        return -1;
+    }
+
+    if (/\.(?:avif|css|gif|ico|jpeg|jpg|js|json|pdf|png|svg|txt|webp|xml)(?:[?#]|$)/i.test(normalizedUrl)) {
+        return -1;
+    }
+
+    if (/\/(auth|ingresar|login|registro|signup|account|cuenta|favorito|favoritos|notificacion|contacto|servicio|nosotros|blog|noticia)(?:[/?#]|$)/i.test(normalizedUrl)) {
+        return -1;
+    }
+
+    let score = 0;
+    if (/\/(propiedades|property|producto|products|catalogo|listing|desarrollo|desarrollos|inmueble|clasificado)(?:[/?#]|$)/i.test(normalizedUrl)) {
+        score += 8;
+    }
+    if (/\.html(?:[?#]|$)/i.test(normalizedUrl)) {
+        score += 4;
+    }
+    if (/--\d{5,}(?:[?#]|$)/i.test(normalizedUrl)) {
+        score += 6;
+    }
+    if (/\b(casa|departamento|depto|oficina|local|galpon|deposito|terreno|lote|ph)\b/i.test(normalizedUrl)) {
+        score += 2;
+    }
+    if (normalizedLabel.length >= 8) {
+        score += 1;
+    }
+    if (normalizedFilter) {
+        if (normalizedUrl.includes(normalizedFilter) || normalizedLabel.includes(normalizedFilter)) {
+            score += 10;
+        } else {
+            score -= 1;
+        }
+    }
+
+    return score;
+}
+
+async function extractCatalogCandidateUrlsFromIndex(
+    indexUrl: string,
+    html: string,
+    filterText: string,
+) {
+    const parsedIndexUrl = new URL(indexUrl);
+    const cheerio = await import("cheerio");
+    const $ = cheerio.load(html);
+    const baseHost = normalizeCatalogHost(parsedIndexUrl.hostname);
+    const discovered = new Map<string, { url: string; score: number }>();
+
+    $("a[href]").each((_, element) => {
+        const elementRef = $(element);
+        const href = elementRef.attr("href");
+        if (!href) {
+            return;
+        }
+
+        const absoluteUrl = toAbsoluteCatalogUrl(parsedIndexUrl.toString(), href);
+        if (!absoluteUrl) {
+            return;
+        }
+
+        let parsedCandidateUrl: URL;
+        try {
+            parsedCandidateUrl = new URL(absoluteUrl);
+        } catch {
+            return;
+        }
+
+        if (normalizeCatalogHost(parsedCandidateUrl.hostname) !== baseHost) {
+            return;
+        }
+
+        const label = normalizeMultilineCatalogText(elementRef.text());
+        const score = scoreCatalogCandidateUrl(absoluteUrl, label, filterText);
+        if (score <= 0) {
+            return;
+        }
+
+        const current = discovered.get(absoluteUrl);
+        if (!current || score > current.score) {
+            discovered.set(absoluteUrl, {
+                url: absoluteUrl,
+                score,
+            });
+        }
+    });
+
+    const directPageScore = Math.max(scoreCatalogCandidateUrl(indexUrl, "", filterText), 1);
+    if (!discovered.has(indexUrl)) {
+        discovered.set(indexUrl, {
+            url: indexUrl,
+            score: directPageScore,
+        });
+    }
+
+    return [...discovered.values()]
+        .sort((left, right) => {
+            if (right.score !== left.score) return right.score - left.score;
+            return left.url.localeCompare(right.url, "es", { sensitivity: "base" });
+        })
+        .map((item) => item.url);
+}
+
+function buildCatalogRowFromPreview(preview: CatalogUrlPreview): CatalogImportRow {
+    return {
+        externalId: normalizeCell(preview.externalId),
+        development: normalizeCell(preview.development),
+        location: normalizeCell(preview.location || "") || null,
+        question: normalizeCell(preview.question),
+        answer: normalizeCell(preview.answer),
+        searchableText: buildSearchableText({
+            development: preview.development,
+            location: preview.location,
+            question: preview.question,
+            answer: preview.answer,
+        }),
+        isActive: true,
+        assets: buildCatalogAssets({
+            imageUrls: preview.imageUrls,
+            pdfUrl: preview.pdfUrl,
+            linkUrl: preview.linkUrl,
+        }),
+    };
+}
+
+export async function previewCatalogEntryFromUrl(
+    url: string,
+    options?: CatalogFetchOptions,
+): Promise<CatalogUrlPreview> {
+    const normalizedUrl = normalizeCell(url);
+    if (!normalizedUrl) {
+        throw new Error("Necesitas escribir una URL para autocompletar la ficha.");
+    }
+
+    let parsedUrl: URL;
+    try {
+        parsedUrl = new URL(normalizedUrl);
+    } catch {
+        throw new Error("La URL de la ficha no es valida.");
+    }
+
+    const response = await fetchCatalogResponse(parsedUrl.toString(), options);
+
+    if (!response.ok) {
+        throw new Error(buildCatalogFetchErrorMessage(response.status, options));
+    }
+
+    const contentType = response.headers.get("content-type") || "";
+    if (!contentType.includes("text/html")) {
+        throw new Error("La URL no devolvio una pagina HTML compatible para autocompletar la ficha.");
+    }
+
+    const html = await response.text();
+    const cheerio = await import("cheerio");
+    const $ = cheerio.load(html);
+    $("script:not([type='application/ld+json']), style, noscript, iframe, svg").remove();
+
+    if (looksLikeCatalogLoginPage($("body").text().trim())) {
+        throw new Error(
+            "La URL devolvio una pantalla de login en lugar de la ficha. Abre el sitio en tu navegador, copia una cookie de sesion activa y vuelve a intentarlo desde el importador protegido.",
+        );
+    }
+
+    const jsonLdNodes = $("script[type='application/ld+json']")
+        .map((_, element) => $(element).text())
+        .get()
+        .flatMap((raw) => {
+            try {
+                return collectJsonLdNodes(JSON.parse(raw));
+            } catch {
+                return [];
+            }
+        });
+
+    const rawTitle =
+        $('meta[property="og:title"]').attr("content")?.trim() ||
+        $("h1").first().text().trim() ||
+        $("title").first().text().trim() ||
+        "";
+    const jsonLdName =
+        jsonLdNodes.find((node) => typeof node.name === "string")?.name as string | undefined;
+    const development = cleanCatalogPageTitle(jsonLdName || rawTitle || parsedUrl.pathname.split("/").pop() || "Ficha web");
+
+    const rawDescription =
+        $('meta[property="og:description"]').attr("content")?.trim() ||
+        $('meta[name="description"]').attr("content")?.trim() ||
+        (jsonLdNodes.find((node) => typeof node.description === "string")?.description as string | undefined) ||
+        "";
+
+    const paragraphCandidates = dedupeCatalogStrings(
+        $("main p, article p, section p, main li, article li, section li")
+            .map((_, element) => $(element).text())
+            .get()
+            .map((value) => normalizeMultilineCatalogText(value))
+            .filter((value) => value.length >= 25 && value.length <= 260)
+            .filter((value) => !/\bleer mas\b|\bagotado\b/i.test(normalizeSearchText(value))),
+    );
+
+    const description = rawDescription || paragraphCandidates[0] || "";
+    const highlights = paragraphCandidates
+        .filter((item) => normalizeSearchText(item) !== normalizeSearchText(description))
+        .slice(0, 10);
+
+    const htmlImages = dedupeCatalogStrings(
+        $("main img[src], article img[src], img[src]")
+            .map((_, element) => {
+                const elementRef = $(element);
+                const src = elementRef.attr("src") || elementRef.attr("data-src") || "";
+                const alt = elementRef.attr("alt") || "";
+                const className = elementRef.attr("class") || "";
+                const absolute = src ? toAbsoluteCatalogUrl(parsedUrl.toString(), src) : null;
+                if (!absolute || isLikelyDecorativeAsset(absolute, `${alt} ${className}`)) {
+                    return "";
+                }
+                return absolute;
+            })
+            .get()
+            .filter(Boolean),
+    );
+
+    const imageUrls = dedupeCatalogStrings([
+        ...extractJsonLdImageUrls(jsonLdNodes, parsedUrl.toString()),
+        ...htmlImages,
+    ]).slice(0, MAX_IMPORT_IMAGES);
+
+    const pdfUrl = (() => {
+        const href = $("a[href$='.pdf'], a[href*='.pdf?']").first().attr("href");
+        if (!href) return null;
+        return toAbsoluteCatalogUrl(parsedUrl.toString(), href);
+    })();
+
+    const location =
+        extractJsonLdLocation(jsonLdNodes) ||
+        extractBodyLocationCandidate(
+            $("main").first().text().trim() || $("article").first().text().trim() || $("body").text().trim(),
+        ) ||
+        null;
+
+    const answer = normalizeMultilineCatalogText(
+        [
+            description,
+            highlights.length > 0
+                ? ["Datos destacados:", ...highlights.map((item) => `- ${item}`)].join("\n")
+                : "",
+        ]
+            .filter(Boolean)
+            .join("\n\n"),
+    );
+
+    if (!development || !answer) {
+        throw new Error("No encontre suficiente informacion util para autocompletar la ficha desde esa URL.");
+    }
+
+    const subject = location || development;
+    return {
+        externalId: buildCatalogExternalId([
+            parsedUrl.pathname.split("/").filter(Boolean).pop()?.replace(/\.[a-z0-9]+$/i, ""),
+            development,
+        ]),
+        development,
+        location,
+        question: `Que informacion tienes de ${subject}?`,
+        answer,
+        imageUrls,
+        pdfUrl,
+        linkUrl: parsedUrl.toString(),
+    };
 }
 
 function mapCsvRows(source: string) {
@@ -670,7 +1250,14 @@ function deduplicateImportRows(rows: CatalogImportRow[]): DeduplicatedCatalogRow
     };
 }
 
-async function upsertCatalogRows(rows: CatalogImportRow[]) {
+type UpsertCatalogRowsOptions = {
+    replaceMissing: boolean;
+};
+
+async function upsertCatalogRows(
+    rows: CatalogImportRow[],
+    options: UpsertCatalogRowsOptions,
+) {
     let embeddings: number[][] = [];
     try {
         embeddings = await generateEmbeddings(rows.map((row) => row.searchableText.slice(0, 8000)));
@@ -679,8 +1266,6 @@ async function upsertCatalogRows(rows: CatalogImportRow[]) {
     }
 
     await prisma.$transaction(async (tx) => {
-        await tx.catalogConversationState.deleteMany();
-
         const existingItems = await tx.catalogItem.findMany({
             select: {
                 id: true,
@@ -692,9 +1277,25 @@ async function upsertCatalogRows(rows: CatalogImportRow[]) {
             existingItems.map((item) => [item.externalId, item]),
         );
         const incomingExternalIds = new Set(rows.map((row) => row.externalId));
-        const staleItemIds = existingItems
-            .filter((item) => !incomingExternalIds.has(item.externalId))
-            .map((item) => item.id);
+        const staleItemIds = options.replaceMissing
+            ? existingItems
+                .filter((item) => !incomingExternalIds.has(item.externalId))
+                .map((item) => item.id)
+            : [];
+        const touchedExistingIds = rows
+            .map((row) => existingByExternalId.get(row.externalId)?.id || null)
+            .filter((itemId): itemId is string => Boolean(itemId));
+
+        const stateResetItemIds = [...new Set([...staleItemIds, ...touchedExistingIds])];
+        if (stateResetItemIds.length > 0) {
+            await tx.catalogConversationState.deleteMany({
+                where: {
+                    catalogItemId: {
+                        in: stateResetItemIds,
+                    },
+                },
+            });
+        }
 
         if (staleItemIds.length > 0) {
             await tx.catalogAsset.deleteMany({
@@ -789,6 +1390,104 @@ async function upsertCatalogRows(rows: CatalogImportRow[]) {
     };
 }
 
+export async function importCatalogEntriesFromIndex(
+    input: CatalogBulkImportInput,
+): Promise<CatalogBulkImportResult> {
+    const indexUrl = normalizeCell(input.indexUrl);
+    if (!indexUrl) {
+        throw new Error("Necesitas pegar una URL de listado o cuenta para importar varias fichas.");
+    }
+
+    let parsedIndexUrl: URL;
+    try {
+        parsedIndexUrl = new URL(indexUrl);
+    } catch {
+        throw new Error("La URL de origen no es valida.");
+    }
+
+    const fetchOptions = normalizeCatalogFetchOptions({
+        requestMode: input.requestMode || "browser",
+        authorizationHeader: input.authorizationHeader,
+        cookieHeader: input.cookieHeader,
+        refererUrl: input.refererUrl || parsedIndexUrl.origin,
+    });
+    const maxItems = clampCatalogInteger(
+        input.maxItems,
+        DEFAULT_CATALOG_BULK_IMPORT_ITEMS,
+        1,
+        MAX_CATALOG_BULK_IMPORT_ITEMS,
+    );
+    const response = await fetchCatalogResponse(parsedIndexUrl.toString(), fetchOptions);
+
+    if (!response.ok) {
+        throw new Error(buildCatalogFetchErrorMessage(response.status, fetchOptions));
+    }
+
+    const contentType = response.headers.get("content-type") || "";
+    if (!contentType.includes("text/html")) {
+        throw new Error("La URL de origen no devolvio HTML, asi que no pude descubrir fichas desde ahi.");
+    }
+
+    const html = await response.text();
+    const cheerio = await import("cheerio");
+    const $ = cheerio.load(html);
+    const pageText = $("body").text().trim();
+
+    if (looksLikeCatalogLoginPage(pageText)) {
+        throw new Error(
+            "La URL de origen devolvio una pantalla de login. Abre el sitio en tu navegador, copia una cookie de sesion activa y vuelve a importar desde aqui.",
+        );
+    }
+
+    const discoveredUrls = (await extractCatalogCandidateUrlsFromIndex(
+        parsedIndexUrl.toString(),
+        html,
+        normalizeCell(input.urlFilterText || ""),
+    )).slice(0, maxItems);
+
+    if (discoveredUrls.length === 0) {
+        throw new Error(
+            "No encontre ligas de fichas dentro de esa pagina. Revisa la URL de origen, el filtro opcional o la sesion usada para abrirla.",
+        );
+    }
+
+    const previews: CatalogUrlPreview[] = [];
+    const failedUrls: string[] = [];
+
+    for (const discoveredUrl of discoveredUrls) {
+        try {
+            const preview = await previewCatalogEntryFromUrl(discoveredUrl, fetchOptions);
+            previews.push(preview);
+        } catch (error) {
+            console.warn("[Catalog] Failed to import entry from discovered URL", {
+                url: discoveredUrl,
+                error,
+            });
+            failedUrls.push(discoveredUrl);
+        }
+    }
+
+    if (previews.length === 0) {
+        throw new Error(
+            "No pude convertir ninguna ficha descubierta. Si el portal pide login o anti-bot, usa una cookie de sesion mas reciente o carga manual/CSV.",
+        );
+    }
+
+    const { rows, duplicateExternalIds } = deduplicateImportRows(
+        previews.map((preview) => buildCatalogRowFromPreview(preview)),
+    );
+    const result = await upsertCatalogRows(rows, { replaceMissing: false });
+
+    return {
+        ...result,
+        discoveredCount: discoveredUrls.length,
+        processedCount: rows.length,
+        failedCount: failedUrls.length,
+        duplicateCount: duplicateExternalIds.length,
+        failedUrls,
+    };
+}
+
 export async function importCatalogCsv(buffer: Buffer) {
     const source = decodeCatalogCsvBuffer(buffer);
     const mappedRows = mapCsvRows(source);
@@ -798,7 +1497,7 @@ export async function importCatalogCsv(buffer: Buffer) {
         throw new Error("No encontre filas validas en el CSV del catalogo.");
     }
 
-    const result = await upsertCatalogRows(rows);
+    const result = await upsertCatalogRows(rows, { replaceMissing: true });
 
     return {
         ...result,
@@ -838,7 +1537,7 @@ export async function upsertCatalogEntry(input: CatalogManualEntryInput) {
         }),
     };
 
-    return upsertCatalogRows([row]);
+    return upsertCatalogRows([row], { replaceMissing: false });
 }
 
 export async function getCatalogItems() {

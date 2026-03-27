@@ -4,7 +4,9 @@ import { revalidatePath } from "next/cache";
 import {
     clearCatalogItems,
     getCatalogItems,
+    importCatalogEntriesFromIndex,
     importCatalogCsv,
+    previewCatalogEntryFromUrl,
     upsertCatalogEntry,
 } from "@/lib/catalog/catalog";
 
@@ -76,6 +78,57 @@ export async function createCatalogEntry(input: CreateCatalogEntryInput) {
         return {
             success: false,
             error: error instanceof Error ? error.message : "No pude guardar la ficha.",
+        };
+    }
+}
+
+export async function autofillCatalogEntryFromUrl(url: string) {
+    try {
+        const preview = await previewCatalogEntryFromUrl(url);
+
+        return {
+            success: true,
+            preview,
+        };
+    } catch (error) {
+        console.error("Failed to autofill catalog entry from URL:", error);
+        return {
+            success: false,
+            error: error instanceof Error ? error.message : "No pude autocompletar la ficha desde la URL.",
+        };
+    }
+}
+
+export async function importCatalogFromProtectedSource(input: {
+    indexUrl: string;
+    urlFilterText?: string;
+    maxItems?: number;
+    authorizationHeader?: string;
+    cookieHeader?: string;
+    refererUrl?: string;
+}) {
+    try {
+        const result = await importCatalogEntriesFromIndex({
+            indexUrl: input.indexUrl,
+            urlFilterText: input.urlFilterText,
+            maxItems: input.maxItems,
+            requestMode: "browser",
+            authorizationHeader: input.authorizationHeader,
+            cookieHeader: input.cookieHeader,
+            refererUrl: input.refererUrl,
+        });
+
+        revalidatePath("/dashboard/brain");
+
+        return {
+            success: true,
+            ...result,
+        };
+    } catch (error) {
+        console.error("Failed to import catalog from protected source:", error);
+        return {
+            success: false,
+            error: error instanceof Error ? error.message : "No pude importar el catalogo desde esa fuente protegida.",
         };
     }
 }
