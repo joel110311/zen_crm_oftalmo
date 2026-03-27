@@ -22,6 +22,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import {
     createKnowledgeSource,
     deleteKnowledgeSource,
@@ -73,6 +74,14 @@ export function KnowledgeBase() {
     const [title, setTitle] = useState("");
     const [sourceUri, setSourceUri] = useState("");
     const [noteContent, setNoteContent] = useState("");
+    const [showAdvancedFetch, setShowAdvancedFetch] = useState(false);
+    const [requestMode, setRequestMode] = useState("standard");
+    const [authorizationHeader, setAuthorizationHeader] = useState("");
+    const [cookieHeader, setCookieHeader] = useState("");
+    const [refererUrl, setRefererUrl] = useState("");
+    const [crawlMaxDepth, setCrawlMaxDepth] = useState("2");
+    const [crawlMaxPages, setCrawlMaxPages] = useState("24");
+    const [sitemapMaxPages, setSitemapMaxPages] = useState("60");
     const [isPending, startTransition] = useTransition();
     const fileInputRef = useRef<HTMLInputElement>(null);
     const { toast } = useToast();
@@ -89,12 +98,50 @@ export function KnowledgeBase() {
 
     const selectedOption = SOURCE_OPTIONS.find((option) => option.value === sourceType) || SOURCE_OPTIONS[0];
     const SelectedIcon = selectedOption.icon;
+    const supportsAdvancedFetch = sourceType === "website" || sourceType === "crawl" || sourceType === "sitemap";
 
     const resetForm = () => {
         setTitle("");
         setSourceUri("");
         setNoteContent("");
+        setShowAdvancedFetch(false);
+        setRequestMode("standard");
+        setAuthorizationHeader("");
+        setCookieHeader("");
+        setRefererUrl("");
+        setCrawlMaxDepth("2");
+        setCrawlMaxPages("24");
+        setSitemapMaxPages("60");
         if (fileInputRef.current) fileInputRef.current.value = "";
+    };
+
+    const parseOptionalPositiveInteger = (value: string) => {
+        const parsed = Number.parseInt(value, 10);
+        return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+    };
+
+    const buildSourceMetadata = () => {
+        if (!supportsAdvancedFetch || !showAdvancedFetch) {
+            return undefined;
+        }
+
+        const metadata: Record<string, unknown> = {
+            requestMode,
+            authorizationHeader: authorizationHeader.trim() || undefined,
+            cookieHeader: cookieHeader.trim() || undefined,
+            refererUrl: refererUrl.trim() || undefined,
+        };
+
+        if (sourceType === "crawl") {
+            metadata.crawlMaxDepth = parseOptionalPositiveInteger(crawlMaxDepth);
+            metadata.crawlMaxPages = parseOptionalPositiveInteger(crawlMaxPages);
+        }
+
+        if (sourceType === "sitemap") {
+            metadata.sitemapMaxPages = parseOptionalPositiveInteger(sitemapMaxPages);
+        }
+
+        return metadata;
     };
 
     const handleCreate = () => {
@@ -104,6 +151,7 @@ export function KnowledgeBase() {
                 type: sourceType as "text" | "website" | "crawl" | "sitemap" | "github" | "youtube",
                 sourceUri: sourceUri.trim() || undefined,
                 rawContent: noteContent.trim() || undefined,
+                metadata: buildSourceMetadata(),
             });
 
             if (result.success) {
@@ -265,6 +313,106 @@ export function KnowledgeBase() {
                             />
                         </div>
                     )}
+
+                    {supportsAdvancedFetch ? (
+                        <div className="space-y-3 rounded-xl border bg-muted/20 p-4">
+                            <div className="flex items-center justify-between gap-3">
+                                <div className="space-y-1">
+                                    <Label className="text-sm">Opciones avanzadas web</Label>
+                                    <p className="text-xs text-muted-foreground">
+                                        Para sitios protegidos puedes usar modo navegador, cookies o un header de autorizacion.
+                                    </p>
+                                </div>
+                                <Switch
+                                    checked={showAdvancedFetch}
+                                    onCheckedChange={setShowAdvancedFetch}
+                                />
+                            </div>
+
+                            {showAdvancedFetch ? (
+                                <div className="space-y-4">
+                                    <div className="space-y-2">
+                                        <Label>Modo de lectura</Label>
+                                        <Select value={requestMode} onValueChange={setRequestMode}>
+                                            <SelectTrigger>
+                                                <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="standard">Estandar</SelectItem>
+                                                <SelectItem value="browser">Navegador</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                        <p className="text-xs text-muted-foreground">
+                                            `Navegador` usa headers similares a Chrome. Ayuda en varios sitios, aunque un muro fuerte como Cloudflare aun puede requerir cookies activas.
+                                        </p>
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <Label>Header Authorization</Label>
+                                        <Input
+                                            value={authorizationHeader}
+                                            onChange={(event) => setAuthorizationHeader(event.target.value)}
+                                            placeholder="Bearer xxxx o Basic xxxxx"
+                                        />
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <Label>Cookies</Label>
+                                        <Textarea
+                                            value={cookieHeader}
+                                            onChange={(event) => setCookieHeader(event.target.value)}
+                                            placeholder="cookie_a=valor; cookie_b=valor"
+                                            className="min-h-[88px]"
+                                        />
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <Label>Referer</Label>
+                                        <Input
+                                            value={refererUrl}
+                                            onChange={(event) => setRefererUrl(event.target.value)}
+                                            placeholder="https://dominio.com/login"
+                                        />
+                                    </div>
+
+                                    {sourceType === "crawl" ? (
+                                        <div className="grid gap-3 sm:grid-cols-2">
+                                            <div className="space-y-2">
+                                                <Label>Profundidad maxima</Label>
+                                                <Input
+                                                    value={crawlMaxDepth}
+                                                    onChange={(event) => setCrawlMaxDepth(event.target.value)}
+                                                    inputMode="numeric"
+                                                    placeholder="2"
+                                                />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <Label>Paginas maximas</Label>
+                                                <Input
+                                                    value={crawlMaxPages}
+                                                    onChange={(event) => setCrawlMaxPages(event.target.value)}
+                                                    inputMode="numeric"
+                                                    placeholder="24"
+                                                />
+                                            </div>
+                                        </div>
+                                    ) : null}
+
+                                    {sourceType === "sitemap" ? (
+                                        <div className="space-y-2">
+                                            <Label>URLs maximas del sitemap</Label>
+                                            <Input
+                                                value={sitemapMaxPages}
+                                                onChange={(event) => setSitemapMaxPages(event.target.value)}
+                                                inputMode="numeric"
+                                                placeholder="60"
+                                            />
+                                        </div>
+                                    ) : null}
+                                </div>
+                            ) : null}
+                        </div>
+                    ) : null}
 
                     {sourceType !== "file" && (
                         <Button onClick={handleCreate} className="w-full" disabled={isPending}>

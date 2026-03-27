@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import {
     extractTextFromFileBuffer,
@@ -12,12 +13,37 @@ type CreateKnowledgeSourceInput = {
     type: "text" | "website" | "crawl" | "sitemap" | "github" | "youtube";
     sourceUri?: string;
     rawContent?: string;
+    metadata?: Record<string, unknown>;
 };
 
 function defaultTitle(type: string, sourceUri?: string, rawContent?: string) {
     if (sourceUri) return sourceUri;
     if (type === "text" && rawContent) return rawContent.slice(0, 48);
     return "Nueva fuente";
+}
+
+function sanitizeSourceMetadata(metadata?: Record<string, unknown>) {
+    if (!metadata) {
+        return undefined;
+    }
+
+    const cleanedEntries = Object.entries(metadata).filter(([, value]) => {
+        if (value === null || value === undefined) {
+            return false;
+        }
+
+        if (typeof value === "string") {
+            return value.trim().length > 0;
+        }
+
+        return true;
+    });
+
+    if (cleanedEntries.length === 0) {
+        return undefined;
+    }
+
+    return Object.fromEntries(cleanedEntries) as Prisma.InputJsonValue;
 }
 
 export async function getKnowledgeSources() {
@@ -51,6 +77,7 @@ export async function createKnowledgeSource(input: CreateKnowledgeSourceInput) {
                 type: input.type,
                 sourceUri: input.sourceUri?.trim() || null,
                 rawContent: input.rawContent?.trim() || null,
+                metadata: sanitizeSourceMetadata(input.metadata),
                 status: "pending",
             },
         });
@@ -141,4 +168,3 @@ export async function deleteKnowledgeSource(sourceId: string) {
         };
     }
 }
-

@@ -1,3 +1,5 @@
+import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { prisma } from "@/lib/db";
 import { generateEmbedding, generateEmbeddings, transcribeAudioBuffer } from "@/lib/ai/openai";
 import { getSystemSettingsOrDefaults } from "@/lib/system-settings";
@@ -45,13 +47,28 @@ const TEXT_FILE_EXTENSIONS = new Set([
     ".env",
 ]);
 
-const MAX_CRAWL_DEPTH = 2;
-const MAX_CRAWL_PAGES = 12;
-const MAX_SITEMAP_PAGES = 20;
+const DEFAULT_CRAWL_DEPTH = 2;
+const DEFAULT_CRAWL_PAGES = 24;
+const DEFAULT_SITEMAP_PAGES = 60;
+const MAX_CRAWL_DEPTH = 5;
+const MAX_CRAWL_PAGES = 80;
+const MAX_SITEMAP_PAGES = 160;
 const MAX_GITHUB_FILES = 60;
 const MAX_SOURCE_CHARS = 180_000;
 const DEFAULT_CHUNK_SIZE = 1200;
 const DEFAULT_CHUNK_OVERLAP = 200;
+const BOT_USER_AGENT = "ZenCRMBot/1.0 (+https://zen-crm.local)";
+const BROWSER_USER_AGENT =
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36";
+const PDF_PARSE_CJS_PATH = path.join(
+    process.cwd(),
+    "node_modules",
+    "pdf-parse",
+    "dist",
+    "pdf-parse",
+    "cjs",
+    "index.cjs",
+);
 
 type SourceDocument = {
     title: string;
@@ -69,6 +86,16 @@ type SourceInput = {
     metadata?: Record<string, unknown>;
     fileName?: string | null;
     fileBuffer?: Buffer | null;
+};
+
+type SourceFetchMetadata = {
+    requestMode?: "standard" | "browser";
+    authorizationHeader?: string;
+    cookieHeader?: string;
+    refererUrl?: string;
+    crawlMaxDepth?: number;
+    crawlMaxPages?: number;
+    sitemapMaxPages?: number;
 };
 
 type SitemapEntry = {
@@ -113,6 +140,46 @@ function trimContent(text: string) {
     return normalized.length > MAX_SOURCE_CHARS
         ? normalized.slice(0, MAX_SOURCE_CHARS)
         : normalized;
+}
+
+function asMetadataRecord(metadata: unknown) {
+    if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+        return {};
+    }
+
+    return metadata as Record<string, unknown>;
+}
+
+function sanitizeOptionalString(value: unknown) {
+    return typeof value === "string" ? value.trim() || undefined : undefined;
+}
+
+function clampInteger(value: unknown, fallback: number, min: number, max: number) {
+    const parsed =
+        typeof value === "number"
+            ? value
+            : typeof value === "string"
+                ? Number.parseInt(value, 10)
+                : Number.NaN;
+
+    if (!Number.isFinite(parsed)) {
+        return fallback;
+    }
+
+    return Math.min(max, Math.max(min, Math.trunc(parsed)));
+}
+
+function parseSourceFetchMetadata(metadata: unknown): SourceFetchMetadata {
+    const record = asMetadataRecord(metadata);
+    return {
+        requestMode: record.requestMode === "browser" ? "browser" : "standard",
+        authorizationHeader: sanitizeOptionalString(record.authorizationHeader),
+        cookieHeader: sanitizeOptionalString(record.cookieHeader),
+        refererUrl: sanitizeOptionalString(record.refererUrl),
+        crawlMaxDepth: clampInteger(record.crawlMaxDepth, DEFAULT_CRAWL_DEPTH, 0, MAX_CRAWL_DEPTH),
+        crawlMaxPages: clampInteger(record.crawlMaxPages, DEFAULT_CRAWL_PAGES, 1, MAX_CRAWL_PAGES),
+        sitemapMaxPages: clampInteger(record.sitemapMaxPages, DEFAULT_SITEMAP_PAGES, 1, MAX_SITEMAP_PAGES),
+    };
 }
 
 function estimateTokenCount(text: string) {
@@ -175,9 +242,60 @@ function toAbsoluteUrl(baseUrl: string, maybeRelativeUrl: string) {
     }
 }
 
+function buildSourceRequestHeaders(metadata?: SourceFetchMetadata) {
+    const headers = new Headers();
+    const requestMode = metadata?.requestMode === "browser" ? "browser" : "standard";
+
+    headers.set("User-Agent", requestMode === "browser" ? BROWSER_USER_AGENT : BOT_USER_AGENT);
+    headers.set(
+        "Accept",
+        requestMode === "browser"
+            ? "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8"
+            : "*/*",
+    );
+    headers.set("Accept-Language", "es-MX,es;q=0.9,en;q=0.8");
+    headers.set("Cache-Control", "no-cache");
+
+    if (requestMode === "browser") {
+        headers.set("Pragma", "no-cache");
+        headers.set("Upgrade-Insecure-Requests", "1");
+    }
+
+    if (metadata?.refererUrl) {
+        headers.set("Referer", metadata.refererUrl);
+    }
+
+    if (metadata?.authorizationHeader) {
+        headers.set("Authorization", metadata.authorizationHeader);
+    }
+
+    if (metadata?.cookieHeader) {
+        headers.set("Cookie", metadata.cookieHeader);
+    }
+
+    return headers;
+}
+
+async function fetchSourceResponse(url: string, metadata?: SourceFetchMetadata) {
+    return fetch(url, {
+        headers: buildSourceRequestHeaders(metadata),
+        cache: "no-store",
+    });
+}
+
 async function extractPdf(buffer: Buffer) {
     ensurePdfPolyfills();
-    const { PDFParse } = await import("pdf-parse");
+    const pdfParseModuleUrl = pathToFileURL(PDF_PARSE_CJS_PATH).href;
+    const pdfParseModule = await import(pdfParseModuleUrl);
+    const PDFParse =
+        pdfParseModule.PDFParse ||
+        pdfParseModule.default?.PDFParse ||
+        pdfParseModule.default;
+
+    if (typeof PDFParse !== "function") {
+        throw new Error("No pude inicializar el lector de PDF.");
+    }
+
     const parser = new PDFParse({ data: buffer });
     try {
         const result = await parser.getText();
@@ -192,20 +310,28 @@ async function extractTextFromHtml(html: string) {
     const $ = cheerio.load(html);
     $("script, style, noscript, iframe, svg").remove();
     const title = $("title").first().text().trim();
-    const body = $("main").first().text().trim() || $("body").text().trim();
+    const description =
+        $('meta[name="description"]').attr("content")?.trim() ||
+        $('meta[property="og:description"]').attr("content")?.trim() ||
+        "";
+    const headings = $("h1, h2, h3")
+        .slice(0, 12)
+        .map((_, element) => $(element).text().trim())
+        .get()
+        .filter(Boolean)
+        .join("\n");
+    const body = $("main").first().text().trim() || $("article").first().text().trim() || $("body").text().trim();
     return {
         title: title || "Website",
-        content: trimContent(body),
+        content: trimContent([description, headings, body].filter(Boolean).join("\n\n")),
     };
 }
 
-async function fetchUrlDocument(url: string): Promise<SourceDocument> {
-    const response = await fetch(url, {
-        headers: {
-            "User-Agent": "ZenCRMBot/1.0 (+https://zen-crm.local)",
-        },
-        cache: "no-store",
-    });
+async function fetchUrlDocument(
+    url: string,
+    metadata?: SourceFetchMetadata,
+): Promise<SourceDocument> {
+    const response = await fetchSourceResponse(url, metadata);
 
     if (!response.ok) {
         throw new Error(`No pude leer ${url} (${response.status})`);
@@ -233,7 +359,9 @@ async function fetchUrlDocument(url: string): Promise<SourceDocument> {
     };
 }
 
-async function crawlWebsite(startUrl: string, maxDepth = MAX_CRAWL_DEPTH, maxPages = MAX_CRAWL_PAGES) {
+async function crawlWebsite(startUrl: string, metadata?: SourceFetchMetadata) {
+    const maxDepth = metadata?.crawlMaxDepth ?? DEFAULT_CRAWL_DEPTH;
+    const maxPages = metadata?.crawlMaxPages ?? DEFAULT_CRAWL_PAGES;
     const seed = new URL(startUrl);
     const queue: Array<{ url: string; depth: number }> = [{ url: seed.toString(), depth: 0 }];
     const visited = new Set<string>();
@@ -245,16 +373,13 @@ async function crawlWebsite(startUrl: string, maxDepth = MAX_CRAWL_DEPTH, maxPag
         visited.add(current.url);
 
         try {
-            const response = await fetch(current.url, {
-                headers: { "User-Agent": "ZenCRMBot/1.0 (+https://zen-crm.local)" },
-                cache: "no-store",
-            });
+            const response = await fetchSourceResponse(current.url, metadata);
 
             if (!response.ok) continue;
 
             const contentType = response.headers.get("content-type") || "";
             if (!contentType.includes("text/html")) {
-                const document = await fetchUrlDocument(current.url);
+                const document = await fetchUrlDocument(current.url, metadata);
                 if (document.content) documents.push(document);
                 continue;
             }
@@ -283,6 +408,7 @@ async function crawlWebsite(startUrl: string, maxDepth = MAX_CRAWL_DEPTH, maxPag
 
                 try {
                     const nextUrl = new URL(absolute);
+                    nextUrl.hash = "";
                     if (nextUrl.origin !== seed.origin) return;
                     if (visited.has(nextUrl.toString())) return;
                     queue.push({ url: nextUrl.toString(), depth: current.depth + 1 });
@@ -298,33 +424,79 @@ async function crawlWebsite(startUrl: string, maxDepth = MAX_CRAWL_DEPTH, maxPag
     return documents;
 }
 
-async function fetchSitemapDocuments(sitemapUrl: string) {
-    const response = await fetch(sitemapUrl, {
-        headers: { "User-Agent": "ZenCRMBot/1.0 (+https://zen-crm.local)" },
-        cache: "no-store",
-    });
+function toArray<T>(value: T | T[] | undefined | null) {
+    if (!value) return [] as T[];
+    return Array.isArray(value) ? value : [value];
+}
+
+async function collectSitemapUrls(
+    sitemapUrl: string,
+    metadata: SourceFetchMetadata,
+    state: {
+        visitedSitemaps: Set<string>;
+        seenUrls: Set<string>;
+        urls: string[];
+        limit: number;
+    },
+) {
+    if (state.visitedSitemaps.has(sitemapUrl) || state.urls.length >= state.limit) {
+        return;
+    }
+
+    state.visitedSitemaps.add(sitemapUrl);
+    const response = await fetchSourceResponse(sitemapUrl, metadata);
 
     if (!response.ok) {
-        throw new Error(`No pude leer el sitemap (${response.status})`);
+        throw new Error(`No pude leer el sitemap ${sitemapUrl} (${response.status})`);
     }
 
     const xml = await response.text();
     const { XMLParser } = await import("fast-xml-parser");
     const parser = new XMLParser();
     const parsed = parser.parse(xml);
-    const rawUrls = (parsed?.urlset?.url || parsed?.sitemapindex?.sitemap || []) as
-        | SitemapEntry
-        | SitemapEntry[];
-    const entries = Array.isArray(rawUrls) ? rawUrls : [rawUrls];
-    const urls = entries
-        .map((entry) => entry?.loc)
-        .filter((url): url is string => typeof url === "string" && Boolean(url))
-        .slice(0, MAX_SITEMAP_PAGES);
+    const sitemapEntries = toArray(parsed?.sitemapindex?.sitemap as SitemapEntry | SitemapEntry[] | undefined);
+    const pageEntries = toArray(parsed?.urlset?.url as SitemapEntry | SitemapEntry[] | undefined);
+
+    for (const entry of pageEntries) {
+        const url = typeof entry?.loc === "string" ? entry.loc.trim() : "";
+        if (!url || state.seenUrls.has(url)) continue;
+        state.seenUrls.add(url);
+        state.urls.push(url);
+        if (state.urls.length >= state.limit) {
+            break;
+        }
+    }
+
+    if (state.urls.length >= state.limit) {
+        return;
+    }
+
+    for (const entry of sitemapEntries) {
+        const childSitemapUrl = typeof entry?.loc === "string" ? entry.loc.trim() : "";
+        if (!childSitemapUrl) continue;
+        await collectSitemapUrls(childSitemapUrl, metadata, state);
+        if (state.urls.length >= state.limit) {
+            break;
+        }
+    }
+}
+
+async function fetchSitemapDocuments(sitemapUrl: string, metadata?: SourceFetchMetadata) {
+    const resolvedMetadata = metadata || parseSourceFetchMetadata(undefined);
+    const limit = resolvedMetadata.sitemapMaxPages ?? DEFAULT_SITEMAP_PAGES;
+    const state = {
+        visitedSitemaps: new Set<string>(),
+        seenUrls: new Set<string>(),
+        urls: [] as string[],
+        limit,
+    };
+
+    await collectSitemapUrls(sitemapUrl, resolvedMetadata, state);
 
     const documents: SourceDocument[] = [];
-    for (const url of urls) {
+    for (const url of state.urls) {
         try {
-            const doc = await fetchUrlDocument(url);
+            const doc = await fetchUrlDocument(url, resolvedMetadata);
             if (doc.content) documents.push(doc);
         } catch {
             // Continue with best-effort ingest.
@@ -499,6 +671,8 @@ async function extractUploadedFileText(input: SourceInput) {
 }
 
 async function loadSourceDocuments(input: SourceInput): Promise<SourceDocument[]> {
+    const metadata = parseSourceFetchMetadata(input.metadata);
+
     if (input.type === "text") {
         return [
             {
@@ -510,15 +684,15 @@ async function loadSourceDocuments(input: SourceInput): Promise<SourceDocument[]
     }
 
     if (input.type === "website") {
-        return [await fetchUrlDocument(input.sourceUri || "")];
+        return [await fetchUrlDocument(input.sourceUri || "", metadata)];
     }
 
     if (input.type === "crawl") {
-        return crawlWebsite(input.sourceUri || "");
+        return crawlWebsite(input.sourceUri || "", metadata);
     }
 
     if (input.type === "sitemap") {
-        return fetchSitemapDocuments(input.sourceUri || "");
+        return fetchSitemapDocuments(input.sourceUri || "", metadata);
     }
 
     if (input.type === "github") {

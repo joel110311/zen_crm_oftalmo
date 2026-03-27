@@ -17,6 +17,18 @@ type CatalogImportRow = {
     }>;
 };
 
+export type CatalogManualEntryInput = {
+    externalId?: string;
+    development: string;
+    location?: string | null;
+    question: string;
+    answer: string;
+    imageUrls?: string[];
+    pdfUrl?: string | null;
+    linkUrl?: string | null;
+    isActive?: boolean;
+};
+
 type CatalogSearchResult = {
     id: string;
     externalId: string;
@@ -101,6 +113,12 @@ function normalizeHeader(value: string) {
 
 function normalizeCell(value: string | undefined) {
     return (value || "").trim();
+}
+
+function sanitizeUrlList(urls: string[] | undefined) {
+    return (urls || [])
+        .map((url) => normalizeCell(url))
+        .filter(Boolean);
 }
 
 function normalizeSearchText(value: string | null | undefined) {
@@ -506,6 +524,64 @@ function buildSearchableText(row: {
         .join("\n");
 }
 
+function buildCatalogExternalId(parts: Array<string | null | undefined>) {
+    const normalized = parts
+        .filter(Boolean)
+        .join(" ")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "_")
+        .replace(/^_+|_+$/g, "");
+
+    return normalized || `catalog_${Date.now()}`;
+}
+
+function buildCatalogAssets(params: {
+    imageUrls: string[];
+    pdfUrl?: string | null;
+    linkUrl?: string | null;
+}) {
+    const assets: CatalogImportRow["assets"] = [];
+    const seenUrls = new Set<string>();
+    let imageSort = 0;
+
+    for (const url of params.imageUrls) {
+        if (!url || seenUrls.has(url) || imageSort >= MAX_IMPORT_IMAGES) continue;
+        assets.push({
+            type: "image",
+            url,
+            label: `Imagen ${imageSort + 1}`,
+            sortOrder: imageSort,
+        });
+        seenUrls.add(url);
+        imageSort += 1;
+    }
+
+    const pdfUrl = normalizeCell(params.pdfUrl || "");
+    if (pdfUrl && !seenUrls.has(pdfUrl)) {
+        assets.push({
+            type: "pdf",
+            url: pdfUrl,
+            label: "Catalogo PDF",
+            sortOrder: 0,
+        });
+        seenUrls.add(pdfUrl);
+    }
+
+    const linkUrl = normalizeCell(params.linkUrl || "");
+    if (linkUrl && !seenUrls.has(linkUrl)) {
+        assets.push({
+            type: "link",
+            url: linkUrl,
+            label: "Liga del desarrollo",
+            sortOrder: 0,
+        });
+    }
+
+    return assets;
+}
+
 function mapCsvRows(source: string) {
     const rawRows = parseCsvLine(source);
     if (rawRows.length < 2) {
@@ -538,47 +614,23 @@ function mapCsvRows(source: string) {
                 return null;
             }
 
-            const assets: CatalogImportRow["assets"] = [];
-            const seenUrls = new Set<string>();
-            let imageSort = 0;
-
-            for (const header of rawHeaders) {
-                const url = normalizeCell(row[header]);
-                if (!url || seenUrls.has(url)) continue;
-
-                if (isImageColumn(header) && imageSort < MAX_IMPORT_IMAGES) {
-                    assets.push({
-                        type: "image",
-                        url,
-                        label: `Imagen ${imageSort + 1}`,
-                        sortOrder: imageSort,
-                    });
-                    seenUrls.add(url);
-                    imageSort += 1;
-                    continue;
-                }
-
-                if (isPdfColumn(header)) {
-                    assets.push({
-                        type: "pdf",
-                        url,
-                        label: "Catalogo PDF",
-                        sortOrder: 0,
-                    });
-                    seenUrls.add(url);
-                    continue;
-                }
-
-                if (isLinkColumn(header)) {
-                    assets.push({
-                        type: "link",
-                        url,
-                        label: "Liga del desarrollo",
-                        sortOrder: 0,
-                    });
-                    seenUrls.add(url);
-                }
-            }
+            const imageUrls = rawHeaders
+                .filter((header) => isImageColumn(header))
+                .map((header) => normalizeCell(row[header]))
+                .filter(Boolean);
+            const pdfUrl = rawHeaders
+                .filter((header) => isPdfColumn(header))
+                .map((header) => normalizeCell(row[header]))
+                .find(Boolean);
+            const linkUrl = rawHeaders
+                .filter((header) => isLinkColumn(header))
+                .map((header) => normalizeCell(row[header]))
+                .find(Boolean);
+            const assets = buildCatalogAssets({
+                imageUrls,
+                pdfUrl,
+                linkUrl,
+            });
 
             const record = {
                 externalId,
@@ -618,15 +670,7 @@ function deduplicateImportRows(rows: CatalogImportRow[]): DeduplicatedCatalogRow
     };
 }
 
-export async function importCatalogCsv(buffer: Buffer) {
-    const source = decodeCatalogCsvBuffer(buffer);
-    const mappedRows = mapCsvRows(source);
-    const { rows, duplicateExternalIds } = deduplicateImportRows(mappedRows);
-
-    if (rows.length === 0) {
-        throw new Error("No encontre filas validas en el CSV del catalogo.");
-    }
-
+async function upsertCatalogRows(rows: CatalogImportRow[]) {
     let embeddings: number[][] = [];
     try {
         embeddings = await generateEmbeddings(rows.map((row) => row.searchableText.slice(0, 8000)));
@@ -742,8 +786,59 @@ export async function importCatalogCsv(buffer: Buffer) {
     return {
         importedCount: rows.length,
         assetCount: rows.reduce((sum, row) => sum + row.assets.length, 0),
+    };
+}
+
+export async function importCatalogCsv(buffer: Buffer) {
+    const source = decodeCatalogCsvBuffer(buffer);
+    const mappedRows = mapCsvRows(source);
+    const { rows, duplicateExternalIds } = deduplicateImportRows(mappedRows);
+
+    if (rows.length === 0) {
+        throw new Error("No encontre filas validas en el CSV del catalogo.");
+    }
+
+    const result = await upsertCatalogRows(rows);
+
+    return {
+        ...result,
         duplicateCount: duplicateExternalIds.length,
     };
+}
+
+export async function upsertCatalogEntry(input: CatalogManualEntryInput) {
+    const development = normalizeCell(input.development);
+    const question = normalizeCell(input.question);
+    const answer = normalizeCell(input.answer);
+    const location = normalizeCell(input.location || "") || null;
+
+    if (!development || !question || !answer) {
+        throw new Error("La ficha manual necesita desarrollo, pregunta y contenido.");
+    }
+
+    const row: CatalogImportRow = {
+        externalId:
+            normalizeCell(input.externalId || "") ||
+            buildCatalogExternalId([development, location, question]),
+        development,
+        location,
+        question,
+        answer,
+        searchableText: buildSearchableText({
+            development,
+            location,
+            question,
+            answer,
+        }),
+        isActive: input.isActive ?? true,
+        assets: buildCatalogAssets({
+            imageUrls: sanitizeUrlList(input.imageUrls),
+            pdfUrl: input.pdfUrl,
+            linkUrl: input.linkUrl,
+        }),
+    };
+
+    return upsertCatalogRows([row]);
 }
 
 export async function getCatalogItems() {
