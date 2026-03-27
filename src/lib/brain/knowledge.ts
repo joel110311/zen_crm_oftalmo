@@ -1,5 +1,4 @@
-import path from "node:path";
-import { pathToFileURL } from "node:url";
+import { createRequire } from "node:module";
 import { prisma } from "@/lib/db";
 import {
     extractTextFromImageBufferWithFallback,
@@ -67,15 +66,7 @@ const BROWSER_USER_AGENT =
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36";
 const MAX_PDF_OCR_PAGES = 6;
 const PDF_OCR_RENDER_WIDTH = 1200;
-const PDF_PARSE_CJS_PATH = path.join(
-    process.cwd(),
-    "node_modules",
-    "pdf-parse",
-    "dist",
-    "pdf-parse",
-    "cjs",
-    "index.cjs",
-);
+const nodeRequire = createRequire(`${process.cwd()}/package.json`);
 
 type SourceDocument = {
     title: string;
@@ -338,8 +329,7 @@ async function fetchSourceResponse(url: string, metadata?: SourceFetchMetadata) 
 }
 
 async function loadPdfParseConstructor(): Promise<PdfParseConstructor> {
-    const pdfParseModuleUrl = pathToFileURL(PDF_PARSE_CJS_PATH).href;
-    const pdfParseModule = await import(pdfParseModuleUrl);
+    const pdfParseModule = nodeRequire("pdf-parse");
     const PDFParse =
         pdfParseModule.PDFParse ||
         pdfParseModule.default?.PDFParse ||
