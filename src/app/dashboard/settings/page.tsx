@@ -12,7 +12,9 @@ import {
     Pencil,
     Play,
     Plus,
+    Save,
     Settings,
+    Sparkles,
     Trash2,
     Users,
     Volume2,
@@ -35,6 +37,7 @@ import {
 import { createUser, deleteUser, getUsers, updateUser } from "@/app/actions/users";
 import { WhatsAppGatewayPanel } from "@/components/settings/whatsapp-gateway-panel";
 import { GoogleCalendarPanel } from "@/components/settings/google-calendar-panel";
+import { Slider } from "@/components/ui/slider";
 
 type SectionId = "theme" | "users" | "ai" | "whatsapp" | "calendar" | "chats";
 
@@ -52,12 +55,12 @@ const SECTIONS: Array<{
     icon: typeof Palette;
     superadminOnly?: boolean;
 }> = [
-    { id: "theme", label: "Diseno", description: "Tema y colores", icon: Palette },
-    { id: "users", label: "Usuarios", description: "Accesos y roles", icon: Users, superadminOnly: true },
-    { id: "ai", label: "IA", description: "API keys", icon: Settings, superadminOnly: true },
-    { id: "whatsapp", label: "WhatsApp", description: "QR con librerias Go", icon: MessageSquare, superadminOnly: true },
-    { id: "calendar", label: "Calendario", description: "Google Calendar", icon: CalendarDays, superadminOnly: true },
-    { id: "chats", label: "Notificaciones", description: "Sonidos", icon: Volume2 },
+    { id: "theme", label: "Apariencia", description: "Tema y estilo general del CRM", icon: Palette },
+    { id: "users", label: "Usuarios", description: "Accesos, roles y permisos", icon: Users, superadminOnly: true },
+    { id: "ai", label: "Cerebro IA", description: "Claves y servicios de inteligencia", icon: Sparkles, superadminOnly: true },
+    { id: "whatsapp", label: "Canal WhatsApp", description: "Sesion QR y sincronizacion del numero", icon: MessageSquare, superadminOnly: true },
+    { id: "calendar", label: "Google Calendar", description: "Conexion y calendarios de agenda", icon: CalendarDays, superadminOnly: true },
+    { id: "chats", label: "Notificaciones", description: "Sonidos y preferencias del inbox", icon: Volume2 },
 ];
 
 export default function SettingsPage() {
@@ -77,6 +80,11 @@ export default function SettingsPage() {
     const [newUser, setNewUser] = useState({ name: "", email: "", password: "", role: "ADMIN" as "ADMIN" | "SUPERADMIN" });
     const [editUser, setEditUser] = useState({ name: "", email: "", password: "", role: "ADMIN" as "ADMIN" | "SUPERADMIN" });
     const [notifPrefs, setNotifPrefs] = useState<NotificationPrefs>({
+        enabled: true,
+        soundType: "gentle",
+        volume: 0.5,
+    });
+    const [savedNotifPrefs, setSavedNotifPrefs] = useState<NotificationPrefs>({
         enabled: true,
         soundType: "gentle",
         volume: 0.5,
@@ -111,7 +119,9 @@ export default function SettingsPage() {
         };
 
         void load();
-        setNotifPrefs(getNotificationPrefs());
+        const prefs = getNotificationPrefs();
+        setNotifPrefs(prefs);
+        setSavedNotifPrefs(prefs);
     }, []);
 
     useEffect(() => {
@@ -192,6 +202,24 @@ export default function SettingsPage() {
         });
     };
 
+    const hasNotifChanges =
+        notifPrefs.enabled !== savedNotifPrefs.enabled ||
+        notifPrefs.soundType !== savedNotifPrefs.soundType ||
+        Math.abs(notifPrefs.volume - savedNotifPrefs.volume) > 0.001;
+
+    const handleNotifSave = () => {
+        saveNotificationPrefs(notifPrefs);
+        setSavedNotifPrefs(notifPrefs);
+        toast({
+            title: "Preferencias guardadas",
+            description: "Las notificaciones del inbox ya quedaron actualizadas.",
+        });
+    };
+
+    const handleNotifReset = () => {
+        setNotifPrefs(savedNotifPrefs);
+    };
+
     const handleCreateUser = () => {
         if (!newUser.name.trim() || !newUser.email.trim() || !newUser.password.trim()) return;
         startUserTransition(async () => {
@@ -257,16 +285,18 @@ export default function SettingsPage() {
     const visibleSections = SECTIONS.filter((section) => !section.superadminOnly || isSuperadmin);
 
     return (
-        <div className="mx-auto max-w-5xl space-y-6">
+        <div className="mx-auto max-w-6xl space-y-6">
             <div>
                 <h1 className="flex items-center gap-2 text-2xl font-bold">
                     <Settings className="h-6 w-6 text-primary" />
                     Configuracion
                 </h1>
-                <p className="text-sm text-muted-foreground">Panel del sistema, IA, usuarios y canal de WhatsApp QR.</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                    Ajusta la apariencia, los canales y las integraciones del CRM sin tocar la operacion diaria del equipo.
+                </p>
             </div>
 
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
                 {visibleSections.map((section) => {
                     const Icon = section.icon;
                     const isActive = activeSection === section.id;
@@ -274,19 +304,29 @@ export default function SettingsPage() {
                         <button
                             key={section.id}
                             onClick={() => setActiveSection(section.id)}
-                            className={`rounded-xl border p-4 text-left transition ${
-                                isActive ? "border-primary bg-primary/5" : "bg-card hover:border-primary/40"
+                            className={`min-w-0 rounded-2xl border px-4 py-4 text-left transition ${
+                                isActive
+                                    ? "border-primary bg-primary/5 shadow-sm"
+                                    : "bg-card hover:border-primary/35 hover:bg-muted/20"
                             }`}
                         >
-                            <Icon className="mb-3 h-5 w-5 text-primary" />
-                            <p className="font-medium">{section.label}</p>
-                            <p className="text-xs text-muted-foreground">{section.description}</p>
+                            <div className="flex min-h-[112px] flex-col justify-between gap-4">
+                                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                                    <Icon className="h-5 w-5" />
+                                </div>
+                                <div className="min-w-0">
+                                    <p className="font-medium">{section.label}</p>
+                                    <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                                        {section.description}
+                                    </p>
+                                </div>
+                            </div>
                         </button>
                     );
                 })}
             </div>
 
-            <div className="rounded-2xl border bg-card p-6">
+            <div className="rounded-2xl border bg-card p-6 md:p-7">
                 {activeSection === "theme" && (
                     <div className="space-y-6">
                         <div className="space-y-3">
@@ -450,80 +490,144 @@ export default function SettingsPage() {
                 )}
 
                 {activeSection === "chats" && (
-                    <div className="max-w-2xl space-y-5">
-                        <div>
-                            <h2 className="font-semibold">Notificaciones</h2>
-                            <p className="text-sm text-muted-foreground">Sonidos para nuevos mensajes.</p>
-                        </div>
-                        <div className="flex items-center justify-between rounded-xl border p-4">
+                    <div className="max-w-3xl space-y-5">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                             <div>
-                                <Label htmlFor="notif-toggle" className="text-base">Activar notificaciones</Label>
-                                <p className="text-sm text-muted-foreground">Reproduce un sonido al llegar mensajes.</p>
+                                <h2 className="font-semibold">Notificaciones</h2>
+                                <p className="mt-1 text-sm text-muted-foreground">
+                                    Define el sonido del inbox y aplica los cambios cuando estes conforme.
+                                </p>
                             </div>
-                            <Switch
-                                id="notif-toggle"
-                                checked={notifPrefs.enabled}
-                                onCheckedChange={(checked) => {
-                                    const updated = { ...notifPrefs, enabled: checked };
-                                    setNotifPrefs(updated);
-                                    saveNotificationPrefs(updated);
-                                }}
-                            />
+                            <div className="flex flex-wrap gap-2">
+                                <Button
+                                    variant="outline"
+                                    onClick={handleNotifReset}
+                                    disabled={!hasNotifChanges}
+                                >
+                                    Cancelar cambios
+                                </Button>
+                                <Button
+                                    onClick={handleNotifSave}
+                                    disabled={!hasNotifChanges}
+                                >
+                                    <Save className="mr-2 h-4 w-4" />
+                                    Guardar preferencias
+                                </Button>
+                            </div>
                         </div>
-                        {notifPrefs.enabled ? (
-                            <>
-                                <div className="space-y-2">
-                                    {NOTIFICATION_SOUNDS.map((sound) => (
-                                        <button
-                                            key={sound.id}
-                                            onClick={() => {
-                                                const updated = { ...notifPrefs, soundType: sound.id };
-                                                setNotifPrefs(updated);
-                                                saveNotificationPrefs(updated);
-                                            }}
-                                            className={`flex w-full items-center justify-between rounded-xl border p-3 text-left ${
-                                                notifPrefs.soundType === sound.id ? "border-primary bg-primary/5" : ""
-                                            }`}
-                                        >
-                                            <div>
-                                                <p className="font-medium">{sound.name}</p>
-                                                <p className="text-xs text-muted-foreground">{sound.description}</p>
-                                            </div>
-                                            <Button
-                                                type="button"
-                                                variant="ghost"
-                                                size="icon"
-                                                onClick={(event) => {
-                                                    event.stopPropagation();
-                                                    playNotificationSound(sound.id, notifPrefs.volume);
-                                                }}
-                                            >
-                                                <Play className="h-4 w-4" />
-                                            </Button>
-                                        </button>
-                                    ))}
-                                </div>
-                                <div className="space-y-2">
-                                    <div className="flex items-center justify-between">
-                                        <Label>Volumen</Label>
-                                        <span className="text-sm text-muted-foreground">{Math.round(notifPrefs.volume * 100)}%</span>
+
+                        <div className="rounded-2xl border bg-muted/15 p-5">
+                            <div className="flex flex-col gap-4">
+                                <div className="flex items-center justify-between rounded-xl border bg-background/80 px-4 py-4">
+                                    <div className="pr-4">
+                                        <Label htmlFor="notif-toggle" className="text-base">Activar notificaciones</Label>
+                                        <p className="mt-1 text-sm text-muted-foreground">
+                                            Reproduce un sonido cuando entra un mensaje nuevo en el inbox.
+                                        </p>
                                     </div>
-                                    <input
-                                        type="range"
-                                        min={0}
-                                        max={100}
-                                        value={Math.round(notifPrefs.volume * 100)}
-                                        onChange={(event) => {
-                                            const updated = { ...notifPrefs, volume: Number(event.target.value) / 100 };
-                                            setNotifPrefs(updated);
-                                            saveNotificationPrefs(updated);
-                                        }}
-                                        onMouseUp={() => playNotificationSound(notifPrefs.soundType, notifPrefs.volume)}
-                                        className="h-2 w-full cursor-pointer appearance-none rounded-lg bg-muted accent-primary"
+                                    <Switch
+                                        id="notif-toggle"
+                                        checked={notifPrefs.enabled}
+                                        onCheckedChange={(checked) =>
+                                            setNotifPrefs((current) => ({ ...current, enabled: checked }))
+                                        }
                                     />
                                 </div>
-                            </>
-                        ) : null}
+
+                                {notifPrefs.enabled ? (
+                                    <>
+                                        <div className="space-y-2">
+                                            <div className="flex items-center justify-between">
+                                                <div>
+                                                    <p className="font-medium">Sonido</p>
+                                                    <p className="text-sm text-muted-foreground">
+                                                        Elige el tono que mejor encaje con tu forma de trabajo.
+                                                    </p>
+                                                </div>
+                                                <span className="text-xs text-muted-foreground">
+                                                    Vista previa disponible
+                                                </span>
+                                            </div>
+
+                                            {NOTIFICATION_SOUNDS.map((sound) => (
+                                                <button
+                                                    key={sound.id}
+                                                    onClick={() =>
+                                                        setNotifPrefs((current) => ({ ...current, soundType: sound.id }))
+                                                    }
+                                                    className={`flex w-full items-center justify-between gap-4 rounded-xl border px-4 py-4 text-left transition ${
+                                                        notifPrefs.soundType === sound.id
+                                                            ? "border-primary bg-primary/5"
+                                                            : "bg-background/80 hover:border-primary/30"
+                                                    }`}
+                                                >
+                                                    <div className="min-w-0 pr-4">
+                                                        <p className="font-medium">{sound.name}</p>
+                                                        <p className="mt-1 text-sm text-muted-foreground">
+                                                            {sound.description}
+                                                        </p>
+                                                    </div>
+                                                    <Button
+                                                        type="button"
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        onClick={(event) => {
+                                                            event.stopPropagation();
+                                                            playNotificationSound(sound.id, notifPrefs.volume);
+                                                        }}
+                                                        title={`Probar sonido ${sound.name}`}
+                                                    >
+                                                        <Play className="h-4 w-4" />
+                                                    </Button>
+                                                </button>
+                                            ))}
+                                        </div>
+
+                                        <div className="space-y-3 rounded-xl border bg-background/80 px-4 py-4">
+                                            <div className="flex items-center justify-between gap-3">
+                                                <div>
+                                                    <Label>Volumen</Label>
+                                                    <p className="mt-1 text-sm text-muted-foreground">
+                                                        Ajusta la intensidad antes de guardar.
+                                                    </p>
+                                                </div>
+                                                <span className="text-sm font-medium text-muted-foreground">
+                                                    {Math.round(notifPrefs.volume * 100)}%
+                                                </span>
+                                            </div>
+                                            <Slider
+                                                min={0}
+                                                max={100}
+                                                step={1}
+                                                value={[Math.round(notifPrefs.volume * 100)]}
+                                                onValueChange={([value]) =>
+                                                    setNotifPrefs((current) => ({ ...current, volume: value / 100 }))
+                                                }
+                                            />
+                                            <div className="flex justify-end">
+                                                <Button
+                                                    type="button"
+                                                    variant="outline"
+                                                    size="sm"
+                                                    onClick={() => playNotificationSound(notifPrefs.soundType, notifPrefs.volume)}
+                                                >
+                                                    <Play className="mr-2 h-4 w-4" />
+                                                    Probar volumen
+                                                </Button>
+                                            </div>
+                                        </div>
+                                    </>
+                                ) : (
+                                    <div className="rounded-xl border border-dashed bg-background/70 px-4 py-5 text-sm text-muted-foreground">
+                                        Las notificaciones estan desactivadas. Si las vuelves a activar, podras elegir tono y volumen antes de guardar.
+                                    </div>
+                                )}
+
+                                <p className="text-xs text-muted-foreground">
+                                    Los cambios de esta seccion no se aplican hasta pulsar <span className="font-medium text-foreground">Guardar preferencias</span>.
+                                </p>
+                            </div>
+                        </div>
                     </div>
                 )}
             </div>

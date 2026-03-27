@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
     CalendarSync,
     Check,
@@ -56,7 +56,7 @@ export function GoogleCalendarPanel(props: Props) {
         [draftSources],
     );
 
-    const loadStatus = async () => {
+    const loadStatus = useCallback(async () => {
         try {
             const response = await fetch("/api/google-calendar/status", { cache: "no-store" });
             if (!response.ok) throw new Error("No se pudo consultar el estado.");
@@ -73,11 +73,11 @@ export function GoogleCalendarPanel(props: Props) {
                 variant: "destructive",
             });
         }
-    };
+    }, [toast]);
 
     useEffect(() => {
-        loadStatus();
-    }, []);
+        void loadStatus();
+    }, [loadStatus]);
 
     const mutateSource = (calendarId: string, updater: (source: GoogleCalendarSourceSummary) => GoogleCalendarSourceSummary) => {
         setDraftSources((current) => sortSources(current.map((source) => (
@@ -209,7 +209,7 @@ export function GoogleCalendarPanel(props: Props) {
             <div>
                 <h3 className="font-semibold text-base text-foreground">Google Calendar</h3>
                 <p className="text-sm text-muted-foreground">
-                    Conecta una cuenta Google y luego elige que calendarios se ven en el CRM, cuales bloquean disponibilidad y cuales representan especialistas.
+                    Conecta una cuenta Google y elige que calendarios se muestran en el CRM, cuales bloquean horarios y cuales representan especialistas.
                 </p>
             </div>
 
@@ -219,7 +219,7 @@ export function GoogleCalendarPanel(props: Props) {
                         <CardHeader>
                             <CardTitle>Credenciales OAuth</CardTitle>
                             <CardDescription>
-                                Usa un cliente OAuth Web Application de Google Cloud.
+                                Usa un cliente OAuth tipo Web Application creado en Google Cloud.
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
@@ -240,7 +240,7 @@ export function GoogleCalendarPanel(props: Props) {
                                     placeholder="Client Secret de Google"
                                 />
                                 <p className="text-xs text-muted-foreground">
-                                    Agrega esta redirect URI en Google Cloud:
+                                    Agrega esta URL de redireccion en Google Cloud:
                                     <br />
                                     <span className="font-mono break-all">{redirectUri}</span>
                                 </p>
@@ -249,19 +249,19 @@ export function GoogleCalendarPanel(props: Props) {
                             <div className="flex flex-wrap gap-2">
                                 <Button onClick={props.onSave} disabled={props.isSaving || isWorking} variant="outline">
                                     {props.isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-                                    Guardar
+                                    Guardar credenciales
                                 </Button>
                                 <Button onClick={handleConnect} disabled={props.isSaving || isWorking}>
                                     {isWorking ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Link2 className="mr-2 h-4 w-4" />}
-                                    Conectar Google
+                                    Conectar cuenta Google
                                 </Button>
                                 <Button onClick={handleDiscover} disabled={!status.connected || isWorking} variant="secondary">
                                     <RefreshCw className="mr-2 h-4 w-4" />
-                                    Cargar calendarios
+                                    Traer calendarios
                                 </Button>
                                 <Button onClick={handleSync} disabled={!status.connected || isWorking} variant="secondary">
                                     <CalendarSync className="mr-2 h-4 w-4" />
-                                    Sincronizar
+                                    Sincronizar ahora
                                 </Button>
                                 <Button onClick={handleDisconnect} disabled={isWorking} variant="ghost" className="text-destructive hover:text-destructive">
                                     <Unlink className="mr-2 h-4 w-4" />
@@ -278,7 +278,7 @@ export function GoogleCalendarPanel(props: Props) {
                                 Calendarios disponibles
                             </CardTitle>
                             <CardDescription>
-                                Marca con su casilla los calendarios que quieres usar. Solo los marcados se tendran en cuenta en el CRM.
+                                Marca solo los calendarios que quieres usar en el CRM. Los demas quedaran fuera de la operacion.
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
@@ -288,7 +288,7 @@ export function GoogleCalendarPanel(props: Props) {
                                 </div>
                             ) : draftSources.length === 0 ? (
                                 <div className="rounded-xl border border-dashed px-4 py-6 text-sm text-muted-foreground">
-                                    Tu cuenta ya esta conectada. Pulsa <span className="font-medium">Cargar calendarios</span> para traerlos al CRM.
+                                    Tu cuenta ya esta conectada. Pulsa <span className="font-medium">Traer calendarios</span> para cargarlos dentro del CRM.
                                 </div>
                             ) : (
                                 <div className="space-y-3">
@@ -440,7 +440,7 @@ export function GoogleCalendarPanel(props: Props) {
                         <CardHeader>
                             <CardTitle className="flex items-center gap-2">
                                 <CalendarSync className="h-5 w-5 text-primary" />
-                                Estado de la sincronizacion
+                                Estado de la conexion
                             </CardTitle>
                             <CardDescription>
                                 Aqui veras la cuenta enlazada, el calendario principal y el uso actual de especialistas.
@@ -490,7 +490,7 @@ export function GoogleCalendarPanel(props: Props) {
                         <CardHeader>
                             <CardTitle className="flex items-center gap-2">
                                 <Sparkles className="h-5 w-5 text-primary" />
-                                Como lo usara la IA
+                                Como lo usa el CRM
                             </CardTitle>
                         </CardHeader>
                         <CardContent className="space-y-3 text-sm text-muted-foreground">

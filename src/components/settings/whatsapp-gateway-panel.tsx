@@ -158,10 +158,10 @@ export function WhatsAppGatewayPanel(props: Props) {
             } else if (action === "logout") {
                 toast({ title: "Sesion cerrada", description: "El dispositivo debera escanear un QR nuevo para volver a enlazarse." });
             } else if (action === "provision") {
-                toast({ title: "Canal preparado", description: "La conexion ya quedo lista para generar el QR y recibir mensajes." });
+                toast({ title: "Sesion QR preparada", description: "La conexion ya quedo lista para generar el QR y enlazar el telefono." });
             } else {
                 toast({
-                    title: "Conexion iniciada",
+                    title: "QR en preparacion",
                     description: historyImportMonths !== "0"
                         ? `Escanea el QR. Al quedar activo, importaremos hasta ${historyImportMonths} ${historyImportMonths === "1" ? "mes" : "meses"} de chats sin disparar pipelines.`
                         : "Escanea el QR con el telefono y espera unos segundos.",
@@ -207,69 +207,104 @@ export function WhatsAppGatewayPanel(props: Props) {
     return (
         <div className="space-y-5">
             <div>
-                <h3 className="font-semibold text-base text-foreground">WhatsApp por QR con librerias Go</h3>
+                <h3 className="font-semibold text-base text-foreground">Canal de WhatsApp por QR</h3>
                 <p className="text-sm text-muted-foreground">
-                    Configura el canal de forma simple: preparas la conexion, escaneas el QR y el CRM empieza a trabajar con tu numero.
+                    Guarda los datos del servicio, prepara la sesion QR y enlaza tu numero sin tocar la logica del CRM.
                 </p>
             </div>
 
             <div className="grid gap-4 lg:grid-cols-2">
                 <div className="space-y-4">
-                    <div className="space-y-2">
-                        <Label>URL del servicio de WhatsApp</Label>
-                        <Input
-                            value={props.whatsappBaseUrl}
-                            onChange={(event) => props.onChange("whatsappBaseUrl", event.target.value)}
-                            placeholder="http://localhost:8080"
-                        />
-                    </div>
-                    <div className="space-y-2">
-                        <Label>Nombre del canal</Label>
-                        <Input
-                            value={props.whatsappInstanceName}
-                            onChange={(event) => props.onChange("whatsappInstanceName", event.target.value)}
-                            placeholder="zen-crm"
-                        />
-                    </div>
-                    <button
-                        type="button"
-                        onClick={() => setShowAdvanced((current) => !current)}
-                        className="inline-flex items-center gap-2 text-sm text-muted-foreground transition hover:text-foreground"
-                    >
-                        <ChevronDown className={`h-4 w-4 transition-transform ${showAdvanced ? "rotate-180" : ""}`} />
-                        Configuracion avanzada
-                    </button>
+                    <div className="space-y-4 rounded-2xl border bg-muted/20 p-4">
+                        <div>
+                            <p className="font-medium">Datos del canal</p>
+                            <p className="text-sm text-muted-foreground">
+                                Aqui defines a donde se conecta el CRM y con que nombre interno se identificara esta sesion.
+                            </p>
+                        </div>
 
-                    {showAdvanced ? (
-                        <div className="space-y-4 rounded-2xl border bg-muted/20 p-4">
-                            <div className="space-y-2">
-                                <Label>Token maestro</Label>
-                                <Input
-                                    type="password"
-                                    value={props.whatsappAdminToken}
-                                    onChange={(event) => props.onChange("whatsappAdminToken", event.target.value)}
-                                    placeholder="Token administrativo del servicio"
-                                />
+                        <div className="space-y-2">
+                            <Label>URL del servicio de WhatsApp</Label>
+                            <Input
+                                value={props.whatsappBaseUrl}
+                                onChange={(event) => props.onChange("whatsappBaseUrl", event.target.value)}
+                                placeholder="http://localhost:8080"
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label>Nombre interno del canal</Label>
+                            <Input
+                                value={props.whatsappInstanceName}
+                                onChange={(event) => props.onChange("whatsappInstanceName", event.target.value)}
+                                placeholder="zen-crm"
+                            />
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => setShowAdvanced((current) => !current)}
+                            className="inline-flex items-center gap-2 text-sm text-muted-foreground transition hover:text-foreground"
+                        >
+                            <ChevronDown className={`h-4 w-4 transition-transform ${showAdvanced ? "rotate-180" : ""}`} />
+                            Ver ajustes tecnicos
+                        </button>
+
+                        {showAdvanced ? (
+                            <div className="space-y-4 rounded-2xl border bg-background/70 p-4">
+                                <div className="space-y-2">
+                                    <Label>Token maestro</Label>
+                                    <Input
+                                        type="password"
+                                        value={props.whatsappAdminToken}
+                                        onChange={(event) => props.onChange("whatsappAdminToken", event.target.value)}
+                                        placeholder="Token administrativo del servicio"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Token del canal</Label>
+                                    <Input
+                                        value={props.whatsappUserToken}
+                                        onChange={(event) => props.onChange("whatsappUserToken", event.target.value)}
+                                        placeholder="Se genera automaticamente si lo dejas vacio"
+                                    />
+                                </div>
                             </div>
-                            <div className="space-y-2">
-                                <Label>Token del canal</Label>
-                                <Input
-                                    value={props.whatsappUserToken}
-                                    onChange={(event) => props.onChange("whatsappUserToken", event.target.value)}
-                                    placeholder="Se genera automaticamente si lo dejas vacio"
-                                />
+                        ) : null}
+                    </div>
+
+                    <div className="space-y-3 rounded-2xl border bg-muted/20 p-4">
+                        <div>
+                            <p className="font-medium">Como enlazar el numero</p>
+                            <p className="text-sm text-muted-foreground">
+                                Este orden evita dudas y hace mas claro que esperar en cada paso.
+                            </p>
+                        </div>
+                        <div className="space-y-2 text-sm text-muted-foreground">
+                            <div className="rounded-xl border bg-background/80 px-4 py-3">
+                                <span className="font-medium text-foreground">1. Guardar datos</span>
+                                <p className="mt-1">Guarda la URL y el nombre del canal para dejar lista la configuracion base.</p>
+                            </div>
+                            <div className="rounded-xl border bg-background/80 px-4 py-3">
+                                <span className="font-medium text-foreground">2. Preparar sesion QR</span>
+                                <p className="mt-1">Crea la sesion tecnica que luego podra generar el QR de vinculacion.</p>
+                            </div>
+                            <div className="rounded-xl border bg-background/80 px-4 py-3">
+                                <span className="font-medium text-foreground">3. Conectar por QR</span>
+                                <p className="mt-1">Muestra el QR para que lo escanees desde WhatsApp en tu telefono.</p>
+                            </div>
+                            <div className="rounded-xl border bg-background/80 px-4 py-3">
+                                <span className="font-medium text-foreground">4. Importacion historica opcional</span>
+                                <p className="mt-1">Si eliges 1, 2 o 3 meses, el CRM trae chats y contactos sin disparar pipelines.</p>
                             </div>
                         </div>
-                    ) : null}
+                    </div>
 
                     <div className="space-y-4 rounded-2xl border bg-muted/20 p-4">
                         <div>
-                            <p className="font-medium">Importacion al vincular</p>
+                            <p className="font-medium">Importacion historica opcional</p>
                             <p className="text-sm text-muted-foreground">
                                 Puedes traer hasta 3 meses de chats y contactos sin disparar pipelines ni crear automatizaciones por el historial.
                             </p>
                         </div>
-
                         <div className="grid gap-3 md:grid-cols-[1fr_auto]">
                             <div className="space-y-2">
                                 <Label>Historial a importar</Label>
@@ -322,11 +357,11 @@ export function WhatsAppGatewayPanel(props: Props) {
                     <div className="flex flex-wrap gap-2">
                         <Button onClick={props.onSave} disabled={props.isSaving || isWorking} variant="outline">
                             {props.isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-                            Guardar
+                            Guardar datos
                         </Button>
                         <Button onClick={() => executeAction("provision")} disabled={props.isSaving || isWorking}>
                             {isWorking ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
-                            Preparar canal
+                            Preparar sesion QR
                         </Button>
                         <Button onClick={handleConnect} disabled={props.isSaving || isWorking || isImportingHistory}>
                             <QrCode className="mr-2 h-4 w-4" />
@@ -355,7 +390,7 @@ export function WhatsAppGatewayPanel(props: Props) {
                             Estado de la sesion
                         </CardTitle>
                         <CardDescription>
-                            El QR aparecera aqui cuando el canal este listo para enlazar el telefono.
+                            El QR aparecera aqui cuando la sesion este preparada para enlazar el telefono.
                         </CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4">
@@ -403,7 +438,7 @@ export function WhatsAppGatewayPanel(props: Props) {
                             </div>
                         ) : (
                             <div className="rounded-2xl border border-dashed p-6 text-center text-sm text-muted-foreground">
-                                Todavia no hay QR disponible. Guarda la configuracion, prepara el canal y pulsa &quot;Conectar por QR&quot;.
+                                Todavia no hay QR disponible. Guarda los datos, prepara la sesion y luego pulsa &quot;Conectar por QR&quot;.
                             </div>
                         )}
                     </CardContent>
