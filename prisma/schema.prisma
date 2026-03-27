@@ -255,6 +255,8 @@ model BulkCampaign {
   mediaFileName    String?
   batchSize        Int      @default(3)
   batchDelayMinutes Int     @default(5)
+  randomDelayMinSeconds Int @default(25)
+  randomDelayMaxSeconds Int @default(75)
   respectBusinessHours Boolean @default(true)
   stopOnReply      Boolean  @default(true)
   senderStrategy   String   @default("primary")
@@ -266,6 +268,7 @@ model BulkCampaign {
   startedAt        DateTime?
   completedAt      DateTime?
   lastProcessedAt  DateTime?
+  scheduledStartAt DateTime?
   nextRunAt        DateTime?
   workerLockId     String?
   workerLockExpiresAt DateTime?

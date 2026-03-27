@@ -1,6 +1,6 @@
 import { processDueBulkCampaigns } from "@/lib/bulk-campaigns";
 
-const DEFAULT_WORKER_INTERVAL_MS = 15_000;
+const DEFAULT_WORKER_INTERVAL_MS = 5_000;
 
 const globalForBulkCampaignWorker = globalThis as typeof globalThis & {
     __bulkCampaignWorkerStarted?: boolean;

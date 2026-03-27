@@ -2004,19 +2004,22 @@ export default function InboxPage() {
             <div className="flex h-[calc(100dvh-3.5rem-2rem)] overflow-hidden rounded-[2rem] border border-border/60 bg-[linear-gradient(180deg,rgba(255,255,255,0.82),rgba(248,250,252,0.98))] shadow-[0_28px_80px_-48px_rgba(15,23,42,0.55)] backdrop-blur-xl dark:bg-[linear-gradient(180deg,rgba(15,23,42,0.88),rgba(2,6,23,0.98))] md:h-full"
                 style={{ contain: "layout size" }}>
                 {/* ──── Sidebar ──── */}
-                <div className={cn("min-h-0 w-full md:w-[23rem] 2xl:w-[24.5rem] border-r border-border/50 flex flex-col bg-card/55 backdrop-blur-2xl", selectedChat ? "hidden md:flex" : "flex")}>
-                    <div className="border-b border-border/50 bg-background/35 p-5 space-y-4">
-                        <h2 className="text-[1.65rem] font-semibold tracking-tight">Chats</h2>
+                <div className={cn("min-h-0 w-full md:w-[20.5rem] 2xl:w-[21.75rem] border-r border-border/50 flex flex-col bg-card/55 backdrop-blur-2xl", selectedChat ? "hidden md:flex" : "flex")}>
+                    <div className="border-b border-border/50 bg-background/35 p-4 space-y-3.5">
+                        <div>
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">Inbox</p>
+                            <h2 className="mt-1 text-[1.35rem] font-semibold tracking-tight">Chats</h2>
+                        </div>
                         <div className="relative">
                             <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                             <Input
                                 placeholder="Buscar chats..."
-                                className="h-12 rounded-[1.25rem] border-border/60 bg-background/80 pl-10 shadow-[0_12px_30px_-24px_rgba(15,23,42,0.4)] placeholder:text-muted-foreground/80"
+                                className="h-11 rounded-[1.1rem] border-border/60 bg-background/80 pl-10 shadow-[0_12px_30px_-24px_rgba(15,23,42,0.4)] placeholder:text-muted-foreground/80"
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
                             />
                         </div>
-                        <div className="inline-flex w-fit flex-wrap gap-2 rounded-[1rem] border border-border/50 bg-background/75 p-1 shadow-[0_14px_30px_-26px_rgba(15,23,42,0.45)]">
+                        <div className="inline-flex w-fit flex-wrap gap-1.5 rounded-[0.95rem] border border-border/50 bg-background/75 p-1 shadow-[0_14px_30px_-26px_rgba(15,23,42,0.45)]">
                             {[
                                 { id: "all", label: "Todos" },
                                 { id: "mine", label: "Mios" },
@@ -2027,7 +2030,7 @@ export default function InboxPage() {
                                     type="button"
                                     onClick={() => setViewFilter(filter.id as "all" | "mine" | "unassigned")}
                                     className={cn(
-                                        "rounded-[0.85rem] border px-3 py-1.5 text-xs font-medium transition-all",
+                                        "rounded-[0.8rem] border px-3 py-1.5 text-[11px] font-medium transition-all",
                                         viewFilter === filter.id
                                             ? "border-border/70 bg-card text-foreground shadow-[0_10px_22px_-18px_rgba(15,23,42,0.45)]"
                                             : "border-transparent bg-transparent text-muted-foreground hover:bg-card/70 hover:text-foreground",
@@ -2054,9 +2057,9 @@ export default function InboxPage() {
 
                     <ScrollArea
                         type="always"
-                        className="min-h-0 flex-1 px-3 py-3"
+                        className="min-h-0 flex-1 px-2 py-2.5"
                     >
-                        <div className="flex flex-col gap-2">
+                        <div className="flex flex-col gap-1.5">
                             {filteredConversations.length === 0 && (
                                 <div className="rounded-[1.6rem] border border-dashed border-border/60 bg-background/50 p-10 text-center text-sm text-muted-foreground">
                                     {searchQuery ? "No se encontraron chats" : "Sin conversaciones"}
@@ -2078,15 +2081,15 @@ export default function InboxPage() {
                                         });
                                     }}
                                     className={cn(
-                                        "grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-2.5 rounded-[1.2rem] border px-3 py-2.5 text-left transition-all",
+                                        "grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-2 rounded-[1.05rem] border px-2.5 py-2 text-left transition-all",
                                         selectedChat?.id === chat.id
                                             ? "border-border/70 bg-background/90 shadow-[0_20px_45px_-32px_rgba(15,23,42,0.45)]"
                                             : "border-transparent bg-transparent hover:border-border/50 hover:bg-background/65 hover:shadow-[0_18px_40px_-34px_rgba(15,23,42,0.35)]"
                                     )}
                                 >
                                     <div className="relative shrink-0">
-                                        <Avatar className="h-10 w-10 ring-1 ring-black/5 dark:ring-white/10">
-                                            <AvatarFallback className={cn(getAvatarColor(chat.contact?.name), "text-white font-semibold text-sm")}>
+                                        <Avatar className="h-9 w-9 ring-1 ring-black/5 dark:ring-white/10">
+                                            <AvatarFallback className={cn(getAvatarColor(chat.contact?.name), "text-white font-semibold text-[13px]")}>
                                                 {chat.isGroup ? <Users className="h-4 w-4" /> : (chat.contact?.name?.charAt(0)?.toUpperCase() || "?")}
                                             </AvatarFallback>
                                         </Avatar>
@@ -2096,25 +2099,25 @@ export default function InboxPage() {
                                     </div>
                                     <div className="min-w-0 overflow-hidden">
                                         <div className="flex min-w-0 items-start gap-1.5">
-                                            <span className="flex min-w-0 items-center gap-1 truncate text-[14px] font-semibold tracking-tight leading-tight">
+                                            <span className="flex min-w-0 items-center gap-1 truncate text-[13px] font-semibold tracking-tight leading-tight">
                                                 {chat.contact?.name || "Desconocido"}
                                                 {chat.isMuted && <BellOff className="h-3 w-3 text-muted-foreground" />}
                                             </span>
                                         </div>
                                         {chat.contact?.phone && (
-                                            <p className="mt-0.5 text-[11px] text-muted-foreground/85 truncate leading-tight">{formatPhone(chat.contact.phone)}</p>
+                                            <p className="mt-0.5 text-[10px] text-muted-foreground/85 truncate leading-tight">{formatPhone(chat.contact.phone)}</p>
                                         )}
-                                        <p className="text-[11px] text-muted-foreground/80 truncate leading-tight">
+                                        <p className="text-[10px] text-muted-foreground/80 truncate leading-tight">
                                             {chat.assignedUser
                                                 ? `Asignado a ${chat.assignedUser.name || chat.assignedUser.email}`
                                                 : "Sin asignar"}
                                         </p>
-                                        <p className="mt-0.5 text-[12px] leading-tight text-muted-foreground truncate">
+                                        <p className="mt-0.5 text-[11px] leading-tight text-muted-foreground truncate">
                                             {getLastMessagePreview(chat)}
                                         </p>
                                     </div>
                                     <div className="flex shrink-0 flex-col items-end gap-0.5 pt-0.5">
-                                        <span className="text-[11px] font-medium text-muted-foreground/85 whitespace-nowrap">
+                                        <span className="text-[10px] font-medium text-muted-foreground/85 whitespace-nowrap">
                                             {formatConversationListTimestamp(chat.updatedAt)}
                                         </span>
                                         <MessageResponderBadge

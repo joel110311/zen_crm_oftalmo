@@ -2,6 +2,7 @@ import crypto from "crypto";
 import type {
     BulkCampaign,
     BulkCampaignVariant,
+    Contact,
     Prisma,
 } from "@prisma/client";
 import { prisma } from "@/lib/db";
@@ -17,18 +18,18 @@ import {
 } from "@/lib/outbound-messages";
 import { getSystemSettingsOrDefaults } from "@/lib/system-settings";
 import { listTemplateVariableKeys, renderTemplateContent } from "@/lib/templates";
+import {
+    MAX_BULK_CAMPAIGN_AUDIENCE_LIMIT,
+    type BulkCampaignAudienceFilters,
+    type BulkCampaignAudienceMode,
+    type BulkCampaignManualEntry,
+    normalizeBulkCampaignAudienceFilters,
+} from "@/lib/bulk-campaign-audience";
+import { buildPhoneMatchClauses, normalizePhoneDigits } from "@/lib/phone";
 
 const DEFAULT_VARIANT_LABELS = ["A", "B", "C", "D", "E"];
-const MAX_AUDIENCE_LIMIT = 5000;
 const WORKER_LOCK_TTL_MS = 60_000;
 const ALLOWED_CAMPAIGN_TYPES = new Set<OutboundMessageType>(["text", "image", "document"]);
-
-export type BulkCampaignAudienceFilters = {
-    statuses: string[];
-    tags: string[];
-    query: string;
-    limit: number | null;
-};
 
 export type BulkCampaignVariantInput = {
     label: string;
@@ -47,6 +48,9 @@ export type BulkCampaignUpsertInput = {
     mediaFileName: string | null;
     batchSize: number;
     batchDelayMinutes: number;
+    randomDelayMinSeconds: number;
+    randomDelayMaxSeconds: number;
+    scheduledStartAt: Date | null;
     respectBusinessHours: boolean;
     stopOnReply: boolean;
     audienceFilters: BulkCampaignAudienceFilters;
@@ -63,13 +67,13 @@ function clampInteger(value: unknown, fallback: number, min: number, max: number
     return Math.min(Math.max(parsed, min), max);
 }
 
-function normalizeStringList(value: unknown) {
-    if (!Array.isArray(value)) return [];
+function normalizeOptionalDate(value: unknown) {
+    if (typeof value !== "string" || !value.trim()) {
+        return null;
+    }
 
-    return value
-        .map((entry) => (typeof entry === "string" ? entry.trim() : ""))
-        .filter(Boolean)
-        .filter((entry, index, array) => array.indexOf(entry) === index);
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
 function normalizeCampaignType(value: unknown): OutboundMessageType {
@@ -87,21 +91,6 @@ function buildDefaultVariant(index = 0): BulkCampaignVariantInput {
         weight: 1,
         sortOrder: index,
         isActive: true,
-    };
-}
-
-export function normalizeBulkCampaignAudienceFilters(value: unknown): BulkCampaignAudienceFilters {
-    const record = typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
-    const statuses = normalizeStringList(record.statuses).map((entry) => entry.toLowerCase());
-    const tags = normalizeStringList(record.tags);
-    const query = typeof record.query === "string" ? record.query.trim() : "";
-    const limitRaw = clampInteger(record.limit, 0, 0, MAX_AUDIENCE_LIMIT);
-
-    return {
-        statuses,
-        tags,
-        query,
-        limit: limitRaw > 0 ? limitRaw : null,
     };
 }
 
@@ -148,10 +137,16 @@ export function normalizeBulkCampaignPayload(value: unknown): BulkCampaignUpsert
         mediaType: typeof record.mediaType === "string" && record.mediaType.trim() ? record.mediaType.trim() : null,
         mediaFileName: typeof record.mediaFileName === "string" && record.mediaFileName.trim() ? record.mediaFileName.trim() : null,
         batchSize: clampInteger(record.batchSize, 3, 1, 100),
-        batchDelayMinutes: clampInteger(record.batchDelayMinutes, 5, 1, 24 * 60),
+        batchDelayMinutes: clampInteger(record.batchDelayMinutes, 5, 0, 24 * 60),
+        randomDelayMinSeconds: clampInteger(record.randomDelayMinSeconds, 25, 5, 30 * 60),
+        randomDelayMaxSeconds: clampInteger(record.randomDelayMaxSeconds, 75, 5, 30 * 60),
+        scheduledStartAt: normalizeOptionalDate(record.scheduledStartAt),
         respectBusinessHours: record.respectBusinessHours !== false,
         stopOnReply: record.stopOnReply !== false,
-        audienceFilters: normalizeBulkCampaignAudienceFilters(record.audienceFilters),
+        audienceFilters: normalizeBulkCampaignAudienceFilters(
+            record.audienceFilters,
+            MAX_BULK_CAMPAIGN_AUDIENCE_LIMIT,
+        ),
         variants: normalizeBulkCampaignVariants(record.variants, type),
     };
 }
@@ -163,6 +158,10 @@ function ensureCampaignDraftIsValid(input: BulkCampaignUpsertInput) {
 
     if (input.type !== "text" && !input.mediaUrl) {
         throw new Error("La campaña requiere un archivo adjunto");
+    }
+
+    if (input.randomDelayMaxSeconds < input.randomDelayMinSeconds) {
+        throw new Error("El delay máximo debe ser mayor o igual al mínimo");
     }
 }
 
@@ -208,27 +207,327 @@ function buildAudienceWhere(filters: BulkCampaignAudienceFilters): Prisma.Contac
     };
 }
 
-async function loadAudienceContacts(filters: BulkCampaignAudienceFilters) {
+const AUDIENCE_CONTACT_SELECT = {
+    id: true,
+    name: true,
+    lastName: true,
+    company: true,
+    email: true,
+    phone: true,
+    status: true,
+    tags: true,
+    updatedAt: true,
+    createdAt: true,
+} satisfies Prisma.ContactSelect;
+
+type AudienceContactRecord = Prisma.ContactGetPayload<{
+    select: typeof AUDIENCE_CONTACT_SELECT;
+}>;
+
+export type BulkCampaignAudiencePreviewRecipient = {
+    key: string;
+    contactId: string | null;
+    name: string;
+    company: string;
+    phone: string;
+    status: string | null;
+    source: "crm" | "manual";
+    matchedBy: "filters" | "selected" | "manual";
+};
+
+export type BulkCampaignAudiencePreview = {
+    candidates: AudienceContactRecord[];
+    selectedContacts: AudienceContactRecord[];
+    finalRecipients: BulkCampaignAudiencePreviewRecipient[];
+    totals: {
+        candidates: number;
+        filterMatches: number;
+        selectedContacts: number;
+        manualRecipients: number;
+        finalRecipients: number;
+        crmRecipients: number;
+    };
+    sourceBreakdown: Array<{
+        label: string;
+        value: number;
+    }>;
+    statusBreakdown: Array<{
+        status: string;
+        value: number;
+    }>;
+};
+
+async function loadFilterAudienceContacts(
+    filters: BulkCampaignAudienceFilters,
+    take = filters.limit ?? MAX_BULK_CAMPAIGN_AUDIENCE_LIMIT,
+) {
     return prisma.contact.findMany({
         where: buildAudienceWhere(filters),
         orderBy: [
             { updatedAt: "desc" },
             { createdAt: "desc" },
         ],
-        take: filters.limit ?? MAX_AUDIENCE_LIMIT,
-        select: {
-            id: true,
-            name: true,
-            company: true,
-            phone: true,
+        take,
+        select: AUDIENCE_CONTACT_SELECT,
+    });
+}
+
+async function loadSelectedAudienceContacts(selectedContactIds: string[]) {
+    if (selectedContactIds.length === 0) {
+        return [] as AudienceContactRecord[];
+    }
+
+    const contacts = await prisma.contact.findMany({
+        where: {
+            id: {
+                in: selectedContactIds,
+            },
+            phone: {
+                not: "",
+            },
+        },
+        select: AUDIENCE_CONTACT_SELECT,
+    });
+
+    const orderMap = new Map(selectedContactIds.map((id, index) => [id, index]));
+    return contacts.sort((left, right) => (orderMap.get(left.id) ?? 0) - (orderMap.get(right.id) ?? 0));
+}
+
+function buildAudiencePreviewRecipientKey(recipient: {
+    contactId?: string | null;
+    phone?: string | null;
+}) {
+    const normalizedPhone = normalizePhoneDigits(recipient.phone);
+    if (normalizedPhone) {
+        return `phone:${normalizedPhone}`;
+    }
+    if (recipient.contactId) {
+        return `contact:${recipient.contactId}`;
+    }
+    return crypto.randomUUID();
+}
+
+function buildPreviewRecipientFromContact(
+    contact: AudienceContactRecord,
+    matchedBy: "filters" | "selected",
+): BulkCampaignAudiencePreviewRecipient {
+    return {
+        key: buildAudiencePreviewRecipientKey({ contactId: contact.id, phone: contact.phone }),
+        contactId: contact.id,
+        name: [contact.name, contact.lastName].filter(Boolean).join(" ").trim() || contact.phone || "Sin nombre",
+        company: contact.company || "",
+        phone: contact.phone || "",
+        status: contact.status || null,
+        source: "crm",
+        matchedBy,
+    };
+}
+
+function buildPreviewRecipientFromManualEntry(entry: BulkCampaignManualEntry): BulkCampaignAudiencePreviewRecipient {
+    return {
+        key: buildAudiencePreviewRecipientKey({ phone: entry.phone }),
+        contactId: null,
+        name: entry.name || entry.phone,
+        company: entry.company || "",
+        phone: entry.phone,
+        status: null,
+        source: "manual",
+        matchedBy: "manual",
+    };
+}
+
+function dedupePreviewRecipients(recipients: BulkCampaignAudiencePreviewRecipient[]) {
+    const byKey = new Map<string, BulkCampaignAudiencePreviewRecipient>();
+
+    for (const recipient of recipients) {
+        const existing = byKey.get(recipient.key);
+        if (!existing) {
+            byKey.set(recipient.key, recipient);
+            continue;
+        }
+
+        if (existing.source === "manual" && recipient.source === "crm") {
+            byKey.set(recipient.key, recipient);
+        }
+    }
+
+    return Array.from(byKey.values());
+}
+
+function mergeAudienceContactsByMode(
+    mode: BulkCampaignAudienceMode,
+    filterContacts: AudienceContactRecord[],
+    selectedContacts: AudienceContactRecord[],
+) {
+    if (mode === "selected") {
+        return selectedContacts;
+    }
+
+    if (mode === "mixed") {
+        const map = new Map<string, AudienceContactRecord>();
+        for (const contact of filterContacts) {
+            map.set(contact.id, contact);
+        }
+        for (const contact of selectedContacts) {
+            map.set(contact.id, contact);
+        }
+        return Array.from(map.values());
+    }
+
+    return filterContacts;
+}
+
+async function countAudienceContacts(filters: BulkCampaignAudienceFilters) {
+    const [filterMatchesCount, filterContacts, selectedContacts] = await Promise.all([
+        prisma.contact.count({
+            where: buildAudienceWhere(filters),
+        }),
+        filters.mode === "selected"
+            ? Promise.resolve([] as AudienceContactRecord[])
+            : loadFilterAudienceContacts(filters, filters.limit ?? MAX_BULK_CAMPAIGN_AUDIENCE_LIMIT),
+        loadSelectedAudienceContacts(filters.selectedContactIds),
+    ]);
+
+    const recipients = dedupePreviewRecipients([
+        ...mergeAudienceContactsByMode(filters.mode, filterContacts, selectedContacts).map((contact) =>
+            buildPreviewRecipientFromContact(contact, "filters"),
+        ),
+        ...filters.manualEntries.map((entry) => buildPreviewRecipientFromManualEntry(entry)),
+    ]);
+
+    return {
+        totalRecipients: recipients.length,
+        filterMatchesCount,
+        selectedContactsCount: selectedContacts.length,
+        manualRecipientsCount: recipients.filter((recipient) => recipient.source === "manual").length,
+    };
+}
+
+async function findExistingContactForPhone(phone: string) {
+    const phoneClauses = buildPhoneMatchClauses([phone]);
+    if (phoneClauses.length === 0) return null;
+
+    return prisma.contact.findFirst({
+        where: {
+            OR: phoneClauses,
         },
     });
 }
 
-async function countAudienceContacts(filters: BulkCampaignAudienceFilters) {
-    return prisma.contact.count({
-        where: buildAudienceWhere(filters),
-    });
+async function materializeManualAudienceContacts(entries: BulkCampaignManualEntry[]) {
+    const contacts: Contact[] = [];
+
+    for (const entry of entries) {
+        const normalizedPhone = normalizePhoneDigits(entry.phone);
+        if (!normalizedPhone) continue;
+
+        const existing = await findExistingContactForPhone(normalizedPhone);
+        if (existing) {
+            const needsUpdate = (!existing.name && entry.name) || (!existing.company && entry.company);
+            const contact = needsUpdate
+                ? await prisma.contact.update({
+                    where: { id: existing.id },
+                    data: {
+                        ...(entry.name && !existing.name ? { name: entry.name } : {}),
+                        ...(entry.company && !existing.company ? { company: entry.company } : {}),
+                    },
+                })
+                : existing;
+            contacts.push(contact);
+            continue;
+        }
+
+        contacts.push(await prisma.contact.create({
+            data: {
+                phone: normalizedPhone,
+                name: entry.name || null,
+                company: entry.company || null,
+                status: "lead",
+            },
+        }));
+    }
+
+    return contacts;
+}
+
+async function resolveBulkCampaignAudienceContacts(filters: BulkCampaignAudienceFilters) {
+    const [filterContacts, selectedContacts] = await Promise.all([
+        filters.mode === "selected"
+            ? Promise.resolve([] as AudienceContactRecord[])
+            : loadFilterAudienceContacts(filters, filters.limit ?? MAX_BULK_CAMPAIGN_AUDIENCE_LIMIT),
+        loadSelectedAudienceContacts(filters.selectedContactIds),
+    ]);
+
+    const crmContacts = mergeAudienceContactsByMode(filters.mode, filterContacts, selectedContacts);
+    const manualContacts = await materializeManualAudienceContacts(filters.manualEntries);
+    const deduped = new Map<string, Contact | AudienceContactRecord>();
+
+    for (const contact of crmContacts) {
+        deduped.set(buildAudiencePreviewRecipientKey({ contactId: contact.id, phone: contact.phone }), contact);
+    }
+
+    for (const contact of manualContacts) {
+        const key = buildAudiencePreviewRecipientKey({ contactId: contact.id, phone: contact.phone });
+        if (!deduped.has(key)) {
+            deduped.set(key, contact);
+        }
+    }
+
+    return Array.from(deduped.values());
+}
+
+export async function getBulkCampaignAudiencePreview(filters: BulkCampaignAudienceFilters) {
+    const [candidateContacts, filterContacts, selectedContacts, filterMatchesCount] = await Promise.all([
+        loadFilterAudienceContacts(filters, Math.min(120, filters.limit ?? 120)),
+        filters.mode === "selected"
+            ? Promise.resolve([] as AudienceContactRecord[])
+            : loadFilterAudienceContacts(filters, filters.limit ?? MAX_BULK_CAMPAIGN_AUDIENCE_LIMIT),
+        loadSelectedAudienceContacts(filters.selectedContactIds),
+        prisma.contact.count({
+            where: buildAudienceWhere(filters),
+        }),
+    ]);
+
+    const previewRecipients = dedupePreviewRecipients([
+        ...mergeAudienceContactsByMode(filters.mode, filterContacts, selectedContacts).map((contact) =>
+            buildPreviewRecipientFromContact(
+                contact,
+                filterContacts.some((candidate) => candidate.id === contact.id) ? "filters" : "selected",
+            ),
+        ),
+        ...filters.manualEntries.map((entry) => buildPreviewRecipientFromManualEntry(entry)),
+    ]);
+
+    const sourceBreakdown = [
+        { label: "CRM", value: previewRecipients.filter((recipient) => recipient.source === "crm").length },
+        { label: "Manuales", value: previewRecipients.filter((recipient) => recipient.source === "manual").length },
+    ].filter((entry) => entry.value > 0);
+
+    const statusMap = new Map<string, number>();
+    for (const recipient of previewRecipients) {
+        const key = recipient.status || "manual";
+        statusMap.set(key, (statusMap.get(key) || 0) + 1);
+    }
+
+    const statusBreakdown = Array.from(statusMap.entries())
+        .map(([status, value]) => ({ status, value }))
+        .sort((left, right) => right.value - left.value);
+
+    return {
+        candidates: candidateContacts,
+        selectedContacts,
+        finalRecipients: previewRecipients.slice(0, 18),
+        totals: {
+            candidates: candidateContacts.length,
+            filterMatches: filterMatchesCount,
+            selectedContacts: selectedContacts.length,
+            manualRecipients: previewRecipients.filter((recipient) => recipient.source === "manual").length,
+            finalRecipients: previewRecipients.length,
+            crmRecipients: previewRecipients.filter((recipient) => recipient.source === "crm").length,
+        },
+        sourceBreakdown,
+        statusBreakdown,
+    } satisfies BulkCampaignAudiencePreview;
 }
 
 export async function refreshBulkCampaignStats(campaignId: string) {
@@ -325,10 +624,13 @@ export async function createBulkCampaign(input: BulkCampaignUpsertInput, created
             mediaFileName: input.mediaFileName,
             batchSize: input.batchSize,
             batchDelayMinutes: input.batchDelayMinutes,
+            randomDelayMinSeconds: input.randomDelayMinSeconds,
+            randomDelayMaxSeconds: input.randomDelayMaxSeconds,
+            scheduledStartAt: input.scheduledStartAt,
             respectBusinessHours: input.respectBusinessHours,
             stopOnReply: input.stopOnReply,
             audienceFilters: input.audienceFilters,
-            totalRecipients: estimatedRecipients,
+            totalRecipients: estimatedRecipients.totalRecipients,
             createdById: createdById || null,
             variants: {
                 create: input.variants.map((variant) => ({
@@ -380,10 +682,13 @@ export async function updateBulkCampaign(id: string, input: BulkCampaignUpsertIn
                 mediaFileName: input.mediaFileName,
                 batchSize: input.batchSize,
                 batchDelayMinutes: input.batchDelayMinutes,
+                randomDelayMinSeconds: input.randomDelayMinSeconds,
+                randomDelayMaxSeconds: input.randomDelayMaxSeconds,
+                scheduledStartAt: input.scheduledStartAt,
                 respectBusinessHours: input.respectBusinessHours,
                 stopOnReply: input.stopOnReply,
                 audienceFilters: input.audienceFilters,
-                totalRecipients: estimatedRecipients,
+                totalRecipients: estimatedRecipients.totalRecipients,
                 completedAt: null,
             },
         });
@@ -426,14 +731,20 @@ export async function startBulkCampaign(id: string) {
 
     ensureCampaignCanLaunch(campaign);
 
-    const filters = normalizeBulkCampaignAudienceFilters(campaign.audienceFilters);
-    const contacts = await loadAudienceContacts(filters);
+    const filters = normalizeBulkCampaignAudienceFilters(
+        campaign.audienceFilters,
+        MAX_BULK_CAMPAIGN_AUDIENCE_LIMIT,
+    );
+    const contacts = await resolveBulkCampaignAudienceContacts(filters);
 
     if (contacts.length === 0) {
         throw new Error("No hay contactos que coincidan con la audiencia seleccionada");
     }
 
     const now = new Date();
+    const nextRunAt = campaign.scheduledStartAt && campaign.scheduledStartAt.getTime() > now.getTime()
+        ? campaign.scheduledStartAt
+        : now;
 
     await prisma.$transaction(async (tx) => {
         await tx.bulkCampaignRecipient.deleteMany({
@@ -461,7 +772,7 @@ export async function startBulkCampaign(id: string) {
                 startedAt: now,
                 completedAt: null,
                 lastProcessedAt: null,
-                nextRunAt: now,
+                nextRunAt,
                 workerLockId: null,
                 workerLockExpiresAt: null,
             },
@@ -491,7 +802,10 @@ export async function pauseBulkCampaign(id: string) {
 export async function resumeBulkCampaign(id: string) {
     const existing = await prisma.bulkCampaign.findUnique({
         where: { id },
-        select: { status: true },
+        select: {
+            status: true,
+            scheduledStartAt: true,
+        },
     });
 
     if (!existing) {
@@ -507,7 +821,9 @@ export async function resumeBulkCampaign(id: string) {
         data: {
             status: "running",
             completedAt: null,
-            nextRunAt: new Date(),
+            nextRunAt: existing.scheduledStartAt && existing.scheduledStartAt.getTime() > Date.now()
+                ? existing.scheduledStartAt
+                : new Date(),
             workerLockId: null,
             workerLockExpiresAt: null,
         },
@@ -571,6 +887,20 @@ function chooseVariant(variants: BulkCampaignVariant[], campaignType: OutboundMe
     }
 
     return activeVariants[0] || null;
+}
+
+function resolveBulkCampaignRandomDelayMs(
+    campaign: Pick<BulkCampaign, "randomDelayMinSeconds" | "randomDelayMaxSeconds">,
+) {
+    const minSeconds = Math.max(1, campaign.randomDelayMinSeconds || 0);
+    const maxSeconds = Math.max(minSeconds, campaign.randomDelayMaxSeconds || minSeconds);
+
+    if (minSeconds === maxSeconds) {
+        return minSeconds * 1000;
+    }
+
+    const offset = Math.floor(Math.random() * (maxSeconds - minSeconds + 1));
+    return (minSeconds + offset) * 1000;
 }
 
 async function releaseCampaignLock(campaignId: string, lockId: string, data?: Prisma.BulkCampaignUpdateInput) {
@@ -661,7 +991,7 @@ async function processClaimedCampaign(campaignId: string, lockId: string) {
                 contact: true,
             },
             orderBy: { sequenceIndex: "asc" },
-            take: Math.max(1, campaign.batchSize),
+            take: 1,
         });
 
         if (recipients.length === 0) {
@@ -677,20 +1007,28 @@ async function processClaimedCampaign(campaignId: string, lockId: string) {
 
         const settings = await getSystemSettingsOrDefaults();
 
-        for (const recipient of recipients) {
-            const variant = chooseVariant(campaign.variants, campaign.type as OutboundMessageType);
+        const recipient = recipients[0];
+        if (!recipient) {
+            await releaseCampaignLock(campaignId, lockId, {
+                status: "completed",
+                completedAt: new Date(),
+                nextRunAt: null,
+                lastProcessedAt: now,
+            });
+            return;
+        }
 
-            if (!variant) {
-                await prisma.bulkCampaignRecipient.update({
-                    where: { id: recipient.id },
-                    data: {
-                        status: "failed",
-                        lastError: "No hay variantes activas disponibles",
-                    },
-                });
-                continue;
-            }
+        const variant = chooseVariant(campaign.variants, campaign.type as OutboundMessageType);
 
+        if (!variant) {
+            await prisma.bulkCampaignRecipient.update({
+                where: { id: recipient.id },
+                data: {
+                    status: "failed",
+                    lastError: "No hay variantes activas disponibles",
+                },
+            });
+        } else {
             try {
                 const conversation = recipient.conversationId
                     ? await prisma.conversation.findUnique({ where: { id: recipient.conversationId } })
@@ -756,7 +1094,15 @@ async function processClaimedCampaign(campaignId: string, lockId: string) {
             return;
         }
 
-        const nextRunAt = new Date(Date.now() + Math.max(1, campaign.batchDelayMinutes) * 60_000);
+        const processedBoundary = (recipient.sequenceIndex + 1) % Math.max(1, campaign.batchSize) === 0;
+        const usesBatchPause = processedBoundary && Math.max(0, campaign.batchDelayMinutes) > 0;
+        const nextRunAt = new Date(
+            Date.now() + (
+                usesBatchPause
+                    ? Math.max(0, campaign.batchDelayMinutes) * 60_000
+                    : resolveBulkCampaignRandomDelayMs(campaign)
+            ),
+        );
         await releaseCampaignLock(campaignId, lockId, {
             nextRunAt,
             lastProcessedAt: new Date(),
