@@ -33,6 +33,19 @@ type CatalogEntry = {
     }>;
 };
 
+function getCatalogHost(url: string) {
+    try {
+        return new URL(url).hostname.trim().toLowerCase().replace(/^www\./, "");
+    } catch {
+        return "";
+    }
+}
+
+function isProtectedPortalUrl(url: string) {
+    const host = getCatalogHost(url);
+    return host === "zonaprop.com.ar" || host === "argenprop.com";
+}
+
 export function CatalogBase() {
     const [entries, setEntries] = useState<CatalogEntry[]>([]);
     const [isPending, startTransition] = useTransition();
@@ -57,6 +70,7 @@ export function CatalogBase() {
         isActive: true,
     });
     const inputRef = useRef<HTMLInputElement>(null);
+    const protectedImportRef = useRef<HTMLDivElement>(null);
     const { toast } = useToast();
 
     const loadEntries = () => {
@@ -194,7 +208,8 @@ export function CatalogBase() {
 
     const handleAutofillFromUrl = () => {
         startTransition(async () => {
-            const result = await autofillCatalogEntryFromUrl(autofillUrl.trim());
+            const normalizedUrl = autofillUrl.trim();
+            const result = await autofillCatalogEntryFromUrl(normalizedUrl);
 
             if (result.success && result.preview) {
                 setManualEntry((current) => ({
@@ -214,9 +229,31 @@ export function CatalogBase() {
                     description: `Se cargaron ${result.preview.imageUrls.length} imagenes detectadas desde la URL. Revisa y ajusta antes de guardar.`,
                 });
             } else {
+                if (isProtectedPortalUrl(normalizedUrl)) {
+                    const fallbackReferer = (() => {
+                        try {
+                            return new URL(normalizedUrl).origin;
+                        } catch {
+                            return "";
+                        }
+                    })();
+
+                    setProtectedImport((current) => ({
+                        ...current,
+                        indexUrl: normalizedUrl,
+                        refererUrl: current.refererUrl || fallbackReferer,
+                    }));
+                    protectedImportRef.current?.scrollIntoView({
+                        behavior: "smooth",
+                        block: "center",
+                    });
+                }
+
                 toast({
                     title: "No se pudo detectar la ficha",
-                    description: result.error,
+                    description: isProtectedPortalUrl(normalizedUrl)
+                        ? "Ese portal no responde bien en el detector publico. Ya te deje la URL cargada en 'Importar desde cuenta o listado protegido' para que pegues tu cookie de sesion activa y la importes desde ahi."
+                        : result.error,
                     variant: "destructive",
                 });
             }
@@ -282,7 +319,7 @@ export function CatalogBase() {
                         </p>
                     </div>
 
-                    <div className="space-y-4 rounded-xl border bg-background p-4">
+                    <div ref={protectedImportRef} className="space-y-4 rounded-xl border bg-background p-4">
                         <div className="flex items-start gap-3">
                             <div className="mt-0.5 rounded-lg bg-primary/10 p-2 text-primary">
                                 <KeyRound className="h-4 w-4" />
