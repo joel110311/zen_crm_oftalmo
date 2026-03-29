@@ -36,14 +36,14 @@ export function BulkCampaignCampaignList({
 }: BulkCampaignCampaignListProps) {
     return (
         <div className="space-y-4 rounded-xl border bg-card p-4 shadow-[0_12px_28px_-22px_rgba(15,23,42,0.25)]">
-            <div className="flex items-start justify-between gap-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div className="min-w-0 space-y-1">
                     <h2 className="text-base font-semibold leading-tight">Suite de envios masivos</h2>
                     <p className="text-sm leading-5 text-muted-foreground">
                         Campanas con audiencia visible, goteo y programacion.
                     </p>
                 </div>
-                <Button variant="outline" size="sm" onClick={onCreateCampaign} className="h-9 shrink-0 rounded-xl px-3.5">
+                <Button variant="outline" size="sm" onClick={onCreateCampaign} className="h-9 w-full shrink-0 rounded-xl px-3.5 sm:w-auto">
                     <Plus className="mr-2 h-4 w-4" />
                     Nueva
                 </Button>

@@ -502,8 +502,8 @@ export function BulkCampaignManagerPanel() {
                     </div>
                 </div>
 
-                <div className="min-w-0 rounded-xl border bg-card p-4 shadow-[0_12px_28px_-22px_rgba(15,23,42,0.25)]">
-                    <div className="flex flex-wrap items-start justify-between gap-4">
+                <div className="min-w-0 rounded-xl border bg-card p-4 shadow-[0_12px_28px_-22px_rgba(15,23,42,0.25)] sm:p-5">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                         <div className="min-w-0">
                             <div className="flex items-center gap-2">
                                 <Megaphone className="h-5 w-5 text-primary" />
@@ -514,44 +514,44 @@ export function BulkCampaignManagerPanel() {
                             </p>
                         </div>
 
-                        <div className="flex flex-wrap items-center gap-2">
-                            <Badge variant={getStatusBadgeVariant(form.status)} className="capitalize">
+                        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
+                            <Badge variant={getStatusBadgeVariant(form.status)} className="w-fit capitalize">
                                 {form.status}
                             </Badge>
-                            <Button onClick={saveCampaign} disabled={isSaving}>
+                            <Button onClick={saveCampaign} disabled={isSaving} className="w-full sm:w-auto">
                                 {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
                                 Guardar cambios
                             </Button>
                         </div>
                     </div>
 
-                    <div className="mt-4 flex flex-wrap gap-2">
+                    <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
                         {(form.status === "draft" || form.status === "completed" || form.status === "cancelled" || form.status === "failed") && (
-                            <Button onClick={() => void runAction("start")} disabled={actionLoading !== null}>
+                            <Button onClick={() => void runAction("start")} disabled={actionLoading !== null} className="w-full sm:w-auto">
                                 {actionLoading === "start" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Play className="mr-2 h-4 w-4" />}
                                 {form.scheduledStartAt ? "Programar campaña" : "Iniciar campaña"}
                             </Button>
                         )}
                         {form.status === "running" && (
-                            <Button variant="outline" onClick={() => void runAction("pause")} disabled={actionLoading !== null}>
+                            <Button variant="outline" onClick={() => void runAction("pause")} disabled={actionLoading !== null} className="w-full sm:w-auto">
                                 {actionLoading === "pause" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Pause className="mr-2 h-4 w-4" />}
                                 Pausar
                             </Button>
                         )}
                         {form.status === "paused" && (
-                            <Button variant="outline" onClick={() => void runAction("resume")} disabled={actionLoading !== null}>
+                            <Button variant="outline" onClick={() => void runAction("resume")} disabled={actionLoading !== null} className="w-full sm:w-auto">
                                 {actionLoading === "resume" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Play className="mr-2 h-4 w-4" />}
                                 Reanudar
                             </Button>
                         )}
                         {(form.status === "running" || form.status === "paused") && (
-                            <Button variant="destructive" onClick={() => void runAction("cancel")} disabled={actionLoading !== null}>
+                            <Button variant="destructive" onClick={() => void runAction("cancel")} disabled={actionLoading !== null} className="w-full sm:w-auto">
                                 {actionLoading === "cancel" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Square className="mr-2 h-4 w-4" />}
                                 Cancelar
                             </Button>
                         )}
                         {form.id && (
-                            <Button variant="ghost" className="text-destructive hover:text-destructive" onClick={() => void deleteCampaign(form.id!)}>
+                            <Button variant="ghost" className="w-full text-destructive hover:text-destructive sm:w-auto" onClick={() => void deleteCampaign(form.id!)}>
                                 <Trash2 className="mr-2 h-4 w-4" />
                                 Eliminar
                             </Button>
@@ -586,13 +586,13 @@ export function BulkCampaignManagerPanel() {
                     </div>
 
                     <Tabs defaultValue="message" className="mt-5 min-w-0 space-y-4">
-                        <TabsList className="grid h-auto w-full grid-cols-1 gap-2 rounded-xl border bg-muted/15 p-2 sm:grid-cols-3">
-                            <TabsTrigger value="message" className="h-11 rounded-lg border border-transparent bg-background px-4 text-sm font-semibold text-foreground/75 hover:text-foreground data-[state=active]:border-primary/30 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-[0_14px_28px_-18px_rgba(37,99,235,0.72)]">Mensaje</TabsTrigger>
-                            <TabsTrigger value="audience" className="h-11 rounded-lg border border-transparent bg-background px-4 text-sm font-semibold text-foreground/75 hover:text-foreground data-[state=active]:border-primary/30 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-[0_14px_28px_-18px_rgba(37,99,235,0.72)]">Audiencia</TabsTrigger>
-                            <TabsTrigger value="schedule" className="h-11 rounded-lg border border-transparent bg-background px-4 text-sm font-semibold text-foreground/75 hover:text-foreground data-[state=active]:border-primary/30 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-[0_14px_28px_-18px_rgba(37,99,235,0.72)]">Programacion</TabsTrigger>
+                        <TabsList className="grid h-auto w-full grid-cols-3 gap-2 rounded-2xl border bg-muted/15 p-1.5">
+                            <TabsTrigger value="message" className="min-w-0 h-10 rounded-xl border border-transparent bg-background px-2.5 text-[13px] font-semibold text-foreground/75 hover:text-foreground data-[state=active]:border-primary/30 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-[0_14px_28px_-18px_rgba(37,99,235,0.72)] sm:h-11 sm:px-4 sm:text-sm">Mensaje</TabsTrigger>
+                            <TabsTrigger value="audience" className="min-w-0 h-10 rounded-xl border border-transparent bg-background px-2.5 text-[13px] font-semibold text-foreground/75 hover:text-foreground data-[state=active]:border-primary/30 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-[0_14px_28px_-18px_rgba(37,99,235,0.72)] sm:h-11 sm:px-4 sm:text-sm">Audiencia</TabsTrigger>
+                            <TabsTrigger value="schedule" className="min-w-0 h-10 rounded-xl border border-transparent bg-background px-2.5 text-[13px] font-semibold text-foreground/75 hover:text-foreground data-[state=active]:border-primary/30 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-[0_14px_28px_-18px_rgba(37,99,235,0.72)] sm:h-11 sm:px-4 sm:text-sm">Programacion</TabsTrigger>
                         </TabsList>
 
-                        <TabsContent value="message" className="min-w-0">
+                        <TabsContent value="message" className="mt-0 min-w-0">
                             <BulkCampaignMessageTab
                                 form={form}
                                 activeVariantIndex={activeVariantIndex}
@@ -609,7 +609,7 @@ export function BulkCampaignManagerPanel() {
                             />
                         </TabsContent>
 
-                        <TabsContent value="audience" className="min-w-0">
+                        <TabsContent value="audience" className="mt-0 min-w-0">
                             <BulkCampaignAudienceTab
                                 form={form}
                                 audiencePreview={audiencePreview}
@@ -650,7 +650,7 @@ export function BulkCampaignManagerPanel() {
                             />
                         </TabsContent>
 
-                        <TabsContent value="schedule" className="min-w-0">
+                        <TabsContent value="schedule" className="mt-0 min-w-0">
                             <BulkCampaignScheduleTab
                                 form={form}
                                 totalPreviewRecipients={totalPreviewRecipients}

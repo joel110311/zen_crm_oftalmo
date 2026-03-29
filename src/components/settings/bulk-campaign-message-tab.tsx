@@ -112,14 +112,14 @@ export function BulkCampaignMessageTab({
 
             <div className="grid gap-4 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
                 <div className="min-w-0 space-y-4 rounded-xl border bg-muted/15 p-4">
-                    <div className="flex flex-wrap items-start justify-between gap-4">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                         <div className="min-w-0 space-y-1">
                             <h3 className="text-base font-semibold leading-tight">Variaciones del mensaje</h3>
                             <p className="text-sm leading-6 text-muted-foreground">
                                 Cada destinatario toma una variante activa para bajar la repeticion.
                             </p>
                         </div>
-                        <Button variant="outline" onClick={onAddVariant} className="h-10 rounded-xl bg-background px-4 text-sm font-semibold">
+                        <Button variant="outline" onClick={onAddVariant} className="h-10 w-full rounded-xl bg-background px-4 text-sm font-semibold sm:w-auto">
                             <Plus className="mr-2 h-4 w-4" />
                             Agregar
                         </Button>
@@ -144,7 +144,7 @@ export function BulkCampaignMessageTab({
                     </div>
 
                     <div className="space-y-3.5 rounded-xl border bg-background/90 p-4">
-                        <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_120px_190px]">
+                        <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_120px] xl:grid-cols-[minmax(0,1fr)_120px_190px]">
                             <div className="space-y-2">
                                 <Label>Etiqueta</Label>
                                 <Input
@@ -171,9 +171,9 @@ export function BulkCampaignMessageTab({
                                     }
                                 />
                             </div>
-                            <div className="space-y-2">
+                            <div className="space-y-2 md:col-span-2 xl:col-span-1">
                                 <Label>Activa</Label>
-                                <div className="flex h-10 items-center justify-between rounded-lg border bg-muted/15 px-3">
+                                <div className="flex min-h-10 flex-wrap items-center justify-between gap-2 rounded-lg border bg-muted/15 px-3 py-2">
                                     <Switch
                                         checked={activeVariant.isActive}
                                         onCheckedChange={(checked) =>
