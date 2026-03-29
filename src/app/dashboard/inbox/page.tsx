@@ -440,6 +440,7 @@ function getCleanMediaUrl(url: string | null | undefined): string | undefined {
 // ──────────── WhatsApp-style Audio Player ────────────
 function AudioPlayer({ src, isOutbound }: { src: string; isOutbound: boolean }) {
     const audioRef = useRef<HTMLAudioElement>(null);
+    const waveformRef = useRef<HTMLDivElement>(null);
     const [isPlaying, setIsPlaying] = useState(false);
     const [reportedDuration, setReportedDuration] = useState(0);
     const [visualDuration, setVisualDuration] = useState(0);
@@ -541,11 +542,14 @@ function AudioPlayer({ src, isOutbound }: { src: string; isOutbound: boolean }) 
         return `${Math.floor(s / 60)}:${Math.floor(s % 60).toString().padStart(2, "0")}`;
     };
 
-    const duration = Math.max(reportedDuration, visualDuration, currentTime + (isPlaying ? 0.25 : 0));
+    const hasReliableReportedDuration = reportedDuration > currentTime + 1.5;
+    const duration = hasReliableReportedDuration
+        ? reportedDuration
+        : Math.max(visualDuration, currentTime + (isPlaying ? 0.25 : 0));
     const safeDuration = duration > 0 && isFinite(duration) ? duration : 0;
     const progress = safeDuration > 0 ? (currentTime / safeDuration) * 100 : 0;
     const clampedProgress = Math.min(100, Math.max(0, progress));
-    const dotProgress = Math.min(99.2, Math.max(0.8, clampedProgress));
+    const dotProgress = Math.min(99, Math.max(1, clampedProgress));
 
     // Generate pseudo-random waveform bar heights (deterministic per src)
     const bars = 28;
@@ -570,41 +574,43 @@ function AudioPlayer({ src, isOutbound }: { src: string; isOutbound: boolean }) 
             </button>
             <div className="flex-1 flex flex-col gap-1">
                 <div
-                    className="relative flex h-6 cursor-pointer items-end gap-[2px] pb-[1px]"
+                    className="flex h-6 cursor-pointer items-center"
                     onClick={(e) => {
                         if (!audioRef.current || safeDuration <= 0) return;
-                        const rect = e.currentTarget.getBoundingClientRect();
+                        const rect = (waveformRef.current ?? e.currentTarget).getBoundingClientRect();
                         const pct = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
                         audioRef.current.currentTime = pct * safeDuration;
                     }}
                 >
-                    {barHeights.map((h, i) => {
-                        const barPct = (i / Math.max(1, bars - 1)) * 100;
-                        const active = barPct <= clampedProgress;
-                        return (
+                    <div ref={waveformRef} className="relative inline-flex h-6 items-end gap-[2px] pb-[1px]">
+                        {barHeights.map((h, i) => {
+                            const barPct = ((i + 0.5) / bars) * 100;
+                            const active = barPct <= clampedProgress;
+                            return (
+                                <div
+                                    key={i}
+                                    className="w-[3px] rounded-full"
+                                    style={{
+                                        height: `${h}%`,
+                                        backgroundColor: active
+                                            ? (isOutbound ? "var(--audio-bar-active, rgba(7,94,84,0.9))" : "rgba(37,99,235,1)")
+                                            : (isOutbound ? "var(--audio-bar-inactive, rgba(7,94,84,0.2))" : "rgba(100,116,139,0.25)")
+                                    }}
+                                />
+                            );
+                        })}
+                        {/* Position indicator dot */}
+                        {safeDuration > 0 && (
                             <div
-                                key={i}
-                                className="w-[3px] rounded-full"
+                                className="pointer-events-none absolute bottom-0 h-2.5 w-2.5 rounded-full shadow-sm ring-2 ring-background/80"
                                 style={{
-                                    height: `${h}%`,
-                                    backgroundColor: active
-                                        ? (isOutbound ? "var(--audio-bar-active, rgba(7,94,84,0.9))" : "rgba(37,99,235,1)")
-                                        : (isOutbound ? "var(--audio-bar-inactive, rgba(7,94,84,0.2))" : "rgba(100,116,139,0.25)")
+                                    left: `${dotProgress}%`,
+                                    backgroundColor: isOutbound ? "var(--audio-dot, #075e54)" : "#2563EB",
+                                    transform: "translate(-50%, 40%)",
                                 }}
                             />
-                        );
-                    })}
-                    {/* Position indicator dot */}
-                    {duration > 0 && (
-                        <div
-                            className="absolute bottom-0 h-2.5 w-2.5 rounded-full shadow-sm ring-2 ring-background/80"
-                            style={{
-                                left: `${dotProgress}%`,
-                                backgroundColor: isOutbound ? "var(--audio-dot, #075e54)" : "#2563EB",
-                                transform: "translate(-50%, 40%)",
-                            }}
-                        />
-                    )}
+                        )}
+                    </div>
                 </div>
                 <span className={cn("text-[10px] tabular-nums", isOutbound ? "text-[#075e54]/70 dark:text-white/70" : "text-muted-foreground")}>
                     {isPlaying ? formatTime(currentTime) : formatTime(safeDuration)}
