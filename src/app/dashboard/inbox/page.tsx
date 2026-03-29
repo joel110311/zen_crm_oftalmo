@@ -550,6 +550,8 @@ function AudioPlayer({ src, isOutbound }: { src: string; isOutbound: boolean }) 
     const progress = safeDuration > 0 ? (currentTime / safeDuration) * 100 : 0;
     const clampedProgress = Math.min(100, Math.max(0, progress));
     const dotProgress = Math.min(99, Math.max(1, clampedProgress));
+    const showElapsed = isPlaying || currentTime > 0.05;
+    const timeLabel = showElapsed ? formatTime(currentTime) : formatTime(safeDuration);
 
     // Generate pseudo-random waveform bar heights (deterministic per src)
     const bars = 28;
@@ -559,12 +561,12 @@ function AudioPlayer({ src, isOutbound }: { src: string; isOutbound: boolean }) 
     });
 
     return (
-        <div className="flex items-center gap-2 min-w-[200px] max-w-[280px]">
+        <div className="flex min-w-[200px] max-w-[290px] items-center gap-2">
             <audio ref={audioRef} src={src} preload="auto" />
             <button
                 onClick={togglePlay}
                 className={cn(
-                    "w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 transition-colors",
+                    "flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full transition-colors",
                     isOutbound
                         ? "bg-[#075e54]/20 hover:bg-[#075e54]/30 text-[#075e54] dark:bg-white/20 dark:hover:bg-white/30 dark:text-white"
                         : "bg-primary/10 hover:bg-primary/20 text-primary"
@@ -572,7 +574,7 @@ function AudioPlayer({ src, isOutbound }: { src: string; isOutbound: boolean }) 
             >
                 {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4 ml-0.5" />}
             </button>
-            <div className="flex-1 flex flex-col gap-1">
+            <div className="flex flex-1 flex-col gap-1">
                 <div
                     className="flex h-6 cursor-pointer items-center"
                     onClick={(e) => {
@@ -582,7 +584,7 @@ function AudioPlayer({ src, isOutbound }: { src: string; isOutbound: boolean }) 
                         audioRef.current.currentTime = pct * safeDuration;
                     }}
                 >
-                    <div ref={waveformRef} className="relative inline-flex h-6 items-end gap-[2px] pb-[1px]">
+                    <div ref={waveformRef} className="relative inline-flex h-6 items-end gap-[2px] overflow-visible pb-[1px]">
                         {barHeights.map((h, i) => {
                             const barPct = ((i + 0.5) / bars) * 100;
                             const active = barPct <= clampedProgress;
@@ -591,7 +593,7 @@ function AudioPlayer({ src, isOutbound }: { src: string; isOutbound: boolean }) 
                                     key={i}
                                     className="w-[3px] rounded-full"
                                     style={{
-                                        height: `${h}%`,
+                                        height: `${Math.max(18, h)}%`,
                                         backgroundColor: active
                                             ? (isOutbound ? "var(--audio-bar-active, rgba(7,94,84,0.9))" : "rgba(37,99,235,1)")
                                             : (isOutbound ? "var(--audio-bar-inactive, rgba(7,94,84,0.2))" : "rgba(100,116,139,0.25)")
@@ -602,18 +604,18 @@ function AudioPlayer({ src, isOutbound }: { src: string; isOutbound: boolean }) 
                         {/* Position indicator dot */}
                         {safeDuration > 0 && (
                             <div
-                                className="pointer-events-none absolute bottom-0 h-2.5 w-2.5 rounded-full shadow-sm ring-2 ring-background/80"
+                                className="pointer-events-none absolute bottom-0 z-10 h-2.5 w-2.5 rounded-full shadow-sm ring-2 ring-background/80"
                                 style={{
                                     left: `${dotProgress}%`,
                                     backgroundColor: isOutbound ? "var(--audio-dot, #075e54)" : "#2563EB",
-                                    transform: "translate(-50%, 40%)",
+                                    transform: "translate(-50%, 36%)",
                                 }}
                             />
                         )}
                     </div>
                 </div>
                 <span className={cn("text-[10px] tabular-nums", isOutbound ? "text-[#075e54]/70 dark:text-white/70" : "text-muted-foreground")}>
-                    {isPlaying ? formatTime(currentTime) : formatTime(safeDuration)}
+                    {timeLabel}
                 </span>
             </div>
         </div>
