@@ -7,6 +7,80 @@ type WhatsAppFormattedTextProps = {
     variableClassName?: string;
 };
 
+const URL_REGEX = /((?:https?:\/\/|www\.)[^\s<]+)/gi;
+
+function normalizeHref(rawUrl: string) {
+    return rawUrl.startsWith("www.") ? `https://${rawUrl}` : rawUrl;
+}
+
+function splitTrailingPunctuation(rawUrl: string) {
+    const match = rawUrl.match(/([).,!?:;]+)$/);
+    if (!match) {
+        return { cleanUrl: rawUrl, trailing: "" };
+    }
+
+    const trailing = match[0];
+    return {
+        cleanUrl: rawUrl.slice(0, -trailing.length),
+        trailing,
+    };
+}
+
+function renderPlainTextWithLinks(text: string, keyPrefix: string): React.ReactNode[] {
+    const nodes: React.ReactNode[] = [];
+    let lastIndex = 0;
+    let match: RegExpExecArray | null;
+    let index = 0;
+
+    while ((match = URL_REGEX.exec(text)) !== null) {
+        if (match.index > lastIndex) {
+            nodes.push(
+                <React.Fragment key={`${keyPrefix}-text-${index}`}>
+                    {text.slice(lastIndex, match.index)}
+                </React.Fragment>,
+            );
+            index += 1;
+        }
+
+        const rawUrl = match[0];
+        const { cleanUrl, trailing } = splitTrailingPunctuation(rawUrl);
+
+        nodes.push(
+            <a
+                key={`${keyPrefix}-link-${index}`}
+                href={normalizeHref(cleanUrl)}
+                target="_blank"
+                rel="noreferrer noopener"
+                className="cursor-pointer break-all text-sky-700 underline underline-offset-2 transition-colors hover:text-sky-900 dark:text-sky-300 dark:hover:text-sky-200"
+            >
+                {cleanUrl}
+            </a>,
+        );
+        index += 1;
+
+        if (trailing) {
+            nodes.push(
+                <React.Fragment key={`${keyPrefix}-trail-${index}`}>
+                    {trailing}
+                </React.Fragment>,
+            );
+            index += 1;
+        }
+
+        lastIndex = match.index + rawUrl.length;
+    }
+
+    if (lastIndex < text.length) {
+        nodes.push(
+            <React.Fragment key={`${keyPrefix}-tail`}>
+                {text.slice(lastIndex)}
+            </React.Fragment>,
+        );
+    }
+
+    return nodes;
+}
+
 function renderInlineSegments(
     text: string,
     keyPrefix: string,
@@ -20,11 +94,7 @@ function renderInlineSegments(
 
     while ((match = tokenRegex.exec(text)) !== null) {
         if (match.index > lastIndex) {
-            nodes.push(
-                <React.Fragment key={`${keyPrefix}-plain-${index}`}>
-                    {text.slice(lastIndex, match.index)}
-                </React.Fragment>,
-            );
+            nodes.push(...renderPlainTextWithLinks(text.slice(lastIndex, match.index), `${keyPrefix}-plain-${index}`));
             index += 1;
         }
 
@@ -62,11 +132,7 @@ function renderInlineSegments(
     }
 
     if (lastIndex < text.length) {
-        nodes.push(
-            <React.Fragment key={`${keyPrefix}-tail`}>
-                {text.slice(lastIndex)}
-            </React.Fragment>,
-        );
+        nodes.push(...renderPlainTextWithLinks(text.slice(lastIndex), `${keyPrefix}-tail`));
     }
 
     return nodes;
