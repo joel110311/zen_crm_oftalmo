@@ -326,7 +326,7 @@ export default function SettingsPage() {
                 })}
             </div>
 
-            <div className="rounded-2xl border bg-card p-6 md:p-7">
+            <div className="rounded-2xl border bg-card p-4 sm:p-5 md:p-7">
                 {activeSection === "theme" && (
                     <div className="space-y-6">
                         <div className="space-y-3">
@@ -399,12 +399,12 @@ export default function SettingsPage() {
 
                 {activeSection === "users" && isSuperadmin && (
                     <div className="space-y-4">
-                        <div className="flex items-center justify-between">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                             <div>
                                 <h2 className="font-semibold">Usuarios</h2>
                                 <p className="text-sm text-muted-foreground">{users.length} registrados</p>
                             </div>
-                            <Button variant="outline" onClick={() => setShowAddForm((current) => !current)}>
+                            <Button variant="outline" onClick={() => setShowAddForm((current) => !current)} className="w-full sm:w-auto">
                                 {showAddForm ? <X className="mr-2 h-4 w-4" /> : <Plus className="mr-2 h-4 w-4" />}
                                 {showAddForm ? "Cancelar" : "Agregar"}
                             </Button>
@@ -424,7 +424,7 @@ export default function SettingsPage() {
                                     <option value="SUPERADMIN">Super Admin</option>
                                 </select>
                                 <div className="md:col-span-2">
-                                    <Button onClick={handleCreateUser} disabled={isUserPending}>
+                                    <Button onClick={handleCreateUser} disabled={isUserPending} className="w-full sm:w-auto">
                                         {isUserPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />}
                                         Crear usuario
                                     </Button>
@@ -450,12 +450,12 @@ export default function SettingsPage() {
                                                     <option value="ADMIN">Operador</option>
                                                     <option value="SUPERADMIN">Super Admin</option>
                                                 </select>
-                                                <div className="flex gap-2 md:col-span-2">
-                                                    <Button onClick={() => handleUpdateUser(user.id)} disabled={isUserPending}>
+                                                <div className="flex flex-col gap-2 md:col-span-2 sm:flex-row">
+                                                    <Button onClick={() => handleUpdateUser(user.id)} disabled={isUserPending} className="w-full sm:w-auto">
                                                         {isUserPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />}
                                                         Guardar
                                                     </Button>
-                                                    <Button variant="ghost" onClick={() => setEditingUserId(null)}>Cancelar</Button>
+                                                    <Button variant="ghost" onClick={() => setEditingUserId(null)} className="w-full sm:w-auto">Cancelar</Button>
                                                 </div>
                                             </div>
                                         ) : (
@@ -468,13 +468,13 @@ export default function SettingsPage() {
                                                     <p className="text-sm text-muted-foreground">{user.email}</p>
                                                     <p className="text-xs text-muted-foreground">{user.role}</p>
                                                 </div>
-                                                <div className="flex gap-2">
-                                                    <Button variant="outline" size="sm" onClick={() => handleStartEdit(user)}>
+                                                <div className="flex flex-col gap-2 sm:flex-row">
+                                                    <Button variant="outline" size="sm" onClick={() => handleStartEdit(user)} className="w-full sm:w-auto">
                                                         <Pencil className="mr-2 h-4 w-4" />
                                                         Editar
                                                     </Button>
                                                     {user.id !== currentUserId ? (
-                                                        <Button variant="ghost" size="sm" className="text-destructive" onClick={() => handleDeleteUser(user.id, user.name)}>
+                                                        <Button variant="ghost" size="sm" className="w-full text-destructive sm:w-auto" onClick={() => handleDeleteUser(user.id, user.name)}>
                                                             <Trash2 className="mr-2 h-4 w-4" />
                                                             Eliminar
                                                         </Button>
@@ -518,7 +518,7 @@ export default function SettingsPage() {
 
                         <div className="rounded-2xl border bg-muted/15 p-5">
                             <div className="flex flex-col gap-4">
-                                <div className="flex items-center justify-between rounded-xl border bg-background/80 px-4 py-4">
+                                <div className="flex flex-col gap-3 rounded-xl border bg-background/80 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
                                     <div className="pr-4">
                                         <Label htmlFor="notif-toggle" className="text-base">Activar notificaciones</Label>
                                         <p className="mt-1 text-sm text-muted-foreground">
@@ -537,7 +537,7 @@ export default function SettingsPage() {
                                 {notifPrefs.enabled ? (
                                     <>
                                         <div className="space-y-2">
-                                            <div className="flex items-center justify-between">
+                                            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                                                 <div>
                                                     <p className="font-medium">Sonido</p>
                                                     <p className="text-sm text-muted-foreground">
@@ -584,7 +584,7 @@ export default function SettingsPage() {
                                         </div>
 
                                         <div className="space-y-3 rounded-xl border bg-background/80 px-4 py-4">
-                                            <div className="flex items-center justify-between gap-3">
+                                            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                                                 <div>
                                                     <Label>Volumen</Label>
                                                     <p className="mt-1 text-sm text-muted-foreground">

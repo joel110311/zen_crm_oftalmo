@@ -2055,7 +2055,7 @@ export default function InboxPage() {
             )}
 
             <div
-                className="fixed inset-x-0 bottom-0 top-14 z-10 flex overflow-hidden overscroll-none rounded-none border-y border-border/60 bg-[linear-gradient(180deg,rgba(255,255,255,0.82),rgba(248,250,252,0.98))] shadow-none backdrop-blur-xl dark:bg-[linear-gradient(180deg,rgba(15,23,42,0.88),rgba(2,6,23,0.98))] md:static md:inset-auto md:z-auto md:m-0 md:h-full md:min-h-0 md:rounded-[2rem] md:border md:shadow-[0_28px_80px_-48px_rgba(15,23,42,0.55)]"
+                className="fixed inset-x-4 bottom-5 top-[4.375rem] z-10 flex overflow-hidden overscroll-none rounded-[1.75rem] border border-border/60 bg-[linear-gradient(180deg,rgba(255,255,255,0.82),rgba(248,250,252,0.98))] shadow-[0_28px_70px_-44px_rgba(15,23,42,0.45)] backdrop-blur-xl dark:bg-[linear-gradient(180deg,rgba(15,23,42,0.88),rgba(2,6,23,0.98))] md:static md:inset-auto md:z-auto md:m-0 md:h-full md:min-h-0 md:rounded-[2rem] md:border md:shadow-[0_28px_80px_-48px_rgba(15,23,42,0.55)]"
             >
                 {/* ──── Sidebar ──── */}
                 <div className={cn("min-h-0 w-full md:w-[20.5rem] 2xl:w-[21.75rem] border-r border-border/50 flex flex-col bg-card/55 backdrop-blur-2xl", selectedChat ? "hidden md:flex" : "flex")}>
@@ -2587,7 +2587,7 @@ export default function InboxPage() {
                                 /* ═══ UNLOCKED: Normal input area ═══ */
                                 <div
                                     className="shrink-0 border-t border-border/50 bg-card/72 px-4 pt-4 backdrop-blur-2xl"
-                                    style={{ paddingBottom: "max(0.5rem, env(safe-area-inset-bottom))" }}
+                                    style={{ paddingBottom: "max(0.25rem, env(safe-area-inset-bottom))" }}
                                 >
                                     {shouldShowWhatsAppWarning && (
                                         <div className="mx-auto mb-3 max-w-[54rem] rounded-[1.35rem] border border-amber-200/80 bg-amber-50/95 px-4 py-3 text-amber-950 shadow-[0_18px_40px_-28px_rgba(217,119,6,0.35)]">

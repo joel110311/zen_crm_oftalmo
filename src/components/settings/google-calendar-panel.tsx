@@ -246,24 +246,24 @@ export function GoogleCalendarPanel(props: Props) {
                                 </p>
                             </div>
 
-                            <div className="flex flex-wrap gap-2">
-                                <Button onClick={props.onSave} disabled={props.isSaving || isWorking} variant="outline">
+                            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+                                <Button onClick={props.onSave} disabled={props.isSaving || isWorking} variant="outline" className="w-full justify-center sm:w-auto">
                                     {props.isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
                                     Guardar credenciales
                                 </Button>
-                                <Button onClick={handleConnect} disabled={props.isSaving || isWorking}>
+                                <Button onClick={handleConnect} disabled={props.isSaving || isWorking} className="w-full justify-center sm:w-auto">
                                     {isWorking ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Link2 className="mr-2 h-4 w-4" />}
                                     Conectar cuenta Google
                                 </Button>
-                                <Button onClick={handleDiscover} disabled={!status.connected || isWorking} variant="secondary">
+                                <Button onClick={handleDiscover} disabled={!status.connected || isWorking} variant="secondary" className="w-full justify-center sm:w-auto">
                                     <RefreshCw className="mr-2 h-4 w-4" />
                                     Traer calendarios
                                 </Button>
-                                <Button onClick={handleSync} disabled={!status.connected || isWorking} variant="secondary">
+                                <Button onClick={handleSync} disabled={!status.connected || isWorking} variant="secondary" className="w-full justify-center sm:w-auto">
                                     <CalendarSync className="mr-2 h-4 w-4" />
                                     Sincronizar ahora
                                 </Button>
-                                <Button onClick={handleDisconnect} disabled={isWorking} variant="ghost" className="text-destructive hover:text-destructive">
+                                <Button onClick={handleDisconnect} disabled={isWorking} variant="ghost" className="w-full justify-center text-destructive hover:text-destructive sm:w-auto">
                                     <Unlink className="mr-2 h-4 w-4" />
                                     Desconectar
                                 </Button>
@@ -337,7 +337,7 @@ export function GoogleCalendarPanel(props: Props) {
 
                                                         {source.isSelected ? (
                                                             <div className="grid gap-3 lg:grid-cols-2">
-                                                                <div className="flex flex-wrap items-start justify-between gap-3 rounded-xl border px-3 py-2">
+                                                                <div className="flex flex-col gap-3 rounded-xl border px-3 py-3 sm:flex-row sm:items-start sm:justify-between">
                                                                     <div>
                                                                         <p className="text-sm font-medium">Bloquea disponibilidad</p>
                                                                         <p className="text-xs text-muted-foreground">Se toma en cuenta para ofrecer horarios.</p>
@@ -351,7 +351,7 @@ export function GoogleCalendarPanel(props: Props) {
                                                                     />
                                                                 </div>
 
-                                                                <div className="flex flex-wrap items-start justify-between gap-3 rounded-xl border px-3 py-2">
+                                                                <div className="flex flex-col gap-3 rounded-xl border px-3 py-3 sm:flex-row sm:items-start sm:justify-between">
                                                                     <div>
                                                                         <p className="text-sm font-medium">Importar al CRM</p>
                                                                         <p className="text-xs text-muted-foreground">Muestra sus eventos dentro del calendario del CRM.</p>
@@ -365,7 +365,7 @@ export function GoogleCalendarPanel(props: Props) {
                                                                     />
                                                                 </div>
 
-                                                                <div className="flex flex-wrap items-start justify-between gap-3 rounded-xl border px-3 py-2">
+                                                                <div className="flex flex-col gap-3 rounded-xl border px-3 py-3 sm:flex-row sm:items-start sm:justify-between">
                                                                     <div>
                                                                         <p className="text-sm font-medium">Calendario de escritura</p>
                                                                         <p className="text-xs text-muted-foreground">Es donde el CRM crea o actualiza citas.</p>
@@ -382,7 +382,7 @@ export function GoogleCalendarPanel(props: Props) {
                                                                     />
                                                                 </div>
 
-                                                                <div className="flex flex-wrap items-start justify-between gap-3 rounded-xl border px-3 py-2">
+                                                                <div className="flex flex-col gap-3 rounded-xl border px-3 py-3 sm:flex-row sm:items-start sm:justify-between">
                                                                     <div>
                                                                         <p className="text-sm font-medium">Es especialista</p>
                                                                         <p className="text-xs text-muted-foreground">Disponible para que la IA agende directamente con esa persona.</p>
@@ -426,7 +426,7 @@ export function GoogleCalendarPanel(props: Props) {
                             )}
 
                             {draftSources.length > 0 ? (
-                                <Button onClick={handleSaveSources} disabled={!status.connected || isWorking}>
+                                <Button onClick={handleSaveSources} disabled={!status.connected || isWorking} className="w-full sm:w-auto">
                                     {isWorking ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
                                     Guardar configuracion de calendarios
                                 </Button>
@@ -447,7 +447,7 @@ export function GoogleCalendarPanel(props: Props) {
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
-                            <div className="flex flex-wrap items-start justify-between gap-3 rounded-xl border px-4 py-3">
+                            <div className="flex flex-col gap-3 rounded-xl border px-4 py-3 sm:flex-row sm:items-start sm:justify-between">
                                 <div>
                                     <p className="text-sm font-medium">Conexion</p>
                                     <p className="text-xs text-muted-foreground">

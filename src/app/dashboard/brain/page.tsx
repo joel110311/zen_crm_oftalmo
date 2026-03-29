@@ -209,13 +209,13 @@ export default function BrainConfigPage() {
             </div>
 
             <Tabs defaultValue="config" className="flex-1">
-                <TabsList className="grid h-auto w-full max-w-[560px] grid-cols-1 gap-2 rounded-xl border bg-card p-2 shadow-[0_12px_24px_-20px_rgba(15,23,42,0.22)] sm:grid-cols-3">
-                    <TabsTrigger value="config" className="h-11 rounded-lg border border-transparent bg-background px-4 text-sm font-semibold text-foreground/75 data-[state=active]:border-primary/30 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-[0_14px_28px_-18px_rgba(37,99,235,0.72)]">Configuracion</TabsTrigger>
-                    <TabsTrigger value="knowledge" className="h-11 rounded-lg border border-transparent bg-background px-4 text-sm font-semibold text-foreground/75 data-[state=active]:border-primary/30 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-[0_14px_28px_-18px_rgba(37,99,235,0.72)]">Conocimiento</TabsTrigger>
-                    <TabsTrigger value="catalog" className="h-11 rounded-lg border border-transparent bg-background px-4 text-sm font-semibold text-foreground/75 data-[state=active]:border-primary/30 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-[0_14px_28px_-18px_rgba(37,99,235,0.72)]">Catalogo</TabsTrigger>
+                <TabsList className="grid h-auto w-full max-w-[560px] grid-cols-3 gap-2 rounded-xl border bg-card p-1.5 shadow-[0_12px_24px_-20px_rgba(15,23,42,0.22)]">
+                    <TabsTrigger value="config" className="min-w-0 h-10 rounded-lg border border-transparent bg-background px-2 text-[13px] font-semibold leading-tight text-foreground/75 data-[state=active]:border-primary/30 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-[0_14px_28px_-18px_rgba(37,99,235,0.72)] sm:h-11 sm:px-4 sm:text-sm">Configuracion</TabsTrigger>
+                    <TabsTrigger value="knowledge" className="min-w-0 h-10 rounded-lg border border-transparent bg-background px-2 text-[13px] font-semibold leading-tight text-foreground/75 data-[state=active]:border-primary/30 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-[0_14px_28px_-18px_rgba(37,99,235,0.72)] sm:h-11 sm:px-4 sm:text-sm">Conocimiento</TabsTrigger>
+                    <TabsTrigger value="catalog" className="min-w-0 h-10 rounded-lg border border-transparent bg-background px-2 text-[13px] font-semibold leading-tight text-foreground/75 data-[state=active]:border-primary/30 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-[0_14px_28px_-18px_rgba(37,99,235,0.72)] sm:h-11 sm:px-4 sm:text-sm">Catalogo</TabsTrigger>
                 </TabsList>
 
-                <TabsContent value="config" className="mt-5 space-y-5">
+                <TabsContent value="config" className="mt-4 space-y-5 sm:mt-5">
                     <Card className="border-primary/20 bg-primary/5">
                         <CardHeader>
                             <CardTitle className="flex items-center gap-2">
@@ -228,7 +228,7 @@ export default function BrainConfigPage() {
                         </CardHeader>
                         <CardContent>
                             <div className="space-y-4">
-                                <div className="flex items-center justify-between rounded-xl border bg-background px-4 py-4">
+                                <div className="flex flex-col gap-3 rounded-xl border bg-background px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
                                     <div>
                                         <Label htmlFor="bot-enabled" className="text-base font-medium">Responder automaticamente</Label>
                                         <p className="text-sm text-muted-foreground mt-1">
@@ -243,7 +243,7 @@ export default function BrainConfigPage() {
                                 </div>
 
                                 <div className="rounded-xl border bg-background px-4 py-4">
-                                    <div className="flex items-center justify-between gap-3">
+                                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                                         <div>
                                             <Label className="text-base font-medium">
                                                 Tiempo de espera antes de responder
@@ -326,7 +326,7 @@ export default function BrainConfigPage() {
                             </CardHeader>
                             <CardContent className="space-y-6">
                                 <div className="space-y-2">
-                                    <div className="flex items-center justify-between gap-3">
+                                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                                         <Label>LLM principal</Label>
                                         <span className="rounded-full border px-2 py-0.5 text-[11px] uppercase tracking-wide text-muted-foreground">
                                             {selectedModel.provider}
@@ -368,7 +368,7 @@ export default function BrainConfigPage() {
                                 </div>
 
                                 <div className="space-y-4">
-                                    <div className="flex items-center justify-between">
+                                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                                         <Label>Temperatura</Label>
                                         <span className="text-sm text-muted-foreground">{temperature[0].toFixed(1)}</span>
                                     </div>
@@ -430,7 +430,7 @@ export default function BrainConfigPage() {
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
-                            <div className="flex items-center justify-between rounded-xl border bg-background px-4 py-4">
+                            <div className="flex flex-col gap-3 rounded-xl border bg-background px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
                                 <div className="pr-4">
                                     <Label htmlFor="escalation-enabled" className="text-base font-medium">
                                         Activar escalacion automatica
@@ -469,7 +469,7 @@ export default function BrainConfigPage() {
                         </CardHeader>
                         <CardContent className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
                             <div className="space-y-4">
-                                <div className="flex items-center justify-between rounded-xl border bg-background px-4 py-4">
+                                <div className="flex flex-col gap-3 rounded-xl border bg-background px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
                                     <div className="pr-4">
                                         <Label htmlFor="lead-scoring-enabled" className="text-base font-medium">
                                             Activar scoring automático
@@ -527,7 +527,7 @@ export default function BrainConfigPage() {
 
                             <div className="space-y-4">
                                 <div className="rounded-xl border bg-background px-4 py-4">
-                                    <div className="flex items-center justify-between">
+                                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                                         <Label>Umbral de interés</Label>
                                         <span className="text-sm font-semibold text-foreground">{leadInterestThreshold[0]}%</span>
                                     </div>
@@ -720,7 +720,7 @@ export default function BrainConfigPage() {
 
                             <div className="space-y-4">
                                 <div className="rounded-xl border bg-background px-4 py-4">
-                                    <div className="flex items-center justify-between">
+                                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                                         <Label>Preguntar antes de enviar archivos</Label>
                                         <Switch
                                             checked={catalogAskBeforeSending}
@@ -733,7 +733,7 @@ export default function BrainConfigPage() {
                                 </div>
 
                                 <div className="rounded-xl border bg-background px-4 py-4">
-                                    <div className="flex items-center justify-between">
+                                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                                         <Label>Maximo de imagenes por envio</Label>
                                         <span className="text-sm font-semibold text-foreground">
                                             {catalogMaxImagesToSend[0]}
@@ -763,11 +763,11 @@ export default function BrainConfigPage() {
                     </Card>
                 </TabsContent>
 
-                <TabsContent value="knowledge" className="mt-6">
+                <TabsContent value="knowledge" className="mt-4 sm:mt-6">
                     <KnowledgeBase />
                 </TabsContent>
 
-                <TabsContent value="catalog" className="mt-6">
+                <TabsContent value="catalog" className="mt-4 sm:mt-6">
                     <CatalogBase />
                 </TabsContent>
             </Tabs>

@@ -263,12 +263,12 @@ export function TemplateManagerPanel() {
     return (
         <div className="grid gap-4 xl:grid-cols-[340px_minmax(0,1fr)]">
             <div className="space-y-4 rounded-xl border bg-card p-4">
-                <div className="flex items-center justify-between gap-3">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                         <h2 className="font-semibold">Plantillas internas</h2>
                         <p className="text-sm text-muted-foreground">Respuestas guardadas para texto, imagen y documento.</p>
                     </div>
-                    <Button variant="outline" size="sm" onClick={resetForm}>
+                    <Button variant="outline" size="sm" onClick={resetForm} className="w-full sm:w-auto">
                         <Plus className="mr-2 h-4 w-4" />
                         Nueva
                     </Button>
@@ -327,7 +327,7 @@ export function TemplateManagerPanel() {
                                         </div>
                                     </button>
 
-                                    <div className="mt-3 flex items-center gap-2">
+                                    <div className="mt-3 flex flex-wrap items-center gap-2">
                                         <Button variant="ghost" size="sm" className="h-8 px-2" onClick={() => duplicateTemplate(template)}>
                                             <Copy className="mr-1.5 h-3.5 w-3.5" />
                                             Duplicar
@@ -345,12 +345,12 @@ export function TemplateManagerPanel() {
             </div>
 
             <div className="space-y-4 rounded-xl border bg-card p-4">
-                <div className="flex items-center justify-between gap-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                         <h2 className="font-semibold">{form.id ? "Editar plantilla" : "Nueva plantilla"}</h2>
                         <p className="text-sm text-muted-foreground">La seleccion se inserta primero en el composer antes de enviarse.</p>
                     </div>
-                    <Button onClick={saveTemplate} disabled={isSaving || isUploading}>
+                    <Button onClick={saveTemplate} disabled={isSaving || isUploading} className="w-full sm:w-auto">
                         {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                         Guardar
                     </Button>
@@ -433,12 +433,12 @@ export function TemplateManagerPanel() {
 
                 {form.type !== "text" && (
                     <div className="space-y-3 rounded-xl border bg-muted/15 p-4">
-                        <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
                             <div>
                                 <p className="font-medium">Archivo de la plantilla</p>
                                 <p className="text-sm text-muted-foreground">Sube una imagen o documento reutilizable.</p>
                             </div>
-                            <label className="inline-flex cursor-pointer items-center rounded-xl border px-4 py-2 text-sm font-medium hover:bg-muted/40">
+                            <label className="inline-flex w-full cursor-pointer items-center justify-center rounded-xl border px-4 py-2 text-sm font-medium hover:bg-muted/40 sm:w-auto">
                                 {isUploading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                                 Subir archivo
                                 <input
@@ -536,7 +536,7 @@ export function TemplateManagerPanel() {
                         <p className="text-sm text-muted-foreground">Asi se vera la plantilla antes de insertarla en el chat.</p>
 
                         <div className="mt-4 rounded-xl border border-sky-100/70 bg-gradient-to-br from-sky-50 via-background to-emerald-50/70 p-4">
-                            <div className="mb-4 flex items-start justify-between gap-3 rounded-xl border border-sky-100/80 bg-white/85 px-4 py-3 shadow-[0_16px_34px_-30px_rgba(14,116,144,0.38)]">
+                            <div className="mb-4 flex flex-col gap-3 rounded-xl border border-sky-100/80 bg-white/85 px-4 py-3 shadow-[0_16px_34px_-30px_rgba(14,116,144,0.38)] sm:flex-row sm:items-start sm:justify-between">
                                 <div className="min-w-0">
                                     <p className="truncate text-sm font-semibold text-slate-900">{form.name || "Sin nombre"}</p>
                                     <p className="mt-1 text-xs text-slate-500">
