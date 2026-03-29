@@ -442,7 +442,7 @@ function AudioPlayer({ src, isOutbound }: { src: string; isOutbound: boolean }) 
     const audioRef = useRef<HTMLAudioElement>(null);
     const [isPlaying, setIsPlaying] = useState(false);
     const [reportedDuration, setReportedDuration] = useState(0);
-    const [estimatedDuration, setEstimatedDuration] = useState(0);
+    const [visualDuration, setVisualDuration] = useState(0);
     const [currentTime, setCurrentTime] = useState(0);
 
     useEffect(() => {
@@ -452,38 +452,57 @@ function AudioPlayer({ src, isOutbound }: { src: string; isOutbound: boolean }) 
         setIsPlaying(false);
         setCurrentTime(0);
         setReportedDuration(0);
-        setEstimatedDuration(0);
+        setVisualDuration(0);
+
+        const updateVisualDuration = (time: number, mediaDuration: number, ended = false) => {
+            setVisualDuration((prev) => {
+                const hasFiniteDuration = Number.isFinite(mediaDuration) && mediaDuration > 0;
+                const base = Math.max(prev, hasFiniteDuration ? mediaDuration : 0, time + 0.25);
+
+                if (ended) return base;
+                if (!hasFiniteDuration || mediaDuration <= time + 1.25) {
+                    const extension = Math.max(8, time * 0.28);
+                    return Math.max(base, time + extension);
+                }
+                return base;
+            });
+        };
 
         const syncDuration = () => {
             const d = audio.duration;
-            if (d && isFinite(d) && d > 0) {
-                setReportedDuration(d);
+            if (Number.isFinite(d) && d > 0) {
+                setReportedDuration((prev) => Math.max(prev, d));
+                updateVisualDuration(audio.currentTime || 0, d);
             }
         };
-        const onTimeUpdate = () => {
-            setCurrentTime(audio.currentTime);
-            const d = audio.duration;
 
-            // Some voice notes report a too-short duration while still playing.
-            // Keep a separate estimate so the progress dot does not rush to the end.
-            if (!audio.ended && (!d || !isFinite(d) || d <= audio.currentTime + 1)) {
-                setEstimatedDuration((prev) => {
-                    const paddedEstimate = audio.currentTime + Math.max(12, audio.currentTime * 0.4);
-                    return Math.max(prev, paddedEstimate);
-                });
-            }
+        const onTimeUpdate = () => {
+            const t = Number.isFinite(audio.currentTime) ? audio.currentTime : 0;
+            const d = Number.isFinite(audio.duration) ? audio.duration : 0;
+            setCurrentTime(t);
+            updateVisualDuration(t, d);
         };
+
         const onEnded = () => {
-            setEstimatedDuration((prev) => Math.max(prev, audio.currentTime));
+            const t = Number.isFinite(audio.currentTime) ? audio.currentTime : 0;
+            const d = Number.isFinite(audio.duration) ? audio.duration : 0;
+            updateVisualDuration(t, d, true);
             setIsPlaying(false);
             setCurrentTime(0);
         };
+
         const onPlay = () => setIsPlaying(true);
         const onPause = () => {
             if (!audio.ended) setIsPlaying(false);
         };
-        const onSeeked = () => setCurrentTime(audio.currentTime);
+        const onSeeked = () => {
+            const t = Number.isFinite(audio.currentTime) ? audio.currentTime : 0;
+            const d = Number.isFinite(audio.duration) ? audio.duration : 0;
+            setCurrentTime(t);
+            updateVisualDuration(t, d);
+        };
 
+        audio.addEventListener("loadeddata", syncDuration);
         audio.addEventListener("loadedmetadata", syncDuration);
         audio.addEventListener("durationchange", syncDuration);
         audio.addEventListener("canplay", syncDuration);
@@ -494,6 +513,7 @@ function AudioPlayer({ src, isOutbound }: { src: string; isOutbound: boolean }) 
         audio.addEventListener("pause", onPause);
         audio.addEventListener("seeked", onSeeked);
         return () => {
+            audio.removeEventListener("loadeddata", syncDuration);
             audio.removeEventListener("loadedmetadata", syncDuration);
             audio.removeEventListener("durationchange", syncDuration);
             audio.removeEventListener("canplay", syncDuration);
@@ -521,11 +541,11 @@ function AudioPlayer({ src, isOutbound }: { src: string; isOutbound: boolean }) 
         return `${Math.floor(s / 60)}:${Math.floor(s % 60).toString().padStart(2, "0")}`;
     };
 
-    const hasReliableDuration = reportedDuration > currentTime + 1;
-    const duration = hasReliableDuration
-        ? reportedDuration
-        : Math.max(estimatedDuration, currentTime + 12);
-    const progress = duration > 0 && isFinite(duration) ? (currentTime / duration) * 100 : 0;
+    const duration = Math.max(reportedDuration, visualDuration, currentTime + (isPlaying ? 0.25 : 0));
+    const safeDuration = duration > 0 && isFinite(duration) ? duration : 0;
+    const progress = safeDuration > 0 ? (currentTime / safeDuration) * 100 : 0;
+    const clampedProgress = Math.min(100, Math.max(0, progress));
+    const dotProgress = Math.min(99.2, Math.max(0.8, clampedProgress));
 
     // Generate pseudo-random waveform bar heights (deterministic per src)
     const bars = 28;
@@ -549,17 +569,18 @@ function AudioPlayer({ src, isOutbound }: { src: string; isOutbound: boolean }) 
                 {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4 ml-0.5" />}
             </button>
             <div className="flex-1 flex flex-col gap-1">
-                <div className="relative flex items-end gap-[2px] h-6 cursor-pointer"
+                <div
+                    className="relative flex h-6 cursor-pointer items-end gap-[2px] pb-[1px]"
                     onClick={(e) => {
-                        if (!audioRef.current || !duration) return;
+                        if (!audioRef.current || safeDuration <= 0) return;
                         const rect = e.currentTarget.getBoundingClientRect();
-                        const pct = (e.clientX - rect.left) / rect.width;
-                        audioRef.current.currentTime = pct * duration;
+                        const pct = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
+                        audioRef.current.currentTime = pct * safeDuration;
                     }}
                 >
                     {barHeights.map((h, i) => {
-                        const barPct = ((i + 1) / bars) * 100;
-                        const active = barPct <= progress;
+                        const barPct = (i / Math.max(1, bars - 1)) * 100;
+                        const active = barPct <= clampedProgress;
                         return (
                             <div
                                 key={i}
@@ -576,17 +597,17 @@ function AudioPlayer({ src, isOutbound }: { src: string; isOutbound: boolean }) 
                     {/* Position indicator dot */}
                     {duration > 0 && (
                         <div
-                            className="absolute top-1/2 -translate-y-1/2 w-2.5 h-2.5 rounded-full shadow-sm"
+                            className="absolute bottom-0 h-2.5 w-2.5 rounded-full shadow-sm ring-2 ring-background/80"
                             style={{
-                                left: `${Math.min(progress, 100)}%`,
+                                left: `${dotProgress}%`,
                                 backgroundColor: isOutbound ? "var(--audio-dot, #075e54)" : "#2563EB",
-                                transform: `translateX(-50%) translateY(-50%)`,
+                                transform: "translate(-50%, 40%)",
                             }}
                         />
                     )}
                 </div>
                 <span className={cn("text-[10px] tabular-nums", isOutbound ? "text-[#075e54]/70 dark:text-white/70" : "text-muted-foreground")}>
-                    {isPlaying ? formatTime(currentTime) : formatTime(duration)}
+                    {isPlaying ? formatTime(currentTime) : formatTime(safeDuration)}
                 </span>
             </div>
         </div>

@@ -135,15 +135,20 @@ function ScheduledStartPicker({ value, onChange }: ScheduledStartPickerProps) {
                 </Button>
             </PopoverTrigger>
 
-            <PopoverContent align="start" className="w-[min(100vw-2rem,24rem)] p-0">
-                <div className="border-b px-4 py-3">
+            <PopoverContent
+                align="start"
+                sideOffset={8}
+                collisionPadding={12}
+                className="flex max-h-[min(86vh,44rem)] w-[min(100vw-2rem,24rem)] flex-col overflow-hidden p-0"
+            >
+                <div className="shrink-0 border-b px-4 py-3">
                     <p className="font-medium">Programar inicio</p>
                     <p className="mt-1 text-sm text-muted-foreground">
                         Elige fecha y hora y confirma con <span className="font-medium text-foreground">Aplicar</span>.
                     </p>
                 </div>
 
-                <div className="space-y-4 p-4">
+                <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
                     <div className="rounded-xl border bg-background/90 p-2">
                         <Calendar
                             mode="single"
@@ -166,25 +171,27 @@ function ScheduledStartPicker({ value, onChange }: ScheduledStartPickerProps) {
                     </div>
 
                     <div className="rounded-xl border bg-muted/20 px-3 py-2 text-sm text-muted-foreground">
-                        Quedará programada para{" "}
+                        Quedara programada para{" "}
                         <span className="font-medium text-foreground">
-                            {format(draftDate, "PPP '·' p", { locale: es })}
+                            {format(draftDate, "PPP ' - ' p", { locale: es })}
                         </span>
                         .
                     </div>
                 </div>
 
-                <div className="flex flex-wrap items-center justify-between gap-2 border-t px-4 py-3">
-                    <Button type="button" variant="ghost" size="sm" onClick={handleClear} disabled={!value}>
-                        Quitar programación
-                    </Button>
-                    <div className="flex flex-wrap gap-2">
-                        <Button type="button" variant="outline" size="sm" onClick={handleCancel}>
-                            Cancelar
+                <div className="shrink-0 border-t bg-popover px-4 py-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                        <Button type="button" variant="ghost" size="sm" onClick={handleClear} disabled={!value}>
+                            Quitar programacion
                         </Button>
-                        <Button type="button" size="sm" onClick={handleApply}>
-                            Aplicar
-                        </Button>
+                        <div className="flex flex-wrap gap-2">
+                            <Button type="button" variant="outline" size="sm" onClick={handleCancel}>
+                                Cancelar
+                            </Button>
+                            <Button type="button" size="sm" onClick={handleApply}>
+                                Aplicar
+                            </Button>
+                        </div>
                     </div>
                 </div>
             </PopoverContent>
@@ -207,14 +214,14 @@ export function BulkCampaignScheduleTab({
                         <p className="font-medium">Disparo inicial</p>
                     </div>
                     <p className="mt-1 text-sm text-muted-foreground">
-                        Si dejas este campo vacío, la campaña inicia en cuanto pulses empezar.
+                        Si dejas este campo vacio, la campana inicia en cuanto pulses empezar.
                     </p>
                     <div className="mt-4 space-y-2">
                         <Label>Programar inicio</Label>
                         <ScheduledStartPicker
                             value={form.scheduledStartAt}
-                            onChange={(value) =>
-                                onFormChange((current) => ({ ...current, scheduledStartAt: value }))
+                            onChange={(nextValue) =>
+                                onFormChange((current) => ({ ...current, scheduledStartAt: nextValue }))
                             }
                         />
                     </div>
@@ -226,12 +233,12 @@ export function BulkCampaignScheduleTab({
                         <p className="font-medium">Pacing humano</p>
                     </div>
                     <p className="mt-1 text-sm text-muted-foreground">
-                        Así rompes el patrón rígido entre mensajes y haces más natural la campaña.
+                        Asi rompes el patron rigido entre mensajes y haces mas natural la campana.
                     </p>
 
                     <div className="mt-4 grid gap-4 lg:grid-cols-2">
                         <div className="space-y-2">
-                            <Label>Delay mínimo por mensaje (segundos)</Label>
+                            <Label>Delay minimo por mensaje (segundos)</Label>
                             <Input
                                 type="number"
                                 min={5}
@@ -247,7 +254,7 @@ export function BulkCampaignScheduleTab({
                         </div>
 
                         <div className="space-y-2">
-                            <Label>Delay máximo por mensaje (segundos)</Label>
+                            <Label>Delay maximo por mensaje (segundos)</Label>
                             <Input
                                 type="number"
                                 min={5}
@@ -265,7 +272,7 @@ export function BulkCampaignScheduleTab({
 
                     <div className="mt-4 grid gap-4 lg:grid-cols-2">
                         <div className="space-y-2">
-                            <Label>Tamaño de sublote</Label>
+                            <Label>Tamano de sublote</Label>
                             <Input
                                 type="number"
                                 min={1}
@@ -301,14 +308,14 @@ export function BulkCampaignScheduleTab({
                 <div className="min-w-0 rounded-xl border bg-muted/15 p-4">
                     <div className="flex items-center gap-2">
                         <CheckCircle2 className="h-4 w-4 text-primary" />
-                        <p className="font-medium">Guardarraíles</p>
+                        <p className="font-medium">Guardarrailes</p>
                     </div>
                     <div className="mt-4 space-y-4">
                         <div className="flex flex-wrap items-start justify-between gap-4 rounded-xl border bg-background/85 px-4 py-3">
                             <div>
-                                <p className="font-medium">Respetar horario hábil del CRM</p>
+                                <p className="font-medium">Respetar horario habil del CRM</p>
                                 <p className="text-sm text-muted-foreground">
-                                    Usa la franja horaria definida en configuración.
+                                    Usa la franja horaria definida en configuracion.
                                 </p>
                             </div>
                             <Switch
@@ -324,7 +331,7 @@ export function BulkCampaignScheduleTab({
                             <div>
                                 <p className="font-medium">Cortar seguimiento si el lead responde</p>
                                 <p className="text-sm text-muted-foreground">
-                                    Evita insistir cuando ya hubo interacción humana.
+                                    Evita insistir cuando ya hubo interaccion humana.
                                 </p>
                             </div>
                             <Switch
@@ -343,20 +350,20 @@ export function BulkCampaignScheduleTab({
                 <div className="min-w-0 rounded-xl border bg-muted/15 p-4">
                     <div className="flex items-center gap-2">
                         <Clock3 className="h-4 w-4 text-primary" />
-                        <p className="font-medium">Simulación de arranque</p>
+                        <p className="font-medium">Simulacion de arranque</p>
                     </div>
                     <div className="mt-4 space-y-3 text-sm text-muted-foreground">
                         <div className="rounded-xl border bg-background/85 p-3">
                             Primer disparo: <span className="font-semibold text-foreground">{form.scheduledStartAt ? formatDateTime(new Date(form.scheduledStartAt).toISOString()) : "cuando pulses iniciar"}</span>
                         </div>
                         <div className="rounded-xl border bg-background/85 p-3">
-                            Luego el sistema intercalará delays de <span className="font-semibold text-foreground">{form.randomDelayMinSeconds}</span> a <span className="font-semibold text-foreground">{form.randomDelayMaxSeconds}</span> segundos por mensaje.
+                            Luego el sistema intercalara delays de <span className="font-semibold text-foreground">{form.randomDelayMinSeconds}</span> a <span className="font-semibold text-foreground">{form.randomDelayMaxSeconds}</span> segundos por mensaje.
                         </div>
                         <div className="rounded-xl border bg-background/85 p-3">
-                            Cada {form.batchSize} mensajes aplicará una pausa larga de {form.batchDelayMinutes} minutos.
+                            Cada {form.batchSize} mensajes aplicara una pausa larga de {form.batchDelayMinutes} minutos.
                         </div>
                         <div className="rounded-xl border bg-background/85 p-3">
-                            Duración estimada para esta audiencia: <span className="font-semibold text-foreground">{estimatedDeliveryMinutes} minutos</span> para {totalPreviewRecipients} contactos.
+                            Duracion estimada para esta audiencia: <span className="font-semibold text-foreground">{estimatedDeliveryMinutes} minutos</span> para {totalPreviewRecipients} contactos.
                         </div>
                     </div>
                 </div>
