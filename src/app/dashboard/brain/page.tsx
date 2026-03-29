@@ -188,31 +188,31 @@ export default function BrainConfigPage() {
     });
 
     return (
-        <div className="flex flex-col gap-6 max-w-5xl mx-auto h-full">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div className="mx-auto flex h-full max-w-[1500px] flex-col gap-6">
+            <div className="flex flex-col gap-4 rounded-[1.9rem] border bg-card px-7 py-6 shadow-[0_20px_48px_-34px_rgba(15,23,42,0.32)] lg:flex-row lg:items-center lg:justify-between">
                 <div className="flex items-center gap-3">
                     <div className="h-11 w-11 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
                         <BrainCircuit className="h-6 w-6" />
                     </div>
                     <div>
                         <h1 className="text-3xl font-bold tracking-tight">Cerebro IA</h1>
-                        <p className="text-muted-foreground">
+                        <p className="mt-1 text-sm leading-6 text-muted-foreground">
                             Aqui se concentra la logica del agente, sus fuentes y el contexto que usara para contestar en WhatsApp.
                         </p>
                     </div>
                 </div>
 
-                <Button onClick={handleSave} disabled={isSaving}>
+                <Button onClick={handleSave} disabled={isSaving} className="h-11 rounded-2xl px-5">
                     {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
                     Guardar cambios
                 </Button>
             </div>
 
             <Tabs defaultValue="config" className="flex-1">
-                <TabsList className="w-fit">
-                    <TabsTrigger value="config">Configuracion</TabsTrigger>
-                    <TabsTrigger value="knowledge">Conocimiento</TabsTrigger>
-                    <TabsTrigger value="catalog">Catalogo</TabsTrigger>
+                <TabsList className="grid h-auto w-full max-w-[620px] grid-cols-1 gap-2 rounded-[1.55rem] border bg-card p-2 shadow-[0_18px_40px_-34px_rgba(15,23,42,0.28)] sm:grid-cols-3">
+                    <TabsTrigger value="config" className="h-12 rounded-[1rem] border border-transparent bg-background/85 px-5 text-sm font-semibold text-foreground/70 data-[state=active]:border-primary/20 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-[0_16px_32px_-20px_rgba(37,99,235,0.7)]">Configuracion</TabsTrigger>
+                    <TabsTrigger value="knowledge" className="h-12 rounded-[1rem] border border-transparent bg-background/85 px-5 text-sm font-semibold text-foreground/70 data-[state=active]:border-primary/20 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-[0_16px_32px_-20px_rgba(37,99,235,0.7)]">Conocimiento</TabsTrigger>
+                    <TabsTrigger value="catalog" className="h-12 rounded-[1rem] border border-transparent bg-background/85 px-5 text-sm font-semibold text-foreground/70 data-[state=active]:border-primary/20 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-[0_16px_32px_-20px_rgba(37,99,235,0.7)]">Catalogo</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="config" className="space-y-6 mt-6">

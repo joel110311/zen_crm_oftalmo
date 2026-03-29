@@ -502,7 +502,7 @@ export function BulkCampaignManagerPanel() {
                     </div>
                 </div>
 
-                <div className="min-w-0 rounded-[1.9rem] border bg-card p-6 shadow-[0_28px_70px_-48px_rgba(15,23,42,0.55)]">
+                <div className="min-w-0 rounded-[1.9rem] border bg-card px-7 py-7 shadow-[0_28px_70px_-48px_rgba(15,23,42,0.55)]">
                     <div className="flex flex-wrap items-start justify-between gap-4">
                         <div className="min-w-0">
                             <div className="flex items-center gap-2">
@@ -586,13 +586,10 @@ export function BulkCampaignManagerPanel() {
                     </div>
 
                     <Tabs defaultValue="message" className="mt-6 min-w-0 space-y-6">
-                        <TabsList
-                            variant="line"
-                            className="h-auto w-full flex-wrap justify-start rounded-2xl border bg-muted/20 p-1"
-                        >
-                            <TabsTrigger value="message" className="min-h-10 rounded-xl px-4">Mensaje</TabsTrigger>
-                            <TabsTrigger value="audience" className="min-h-10 rounded-xl px-4">Audiencia</TabsTrigger>
-                            <TabsTrigger value="schedule" className="min-h-10 rounded-xl px-4">Programación</TabsTrigger>
+                        <TabsList className="grid h-auto w-full grid-cols-1 gap-2 rounded-[1.55rem] border bg-muted/20 p-2 sm:grid-cols-3">
+                            <TabsTrigger value="message" className="h-12 rounded-[1rem] border border-transparent bg-background/85 px-5 text-[15px] font-semibold text-foreground/70 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] hover:text-foreground data-[state=active]:border-primary/20 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-[0_16px_32px_-20px_rgba(37,99,235,0.7)]">Mensaje</TabsTrigger>
+                            <TabsTrigger value="audience" className="h-12 rounded-[1rem] border border-transparent bg-background/85 px-5 text-[15px] font-semibold text-foreground/70 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] hover:text-foreground data-[state=active]:border-primary/20 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-[0_16px_32px_-20px_rgba(37,99,235,0.7)]">Audiencia</TabsTrigger>
+                            <TabsTrigger value="schedule" className="h-12 rounded-[1rem] border border-transparent bg-background/85 px-5 text-[15px] font-semibold text-foreground/70 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] hover:text-foreground data-[state=active]:border-primary/20 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-[0_16px_32px_-20px_rgba(37,99,235,0.7)]">Programación</TabsTrigger>
                         </TabsList>
 
                         <TabsContent value="message" className="min-w-0">

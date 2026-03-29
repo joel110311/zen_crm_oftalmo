@@ -35,15 +35,15 @@ export function BulkCampaignCampaignList({
     form,
 }: BulkCampaignCampaignListProps) {
     return (
-        <div className="space-y-5 rounded-[1.9rem] border bg-card p-6 shadow-[0_24px_55px_-42px_rgba(15,23,42,0.55)]">
-            <div className="flex items-start justify-between gap-3">
+        <div className="space-y-6 rounded-[1.9rem] border bg-card px-7 py-7 shadow-[0_24px_55px_-42px_rgba(15,23,42,0.55)]">
+            <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0 space-y-1">
-                    <h2 className="font-semibold">Suite de envíos masivos</h2>
-                    <p className="text-sm text-muted-foreground">
-                        Campañas con audiencia visible, goteo y programación.
+                    <h2 className="text-lg font-semibold leading-tight">Suite de envios masivos</h2>
+                    <p className="text-sm leading-6 text-muted-foreground">
+                        Campanas con audiencia visible, goteo y programacion.
                     </p>
                 </div>
-                <Button variant="outline" size="sm" onClick={onCreateCampaign} className="shrink-0">
+                <Button variant="outline" size="sm" onClick={onCreateCampaign} className="h-11 shrink-0 rounded-2xl px-4">
                     <Plus className="mr-2 h-4 w-4" />
                     Nueva
                 </Button>
@@ -52,27 +52,27 @@ export function BulkCampaignCampaignList({
             <div className="relative">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
-                    placeholder="Buscar campaña..."
+                    placeholder="Buscar campana..."
                     value={search}
                     onChange={(event) => onSearchChange(event.target.value)}
                     className="pl-9"
                 />
             </div>
 
-            <Button variant="ghost" className="w-full justify-start" onClick={onRefreshCampaigns}>
+            <Button variant="ghost" className="h-11 w-full justify-start rounded-2xl" onClick={onRefreshCampaigns}>
                 <RefreshCcw className="mr-2 h-4 w-4" />
-                Refrescar campañas
+                Refrescar campanas
             </Button>
 
             <div className="space-y-3">
                 {isLoading ? (
                     <div className="rounded-2xl border border-dashed p-6 text-sm text-muted-foreground">
                         <Loader2 className="mr-2 inline h-4 w-4 animate-spin" />
-                        Cargando campañas...
+                        Cargando campanas...
                     </div>
                 ) : campaigns.length === 0 ? (
                     <div className="rounded-2xl border border-dashed p-6 text-sm text-muted-foreground">
-                        {search ? "No encontramos campañas con ese texto." : "Todavía no hay campañas creadas."}
+                        {search ? "No encontramos campanas con ese texto." : "Todavia no hay campanas creadas."}
                     </div>
                 ) : (
                     campaigns.map((campaign) => {
@@ -98,7 +98,7 @@ export function BulkCampaignCampaignList({
                                     <div className="min-w-0">
                                         <p className="truncate font-medium">{campaign.name}</p>
                                         <p className="mt-1 truncate text-xs text-muted-foreground">
-                                            {campaign.description || "Sin descripción"}
+                                            {campaign.description || "Sin descripcion"}
                                         </p>
                                     </div>
                                     <Badge variant={getStatusBadgeVariant(campaign.status)} className="capitalize">
@@ -135,7 +135,7 @@ export function BulkCampaignCampaignList({
             <div className="rounded-[1.35rem] border bg-muted/20 p-4">
                 <p className="text-sm font-medium">Borrador activo</p>
                 <p className="mt-1 text-xs text-muted-foreground">
-                    {form.name || "Nueva campaña sin nombre"}
+                    {form.name || "Nueva campana sin nombre"}
                 </p>
             </div>
         </div>

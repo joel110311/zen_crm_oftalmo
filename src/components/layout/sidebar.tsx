@@ -2,28 +2,27 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { useEffect, useState } from "react";
+import { signOut, useSession } from "next-auth/react";
 import {
-    LayoutDashboard,
-    Users,
-    MessageSquare,
-    KanbanSquare,
-    Calendar,
-    Settings,
     BrainCircuit,
+    Calendar,
+    KanbanSquare,
+    LayoutDashboard,
     LayoutTemplate,
     LogOut,
     Menu,
-    X,
+    MessageSquare,
+    Settings,
     Shield,
-    ShieldCheck
+    ShieldCheck,
+    Users,
+    X,
 } from "lucide-react";
-import { useState, useEffect } from "react";
-import { ZenLogo } from "@/components/icons/zen-logo";
-import { useSession, signOut } from "next-auth/react";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
+import { ZenLogo } from "@/components/icons/zen-logo";
+import { cn } from "@/lib/utils";
 
 const sidebarNavItems = [
     { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
@@ -33,25 +32,22 @@ const sidebarNavItems = [
     { title: "Plantillas", href: "/dashboard/templates", icon: LayoutTemplate, superadminOnly: true },
     { title: "Calendario", href: "/dashboard/calendar", icon: Calendar },
     { title: "Cerebro IA", href: "/dashboard/brain", icon: BrainCircuit, superadminOnly: true },
-    { title: "Configuración", href: "/dashboard/settings", icon: Settings },
+    { title: "Configuracion", href: "/dashboard/settings", icon: Settings },
 ];
 
-interface SidebarProps extends React.HTMLAttributes<HTMLDivElement> { }
-
-export function Sidebar({ className }: SidebarProps) {
+export function Sidebar({ className }: React.HTMLAttributes<HTMLDivElement>) {
     const pathname = usePathname();
     const [open, setOpen] = useState(false);
     const { data: session, status } = useSession();
     const sessionLoading = status === "loading";
-    const userRole = (session?.user as any)?.role;
+    const userRole = (session?.user as { role?: string } | undefined)?.role;
     const userName = session?.user?.name || (sessionLoading ? "..." : "Usuario");
 
-    useEffect(() => { setOpen(false); }, [pathname]);
-
     useEffect(() => {
-        if (open) { document.body.style.overflow = "hidden"; }
-        else { document.body.style.overflow = ""; }
-        return () => { document.body.style.overflow = ""; };
+        document.body.style.overflow = open ? "hidden" : "";
+        return () => {
+            document.body.style.overflow = "";
+        };
     }, [open]);
 
     const filteredNavItems = sidebarNavItems.filter((item) => {
@@ -60,160 +56,177 @@ export function Sidebar({ className }: SidebarProps) {
         return true;
     });
 
-    // ════════ Shared Nav Item Renderer ════════
-    const renderNavItem = (item: typeof sidebarNavItems[0], index: number, onClickExtra?: () => void) => {
+    const renderNavItem = (item: typeof sidebarNavItems[number], key: string, onClickExtra?: () => void) => {
         const Icon = item.icon;
         const isActive = pathname === item.href;
+
         return (
-            <Link key={index} href={item.href} onClick={onClickExtra}>
+            <Link key={key} href={item.href} onClick={onClickExtra}>
                 <span
                     className={cn(
-                        "group relative flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-medium transition-all duration-200",
+                        "group flex items-center gap-3 rounded-[1.15rem] border px-4 py-3 text-[15px] font-medium transition-all duration-200",
                         isActive
-                            ? "bg-primary/15 text-primary"
-                            : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                            ? "border-white/10 bg-white/10 text-white shadow-[0_16px_30px_-22px_rgba(15,23,42,0.85)]"
+                            : "border-transparent text-sidebar-foreground/74 hover:border-white/6 hover:bg-white/6 hover:text-white",
                     )}
                 >
-                    {/* Active indicator bar */}
-                    {isActive && (
-                        <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 rounded-r-full bg-primary" />
-                    )}
-                    <Icon className={cn("h-[18px] w-[18px] flex-shrink-0", isActive ? "text-primary" : "text-sidebar-foreground/50 group-hover:text-sidebar-foreground/80")} />
+                    <span
+                        className={cn(
+                            "flex h-9 w-9 items-center justify-center rounded-xl border transition-colors",
+                            isActive
+                                ? "border-white/12 bg-white/12 text-white"
+                                : "border-white/6 bg-white/4 text-sidebar-foreground/60 group-hover:text-white",
+                        )}
+                    >
+                        <Icon className="h-[18px] w-[18px]" />
+                    </span>
                     <span className="truncate">{item.title}</span>
                 </span>
             </Link>
         );
     };
 
-    // ════════ User Info Block ════════
     const renderUserInfo = (compact?: boolean) => (
-        <div className={cn("flex items-center gap-3", compact ? "px-2" : "px-3 py-2.5 bg-sidebar-accent/40 rounded-xl")}>
-            <div className={cn(
-                "rounded-lg flex items-center justify-center flex-shrink-0 font-bold text-primary-foreground",
-                compact ? "h-8 w-8 text-xs" : "h-9 w-9 text-sm"
-            )} style={{ background: "linear-gradient(135deg, hsl(221 83% 53%), hsl(221 83% 40%))" }}>
+        <div
+            className={cn(
+                "flex items-center gap-3 rounded-[1.15rem] border border-white/6 bg-white/5",
+                compact ? "px-3 py-3" : "px-3.5 py-3.5",
+            )}
+        >
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-sm font-bold text-primary-foreground shadow-[0_14px_26px_-18px_rgba(37,99,235,0.95)]">
                 {!sessionLoading && userName.charAt(0).toUpperCase()}
             </div>
-            <div className="flex-1 min-w-0">
-                <div className={cn("font-medium truncate text-sidebar-foreground flex items-center h-5", compact ? "text-sm" : "text-sm")}>
-                    {sessionLoading ? <div className="h-3 w-16 bg-sidebar-foreground/10 rounded animate-pulse" /> : userName}
+            <div className="min-w-0 flex-1">
+                <div className="truncate text-sm font-semibold text-white">
+                    {sessionLoading ? <div className="h-3 w-20 animate-pulse rounded bg-white/10" /> : userName}
                 </div>
-                {!compact && (
-                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 min-h-[18px] border-sidebar-border text-sidebar-foreground/60 mt-0.5">
-                        {sessionLoading ? (
-                            <div className="h-2 w-12 bg-sidebar-foreground/10 rounded animate-pulse my-1" />
-                        ) : userRole === "SUPERADMIN" ? (
-                            <><ShieldCheck className="h-2.5 w-2.5 mr-0.5" /> Super Admin</>
-                        ) : (
-                            <><Shield className="h-2.5 w-2.5 mr-0.5" /> Admin</>
-                        )}
-                    </Badge>
-                )}
+                <Badge variant="outline" className="mt-1 border-white/10 bg-white/5 px-2 py-0 text-[10px] text-sidebar-foreground/70">
+                    {sessionLoading ? (
+                        <div className="my-1 h-2 w-12 animate-pulse rounded bg-white/10" />
+                    ) : userRole === "SUPERADMIN" ? (
+                        <>
+                            <ShieldCheck className="mr-0.5 h-2.5 w-2.5" /> Super Admin
+                        </>
+                    ) : (
+                        <>
+                            <Shield className="mr-0.5 h-2.5 w-2.5" /> Admin
+                        </>
+                    )}
+                </Badge>
             </div>
         </div>
     );
 
     return (
         <>
-            {/* ═══════ Mobile Fixed Top Header ═══════ */}
-            <header className="md:hidden fixed top-0 left-0 right-0 z-40 bg-sidebar/95 border-b border-sidebar-border px-3 py-2.5 flex items-center justify-between backdrop-blur-xl">
-                <button onClick={() => setOpen(true)} className="p-2 hover:bg-sidebar-accent rounded-xl transition-colors active:scale-95" aria-label="Abrir menú">
-                    <Menu className="w-5 h-5 text-sidebar-foreground" />
+            <header className="fixed left-0 right-0 top-0 z-40 flex items-center justify-between border-b border-sidebar-border/80 bg-sidebar/95 px-4 py-3 backdrop-blur-xl md:hidden">
+                <button
+                    onClick={() => setOpen(true)}
+                    className="rounded-xl border border-white/8 bg-white/6 p-2 text-sidebar-foreground transition-colors hover:bg-white/10"
+                    aria-label="Abrir menu"
+                >
+                    <Menu className="h-5 w-5" />
                 </button>
-                <div className="flex items-center gap-2">
-                    <ZenLogo className="h-6 w-6" />
-                    <span className="font-semibold text-sidebar-foreground text-sm tracking-tight">Zen CRM</span>
-                </div>
-                <div className="h-8 w-8 rounded-lg flex items-center justify-center text-xs font-bold text-primary-foreground"
-                    style={{ background: "linear-gradient(135deg, hsl(221 83% 53%), hsl(221 83% 40%))" }}>
+
+                <Link href="/dashboard" className="flex items-center gap-2.5 text-sidebar-foreground">
+                    <ZenLogo className="h-7 w-7" />
+                    <span className="text-base font-semibold tracking-tight text-white">Zen CRM</span>
+                </Link>
+
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-sm font-bold text-primary-foreground">
                     {!sessionLoading && userName.charAt(0).toUpperCase()}
                 </div>
             </header>
 
-            {/* ═══════ Mobile Sidebar Overlay ═══════ */}
-            {open && (
+            {open ? (
                 <div
-                    className="md:hidden fixed inset-0 bg-black/50 z-40 backdrop-blur-sm transition-opacity duration-300"
+                    className="fixed inset-0 z-40 bg-slate-950/55 backdrop-blur-sm md:hidden"
                     onClick={() => setOpen(false)}
                 />
-            )}
+            ) : null}
 
-            {/* ═══════ Mobile Sidebar Drawer ═══════ */}
             <aside
                 className={cn(
-                    "md:hidden fixed inset-y-0 left-0 z-50 w-[280px] bg-sidebar border-r border-sidebar-border",
-                    "transform transition-transform duration-300 ease-out",
-                    open ? "translate-x-0" : "-translate-x-full"
+                    "fixed inset-y-0 left-0 z-50 w-[296px] border-r border-sidebar-border bg-sidebar px-4 py-4 transition-transform duration-300 ease-out md:hidden",
+                    open ? "translate-x-0" : "-translate-x-full",
                 )}
             >
-                <div className="flex flex-col h-full">
-                    {/* Header */}
-                    <div className="flex items-center justify-between p-4 border-b border-sidebar-border">
-                        <div className="flex items-center gap-2.5">
+                <div className="flex h-full flex-col">
+                    <div className="flex items-center justify-between rounded-[1.5rem] border border-white/6 bg-white/5 px-4 py-4">
+                        <Link href="/dashboard" className="flex items-center gap-2.5 text-sidebar-foreground" onClick={() => setOpen(false)}>
                             <ZenLogo className="h-8 w-8" />
-                            <span className="font-bold text-lg text-sidebar-foreground">Zen CRM</span>
-                        </div>
-                        <button onClick={() => setOpen(false)} className="p-2 hover:bg-sidebar-accent rounded-xl transition-colors">
-                            <X className="w-4 h-4 text-sidebar-foreground/60" />
+                            <span className="text-lg font-semibold tracking-tight text-white">Zen CRM</span>
+                        </Link>
+                        <button
+                            onClick={() => setOpen(false)}
+                            className="rounded-xl border border-white/6 bg-white/5 p-2 text-sidebar-foreground/70 transition-colors hover:bg-white/10 hover:text-white"
+                            aria-label="Cerrar menu"
+                        >
+                            <X className="h-4 w-4" />
                         </button>
                     </div>
 
-                    {/* Navigation */}
-                    <ScrollArea className="flex-1 py-4">
-                        <p className="text-[11px] font-semibold text-sidebar-foreground/40 uppercase tracking-widest mb-3 px-5">
-                            Menú
-                        </p>
-                        <nav className="grid gap-0.5 px-3">
-                            {filteredNavItems.map((item, i) => renderNavItem(item, i, () => setOpen(false)))}
-                        </nav>
+                    <ScrollArea className="mt-4 flex-1">
+                        <div className="space-y-5 px-1 py-1">
+                            <div>
+                                <p className="px-3 text-[11px] font-semibold uppercase tracking-[0.22em] text-sidebar-foreground/35">
+                                    Operacion
+                                </p>
+                                <nav className="mt-3 grid gap-1.5">
+                                    {filteredNavItems.map((item, index) => renderNavItem(item, `mobile-${index}`, () => setOpen(false)))}
+                                </nav>
+                            </div>
+                        </div>
                     </ScrollArea>
 
-                    {/* User Info & Logout */}
-                    <div className="p-3 border-t border-sidebar-border space-y-2">
-                        {renderUserInfo()}
+                    <div className="space-y-3 border-t border-white/6 pt-4">
+                        {renderUserInfo(true)}
                         <button
                             onClick={() => signOut({ callbackUrl: "/login" })}
-                            className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sidebar-foreground/50 hover:bg-destructive/10 hover:text-destructive transition-all duration-200 text-sm font-medium"
+                            className="flex h-11 w-full items-center gap-3 rounded-[1.05rem] border border-transparent px-4 text-sm font-medium text-sidebar-foreground/68 transition-all hover:border-destructive/20 hover:bg-destructive/12 hover:text-destructive"
                         >
-                            <LogOut className="w-[18px] h-[18px]" />
-                            Cerrar Sesión
+                            <LogOut className="h-[18px] w-[18px]" />
+                            Cerrar sesion
                         </button>
                     </div>
                 </div>
             </aside>
 
-            {/* ═══════ Desktop Sidebar ═══════ */}
-            <div className={cn("hidden border-r border-sidebar-border bg-sidebar md:flex md:flex-col w-64 2xl:w-72 flex-shrink-0", className)}>
-                {/* Logo */}
-                <div className="flex h-16 items-center px-5 2xl:px-6 border-b border-sidebar-border">
-                    <Link href="/dashboard" className="flex items-center gap-2.5 font-bold text-lg text-sidebar-foreground">
-                        <ZenLogo className="h-8 w-8 2xl:h-9 2xl:w-9" />
-                        <span>Zen CRM</span>
+            <aside className={cn("hidden w-[286px] shrink-0 border-r border-sidebar-border/80 bg-sidebar px-4 py-4 md:flex md:flex-col", className)}>
+                <div className="rounded-[1.65rem] border border-white/6 bg-white/5 px-5 py-5 shadow-[0_20px_40px_-28px_rgba(2,6,23,0.8)]">
+                    <Link href="/dashboard" className="flex items-center gap-3 text-sidebar-foreground">
+                        <ZenLogo className="h-9 w-9" />
+                        <div className="space-y-0.5">
+                            <span className="block text-lg font-semibold tracking-tight text-white">Zen CRM</span>
+                            <span className="block text-xs text-sidebar-foreground/48">Workspace comercial</span>
+                        </div>
                     </Link>
                 </div>
 
-                {/* Navigation */}
-                <ScrollArea className="flex-1 py-5">
-                    <p className="text-[11px] font-semibold text-sidebar-foreground/35 uppercase tracking-widest mb-3 px-5">
-                        Menú
-                    </p>
-                    <nav className="grid gap-0.5 px-3">
-                        {filteredNavItems.map((item, i) => renderNavItem(item, i))}
-                    </nav>
+                <ScrollArea className="mt-5 flex-1">
+                    <div className="space-y-5 px-1 py-1">
+                        <div>
+                            <p className="px-3 text-[11px] font-semibold uppercase tracking-[0.22em] text-sidebar-foreground/35">
+                                Operacion
+                            </p>
+                            <nav className="mt-3 grid gap-1.5">
+                                {filteredNavItems.map((item, index) => renderNavItem(item, `desktop-${index}`))}
+                            </nav>
+                        </div>
+                    </div>
                 </ScrollArea>
 
-                {/* User & Logout */}
-                <div className="p-3 border-t border-sidebar-border space-y-2">
+                <div className="space-y-3 border-t border-white/6 pt-4">
                     {renderUserInfo()}
                     <button
                         onClick={() => signOut({ callbackUrl: "/login" })}
-                        className="flex items-center gap-3 px-3.5 py-2 w-full text-sm text-sidebar-foreground/50 hover:text-destructive transition-colors rounded-xl hover:bg-destructive/10"
+                        className="flex h-11 w-full items-center gap-3 rounded-[1.05rem] border border-transparent px-4 text-sm font-medium text-sidebar-foreground/68 transition-all hover:border-destructive/20 hover:bg-destructive/12 hover:text-destructive"
                     >
                         <LogOut className="h-[18px] w-[18px]" />
-                        Cerrar Sesión
+                        Cerrar sesion
                     </button>
                 </div>
-            </div>
+            </aside>
         </>
     );
 }

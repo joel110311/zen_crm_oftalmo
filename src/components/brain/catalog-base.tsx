@@ -61,6 +61,17 @@ function normalizeProtectedPortalUrl(url: string) {
     }
 }
 
+function extractListingId(url: string) {
+    try {
+        const parsedUrl = new URL(url.trim());
+        const slug = parsedUrl.pathname.split("/").filter(Boolean).pop() || "";
+        const match = slug.match(/-(\d+)\.html?$/i);
+        return match?.[1] || "";
+    } catch {
+        return "";
+    }
+}
+
 export function CatalogBase() {
     const [entries, setEntries] = useState<CatalogEntry[]>([]);
     const [isPending, startTransition] = useTransition();
@@ -178,6 +189,21 @@ export function CatalogBase() {
     const handleAutofillFromUrl = () => {
         startTransition(async () => {
             const normalizedUrl = normalizeProtectedPortalUrl(autofillUrl);
+            if (isProtectedPortalUrl(normalizedUrl)) {
+                const listingId = extractListingId(normalizedUrl);
+                setManualEntry((current) => ({
+                    ...current,
+                    externalId: current.externalId || listingId,
+                    linkUrl: normalizedUrl,
+                }));
+                setAutofillUrl(normalizedUrl);
+                toast({
+                    title: "Completa la ficha manualmente",
+                    description: "Ese portal no permite autocompletar solo con URL. Ya dejamos la liga lista para que captures la ficha o la importes por CSV.",
+                });
+                return;
+            }
+
             const result = await autofillCatalogEntryFromUrl(normalizedUrl);
 
             if (result.success && result.preview) {
@@ -295,7 +321,7 @@ export function CatalogBase() {
                                 Detectar desde URL
                             </Button>
                             <p className="text-xs text-muted-foreground">
-                                Intentara llenar nombre, direccion, resumen, imagenes y la liga final. Si el sitio bloquea el acceso del servidor, te lo avisara sin romper la ficha.
+                                Funciona mejor con paginas publicas. Si el portal exige login o bloquea lectura automatica, te dejaremos la liga lista para que completes la ficha manual o uses el CSV.
                             </p>
                         </div>
 

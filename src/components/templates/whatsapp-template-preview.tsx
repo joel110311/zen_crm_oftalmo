@@ -61,7 +61,7 @@ export function WhatsAppTemplatePreview({
     return (
         <div
             className={cn(
-                "mx-auto w-full max-w-[390px] rounded-[2.9rem] bg-white p-3 shadow-[0_36px_90px_-40px_rgba(15,23,42,0.4)] ring-1 ring-slate-200/80",
+                "mx-auto w-full max-w-[424px] rounded-[2.9rem] bg-white p-3 shadow-[0_36px_90px_-40px_rgba(15,23,42,0.4)] ring-1 ring-slate-200/80",
                 className,
             )}
         >
@@ -100,7 +100,7 @@ export function WhatsAppTemplatePreview({
                 >
                     <div className="flex-1 overflow-y-auto pr-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                         <div className="flex min-h-full flex-col justify-end pb-6 pt-20">
-                            <div className="ml-auto w-[88%] rounded-[1.45rem] rounded-br-md bg-white shadow-[0_24px_45px_-30px_rgba(15,23,42,0.24)]">
+                            <div className="ml-auto w-[90.5%] rounded-[1.45rem] rounded-br-md bg-white shadow-[0_24px_45px_-30px_rgba(15,23,42,0.24)]">
                                 {type === "image" ? (
                                     <div className="rounded-t-[1.45rem] px-3 pt-3">
                                         {safeMediaUrl ? (
@@ -137,10 +137,7 @@ export function WhatsAppTemplatePreview({
 
                                 <div className={cn("px-4 pb-3", type !== "text" ? "pt-3" : "pt-4")}>
                                     {hasText ? (
-                                        <WhatsAppFormattedText
-                                            text={content}
-                                            className="text-[14px] leading-7 text-slate-700"
-                                        />
+                                        <WhatsAppFormattedText text={content} className="text-[14px] leading-[1.9] text-slate-700" />
                                     ) : (
                                         <p className="text-[13px] text-slate-400">
                                             {type === "text" ? "Escribe el contenido de tu plantilla..." : "Sin mensaje adicional"}
