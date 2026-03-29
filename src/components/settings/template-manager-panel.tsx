@@ -261,8 +261,8 @@ export function TemplateManagerPanel() {
     };
 
     return (
-        <div className="grid gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
-            <div className="space-y-4 rounded-2xl border bg-card p-5">
+        <div className="grid gap-4 xl:grid-cols-[340px_minmax(0,1fr)]">
+            <div className="space-y-4 rounded-xl border bg-card p-4">
                 <div className="flex items-center justify-between gap-3">
                     <div>
                         <h2 className="font-semibold">Plantillas internas</h2>
@@ -317,8 +317,8 @@ export function TemplateManagerPanel() {
                                                 </div>
                                                 <p className="text-xs text-muted-foreground">
                                                     {humanizeTemplateType(template.type)}
-                                                    {template.category ? ` · ${template.category}` : ""}
-                                                    {template.shortcut ? ` · /${template.shortcut}` : ""}
+                                                    {template.category ? ` - ${template.category}` : ""}
+                                                    {template.shortcut ? ` - /${template.shortcut}` : ""}
                                                 </p>
                                                 <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
                                                     {template.content || template.mediaFileName || "Plantilla multimedia"}
@@ -344,7 +344,7 @@ export function TemplateManagerPanel() {
                 </div>
             </div>
 
-            <div className="space-y-5 rounded-2xl border bg-card p-6">
+            <div className="space-y-4 rounded-xl border bg-card p-4">
                 <div className="flex items-center justify-between gap-4">
                     <div>
                         <h2 className="font-semibold">{form.id ? "Editar plantilla" : "Nueva plantilla"}</h2>
@@ -378,7 +378,7 @@ export function TemplateManagerPanel() {
                                     mediaFileName: event.target.value === "text" ? null : current.mediaFileName,
                                 }))
                             }
-                            className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm"
+                            className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm"
                         >
                             <option value="text">Texto</option>
                             <option value="image">Imagen</option>
@@ -404,14 +404,14 @@ export function TemplateManagerPanel() {
                 <div className="grid gap-4 md:grid-cols-3">
                     <div className="space-y-2">
                         <Label>Favorita</Label>
-                        <div className="flex h-11 items-center justify-between rounded-xl border px-3">
+                        <div className="flex h-10 items-center justify-between rounded-lg border px-3">
                             <span className="text-sm">Mostrar primero</span>
                             <Switch checked={form.isFavorite} onCheckedChange={(checked) => setForm((current) => ({ ...current, isFavorite: checked }))} />
                         </div>
                     </div>
                     <div className="space-y-2">
                         <Label>Activa</Label>
-                        <div className="flex h-11 items-center justify-between rounded-xl border px-3">
+                        <div className="flex h-10 items-center justify-between rounded-lg border px-3">
                             <span className="text-sm">Disponible en el inbox</span>
                             <Switch checked={form.isActive} onCheckedChange={(checked) => setForm((current) => ({ ...current, isActive: checked }))} />
                         </div>
@@ -432,7 +432,7 @@ export function TemplateManagerPanel() {
                 </div>
 
                 {form.type !== "text" && (
-                    <div className="space-y-3 rounded-2xl border bg-muted/15 p-4">
+                    <div className="space-y-3 rounded-xl border bg-muted/15 p-4">
                         <div className="flex flex-wrap items-center justify-between gap-3">
                             <div>
                                 <p className="font-medium">Archivo de la plantilla</p>
@@ -535,14 +535,14 @@ export function TemplateManagerPanel() {
                         <p className="font-medium">Vista previa premium</p>
                         <p className="text-sm text-muted-foreground">Asi se vera la plantilla antes de insertarla en el chat.</p>
 
-                        <div className="mt-4 rounded-[1.5rem] border border-sky-100/70 bg-gradient-to-br from-sky-50 via-background to-emerald-50/70 p-4">
-                            <div className="mb-4 flex items-start justify-between gap-3 rounded-[1.25rem] border border-sky-100/80 bg-white/85 px-4 py-3 shadow-[0_20px_40px_-34px_rgba(14,116,144,0.45)]">
+                        <div className="mt-4 rounded-xl border border-sky-100/70 bg-gradient-to-br from-sky-50 via-background to-emerald-50/70 p-4">
+                            <div className="mb-4 flex items-start justify-between gap-3 rounded-xl border border-sky-100/80 bg-white/85 px-4 py-3 shadow-[0_16px_34px_-30px_rgba(14,116,144,0.38)]">
                                 <div className="min-w-0">
                                     <p className="truncate text-sm font-semibold text-slate-900">{form.name || "Sin nombre"}</p>
                                     <p className="mt-1 text-xs text-slate-500">
                                         {humanizeTemplateType(form.type)}
-                                        {form.category ? ` · ${form.category}` : ""}
-                                        {form.shortcut ? ` · /${form.shortcut}` : ""}
+                                        {form.category ? ` - ${form.category}` : ""}
+                                        {form.shortcut ? ` - /${form.shortcut}` : ""}
                                     </p>
                                 </div>
                                 <div className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[11px] font-medium text-emerald-700">
@@ -561,18 +561,18 @@ export function TemplateManagerPanel() {
                             />
 
                             {form.mediaFileName ? (
-                                <div className="mt-4 rounded-[1.2rem] border border-sky-100/80 bg-white/85 p-3 shadow-[0_16px_36px_-32px_rgba(14,116,144,0.4)]">
+                                <div className="mt-4 rounded-xl border border-sky-100/80 bg-white/85 p-3 shadow-[0_16px_36px_-32px_rgba(14,116,144,0.4)]">
                                     <p className="text-xs font-medium uppercase tracking-[0.18em] text-slate-400">Archivo vinculado</p>
-                                    <div className="mt-3 rounded-[1rem] border border-border/60 bg-background/90 p-3">
+                                    <div className="mt-3 rounded-xl border border-border/60 bg-background/90 p-3">
                                         {form.type === "image" ? (
                                             previewMediaUrl ? (
                                                 <img
                                                     src={previewMediaUrl}
                                                     alt={form.mediaFileName || "Plantilla"}
-                                                    className="max-h-52 w-full rounded-[0.9rem] object-cover"
+                                                    className="max-h-52 w-full rounded-lg object-cover"
                                                 />
                                             ) : (
-                                                <div className="flex h-40 items-center justify-center rounded-[0.9rem] bg-slate-100 text-slate-400">
+                                                <div className="flex h-40 items-center justify-center rounded-lg bg-slate-100 text-slate-400">
                                                     <FileImage className="h-8 w-8" />
                                                 </div>
                                             )

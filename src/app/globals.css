@@ -242,7 +242,9 @@
   }
 
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground antialiased;
+    font-size: 15px;
+    line-height: 1.5;
   }
 }
 

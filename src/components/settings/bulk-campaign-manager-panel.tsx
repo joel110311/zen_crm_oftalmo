@@ -452,7 +452,7 @@ export function BulkCampaignManagerPanel() {
     const filteredCampaignList = filteredCampaigns;
 
     return (
-        <div className="grid gap-6 xl:grid-cols-[340px_minmax(0,1fr)]">
+        <div className="grid gap-4 xl:grid-cols-[304px_minmax(0,1fr)]">
             <BulkCampaignCampaignList
                 campaigns={filteredCampaignList}
                 search={search}
@@ -468,46 +468,46 @@ export function BulkCampaignManagerPanel() {
                 form={form}
             />
 
-            <div className="min-w-0 space-y-5">
-                <div className="grid gap-4 sm:grid-cols-2 min-[1800px]:grid-cols-4">
-                    <div className="min-w-0 rounded-[1.6rem] border bg-card p-4 shadow-[0_22px_48px_-40px_rgba(15,23,42,0.5)]">
+            <div className="min-w-0 space-y-4">
+                <div className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-4">
+                    <div className="min-w-0 rounded-xl border bg-card p-3.5 shadow-[0_12px_24px_-20px_rgba(15,23,42,0.24)]">
                         <div className="flex items-center gap-2 text-muted-foreground">
                             <Users className="h-4 w-4" />
                             <span className="text-sm">Audiencia final</span>
                         </div>
-                        <p className="mt-3 text-2xl font-semibold">{totalPreviewRecipients}</p>
+                        <p className="mt-2 text-[1.35rem] font-semibold">{totalPreviewRecipients}</p>
                     </div>
-                    <div className="min-w-0 rounded-[1.6rem] border bg-card p-4 shadow-[0_22px_48px_-40px_rgba(15,23,42,0.5)]">
+                    <div className="min-w-0 rounded-xl border bg-card p-3.5 shadow-[0_12px_24px_-20px_rgba(15,23,42,0.24)]">
                         <div className="flex items-center gap-2 text-muted-foreground">
                             <Clock3 className="h-4 w-4" />
                             <span className="text-sm">Delay aleatorio</span>
                         </div>
-                        <p className="mt-3 text-2xl font-semibold">{form.randomDelayMinSeconds}-{form.randomDelayMaxSeconds}s</p>
+                        <p className="mt-2 text-[1.35rem] font-semibold">{form.randomDelayMinSeconds}-{form.randomDelayMaxSeconds}s</p>
                     </div>
-                    <div className="min-w-0 rounded-[1.6rem] border bg-card p-4 shadow-[0_22px_48px_-40px_rgba(15,23,42,0.5)]">
+                    <div className="min-w-0 rounded-xl border bg-card p-3.5 shadow-[0_12px_24px_-20px_rgba(15,23,42,0.24)]">
                         <div className="flex items-center gap-2 text-muted-foreground">
                             <CalendarClock className="h-4 w-4" />
                             <span className="text-sm">Inicio</span>
                         </div>
-                        <p className="mt-3 text-base font-semibold leading-tight">
+                        <p className="mt-2 text-sm font-semibold leading-tight">
                             {form.scheduledStartAt ? formatDateTime(new Date(form.scheduledStartAt).toISOString()) : "Inmediato"}
                         </p>
                     </div>
-                    <div className="min-w-0 rounded-[1.6rem] border bg-card p-4 shadow-[0_22px_48px_-40px_rgba(15,23,42,0.5)]">
+                    <div className="min-w-0 rounded-xl border bg-card p-3.5 shadow-[0_12px_24px_-20px_rgba(15,23,42,0.24)]">
                         <div className="flex items-center gap-2 text-muted-foreground">
                             <BarChart3 className="h-4 w-4" />
                             <span className="text-sm">Duración estimada</span>
                         </div>
-                        <p className="mt-3 text-2xl font-semibold">{estimatedDeliveryMinutes}m</p>
+                        <p className="mt-2 text-[1.35rem] font-semibold">{estimatedDeliveryMinutes}m</p>
                     </div>
                 </div>
 
-                <div className="min-w-0 rounded-[1.9rem] border bg-card px-7 py-7 shadow-[0_28px_70px_-48px_rgba(15,23,42,0.55)]">
+                <div className="min-w-0 rounded-xl border bg-card p-4 shadow-[0_12px_28px_-22px_rgba(15,23,42,0.25)]">
                     <div className="flex flex-wrap items-start justify-between gap-4">
                         <div className="min-w-0">
                             <div className="flex items-center gap-2">
                                 <Megaphone className="h-5 w-5 text-primary" />
-                                <h2 className="text-xl font-semibold">Constructor de campaña</h2>
+                                <h2 className="text-lg font-semibold">Constructor de campaña</h2>
                             </div>
                             <p className="mt-1 text-sm text-muted-foreground">
                                 Define contenido, audiencia y cadencia desde la misma pantalla.
@@ -525,7 +525,7 @@ export function BulkCampaignManagerPanel() {
                         </div>
                     </div>
 
-                    <div className="mt-5 flex flex-wrap gap-2">
+                    <div className="mt-4 flex flex-wrap gap-2">
                         {(form.status === "draft" || form.status === "completed" || form.status === "cancelled" || form.status === "failed") && (
                             <Button onClick={() => void runAction("start")} disabled={actionLoading !== null}>
                                 {actionLoading === "start" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Play className="mr-2 h-4 w-4" />}
@@ -558,7 +558,7 @@ export function BulkCampaignManagerPanel() {
                         )}
                     </div>
 
-                    <div className="mt-6 grid gap-4 lg:grid-cols-2">
+                    <div className="mt-5 grid gap-4 lg:grid-cols-2">
                         <div className="space-y-2">
                             <Label>Nombre de la acción</Label>
                             <Input
@@ -585,11 +585,11 @@ export function BulkCampaignManagerPanel() {
                         </div>
                     </div>
 
-                    <Tabs defaultValue="message" className="mt-6 min-w-0 space-y-6">
-                        <TabsList className="grid h-auto w-full grid-cols-1 gap-2 rounded-[1.55rem] border bg-muted/20 p-2 sm:grid-cols-3">
-                            <TabsTrigger value="message" className="h-12 rounded-[1rem] border border-transparent bg-background/85 px-5 text-[15px] font-semibold text-foreground/70 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] hover:text-foreground data-[state=active]:border-primary/20 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-[0_16px_32px_-20px_rgba(37,99,235,0.7)]">Mensaje</TabsTrigger>
-                            <TabsTrigger value="audience" className="h-12 rounded-[1rem] border border-transparent bg-background/85 px-5 text-[15px] font-semibold text-foreground/70 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] hover:text-foreground data-[state=active]:border-primary/20 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-[0_16px_32px_-20px_rgba(37,99,235,0.7)]">Audiencia</TabsTrigger>
-                            <TabsTrigger value="schedule" className="h-12 rounded-[1rem] border border-transparent bg-background/85 px-5 text-[15px] font-semibold text-foreground/70 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] hover:text-foreground data-[state=active]:border-primary/20 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-[0_16px_32px_-20px_rgba(37,99,235,0.7)]">Programación</TabsTrigger>
+                    <Tabs defaultValue="message" className="mt-5 min-w-0 space-y-4">
+                        <TabsList className="grid h-auto w-full grid-cols-1 gap-2 rounded-xl border bg-muted/15 p-2 sm:grid-cols-3">
+                            <TabsTrigger value="message" className="h-11 rounded-lg border border-transparent bg-background px-4 text-sm font-semibold text-foreground/75 hover:text-foreground data-[state=active]:border-primary/30 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-[0_14px_28px_-18px_rgba(37,99,235,0.72)]">Mensaje</TabsTrigger>
+                            <TabsTrigger value="audience" className="h-11 rounded-lg border border-transparent bg-background px-4 text-sm font-semibold text-foreground/75 hover:text-foreground data-[state=active]:border-primary/30 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-[0_14px_28px_-18px_rgba(37,99,235,0.72)]">Audiencia</TabsTrigger>
+                            <TabsTrigger value="schedule" className="h-11 rounded-lg border border-transparent bg-background px-4 text-sm font-semibold text-foreground/75 hover:text-foreground data-[state=active]:border-primary/30 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-[0_14px_28px_-18px_rgba(37,99,235,0.72)]">Programacion</TabsTrigger>
                         </TabsList>
 
                         <TabsContent value="message" className="min-w-0">

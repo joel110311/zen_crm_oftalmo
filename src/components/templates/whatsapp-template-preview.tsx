@@ -61,11 +61,11 @@ export function WhatsAppTemplatePreview({
     return (
         <div
             className={cn(
-                "mx-auto w-full max-w-[424px] rounded-[2.9rem] bg-white p-3 shadow-[0_36px_90px_-40px_rgba(15,23,42,0.4)] ring-1 ring-slate-200/80",
+                "mx-auto w-full max-w-[428px] rounded-[2.35rem] bg-white p-2.5 shadow-[0_28px_70px_-36px_rgba(15,23,42,0.34)] ring-1 ring-slate-200/80",
                 className,
             )}
         >
-            <div className="overflow-hidden rounded-[2.25rem] border border-slate-200 bg-white">
+            <div className="overflow-hidden rounded-[1.95rem] border border-slate-200 bg-white">
                 <div className="relative border-b border-slate-100 bg-white px-4 pb-3 pt-2.5">
                     <div className="absolute left-1/2 top-2 h-6 w-28 -translate-x-1/2 rounded-full bg-slate-100 shadow-inner" />
                     <div className="mb-3 flex items-center justify-between text-slate-700">
@@ -91,7 +91,7 @@ export function WhatsAppTemplatePreview({
                 </div>
 
                 <div
-                    className="flex h-[36rem] flex-col justify-between px-4 pb-4 pt-6 sm:h-[38rem]"
+                    className="flex h-[35rem] flex-col justify-between px-4 pb-4 pt-5 sm:h-[37rem]"
                     style={{
                         backgroundImage: `${PHONE_WALLPAPER_PATTERN}, linear-gradient(180deg, #efe5d9 0%, #e8ddd1 100%)`,
                         backgroundRepeat: "repeat, no-repeat",
@@ -100,7 +100,7 @@ export function WhatsAppTemplatePreview({
                 >
                     <div className="flex-1 overflow-y-auto pr-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                         <div className="flex min-h-full flex-col justify-end pb-6 pt-20">
-                            <div className="ml-auto w-[90.5%] rounded-[1.45rem] rounded-br-md bg-white shadow-[0_24px_45px_-30px_rgba(15,23,42,0.24)]">
+                            <div className="ml-auto w-[92%] rounded-[1.35rem] rounded-br-md bg-white shadow-[0_20px_40px_-28px_rgba(15,23,42,0.22)]">
                                 {type === "image" ? (
                                     <div className="rounded-t-[1.45rem] px-3 pt-3">
                                         {safeMediaUrl ? (
@@ -137,7 +137,7 @@ export function WhatsAppTemplatePreview({
 
                                 <div className={cn("px-4 pb-3", type !== "text" ? "pt-3" : "pt-4")}>
                                     {hasText ? (
-                                        <WhatsAppFormattedText text={content} className="text-[14px] leading-[1.9] text-slate-700" />
+                                        <WhatsAppFormattedText text={content} className="text-[13px] leading-[1.55] text-slate-700" />
                                     ) : (
                                         <p className="text-[13px] text-slate-400">
                                             {type === "text" ? "Escribe el contenido de tu plantilla..." : "Sin mensaje adicional"}

@@ -205,7 +205,7 @@ export function GoogleCalendarPanel(props: Props) {
     };
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-5">
             <div>
                 <h3 className="font-semibold text-base text-foreground">Google Calendar</h3>
                 <p className="text-sm text-muted-foreground">
@@ -213,8 +213,8 @@ export function GoogleCalendarPanel(props: Props) {
                 </p>
             </div>
 
-            <div className="grid gap-5 min-[1450px]:grid-cols-[1.15fr_0.85fr]">
-                <div className="min-w-0 space-y-5">
+            <div className="grid gap-4 xl:grid-cols-[minmax(0,1.12fr)_minmax(0,0.88fr)]">
+                <div className="min-w-0 space-y-4">
                     <Card className="min-w-0">
                         <CardHeader className="min-w-0">
                             <CardTitle>Credenciales OAuth</CardTitle>
@@ -435,9 +435,9 @@ export function GoogleCalendarPanel(props: Props) {
                     </Card>
                 </div>
 
-                <div className="min-w-0 space-y-5">
+                <div className="min-w-0 space-y-4">
                     <Card className="min-w-0 border-primary/20">
-                        <CardHeader className="min-w-0 space-y-3">
+                        <CardHeader className="min-w-0">
                             <CardTitle className="flex items-start gap-2 leading-snug">
                                 <CalendarSync className="h-5 w-5 text-primary" />
                                 <span className="min-w-0">Estado de la conexion</span>

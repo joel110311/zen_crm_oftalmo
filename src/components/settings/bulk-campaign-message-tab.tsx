@@ -50,17 +50,17 @@ export function BulkCampaignMessageTab({
     const previewMediaUrl = getSafeMediaUrl(form.mediaUrl);
 
     return (
-        <div className="space-y-5">
+        <div className="space-y-4">
             {form.type !== "text" ? (
-                <div className="rounded-[1.5rem] border bg-muted/15 p-5">
+                <div className="rounded-xl border bg-muted/15 p-4">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                         <div className="space-y-1">
-                            <p className="text-base font-semibold">Adjunto compartido</p>
+                            <p className="text-sm font-semibold">Adjunto compartido</p>
                             <p className="text-sm leading-6 text-muted-foreground">
                                 La pieza va en todos los envios; las variantes cambian el caption.
                             </p>
                         </div>
-                        <label className="inline-flex h-11 cursor-pointer items-center rounded-2xl border bg-background px-4 text-sm font-semibold shadow-sm transition-colors hover:bg-muted/40">
+                        <label className="inline-flex h-10 cursor-pointer items-center rounded-xl border bg-background px-3.5 text-sm font-semibold transition-colors hover:bg-muted/40">
                             {isUploading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}
                             Subir archivo
                             <input
@@ -76,7 +76,7 @@ export function BulkCampaignMessageTab({
                         </label>
                     </div>
 
-                    <div className="mt-4 rounded-2xl border bg-background/85 p-4">
+                    <div className="mt-3 rounded-xl border bg-background/85 p-3">
                         {form.mediaUrl ? (
                             form.type === "image" ? (
                                 previewMediaUrl ? (
@@ -110,29 +110,29 @@ export function BulkCampaignMessageTab({
                 </div>
             ) : null}
 
-            <div className="grid gap-5 min-[1800px]:grid-cols-[0.9fr_1.1fr]">
-                <div className="min-w-0 space-y-4 rounded-[1.5rem] border bg-muted/15 p-5">
+            <div className="grid gap-4 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
+                <div className="min-w-0 space-y-4 rounded-xl border bg-muted/15 p-4">
                     <div className="flex flex-wrap items-start justify-between gap-4">
                         <div className="min-w-0 space-y-1">
-                            <h3 className="text-lg font-semibold leading-tight">Variaciones del mensaje</h3>
+                            <h3 className="text-base font-semibold leading-tight">Variaciones del mensaje</h3>
                             <p className="text-sm leading-6 text-muted-foreground">
                                 Cada destinatario toma una variante activa para bajar la repeticion.
                             </p>
                         </div>
-                        <Button variant="outline" onClick={onAddVariant} className="h-11 rounded-2xl bg-background px-5 text-sm font-semibold shadow-sm">
+                        <Button variant="outline" onClick={onAddVariant} className="h-10 rounded-xl bg-background px-4 text-sm font-semibold">
                             <Plus className="mr-2 h-4 w-4" />
                             Agregar
                         </Button>
                     </div>
 
-                    <div className="flex flex-wrap gap-3">
+                    <div className="flex flex-wrap gap-2.5">
                         {form.variants.map((variant, index) => (
                             <button
                                 key={`${variant.label}-${index}`}
                                 type="button"
                                 onClick={() => onActiveVariantIndexChange(index)}
                                 className={cn(
-                                    "rounded-2xl border px-4 py-2 text-sm font-semibold shadow-sm transition",
+                                    "rounded-xl border px-3.5 py-1.5 text-sm font-semibold transition",
                                     index === activeVariantIndex
                                         ? "border-primary/25 bg-primary text-primary-foreground shadow-[0_18px_35px_-24px_rgba(37,99,235,0.8)]"
                                         : "bg-background hover:border-primary/35 hover:text-foreground",
@@ -143,8 +143,8 @@ export function BulkCampaignMessageTab({
                         ))}
                     </div>
 
-                    <div className="space-y-4 rounded-[1.3rem] border bg-background/90 p-5">
-                        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_150px]">
+                    <div className="space-y-3.5 rounded-xl border bg-background/90 p-4">
+                        <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_120px_190px]">
                             <div className="space-y-2">
                                 <Label>Etiqueta</Label>
                                 <Input
@@ -171,35 +171,29 @@ export function BulkCampaignMessageTab({
                                     }
                                 />
                             </div>
-                        </div>
-
-                        <div className="flex flex-wrap items-center justify-between gap-3 rounded-[1rem] border bg-muted/15 px-4 py-3">
-                            <div className="space-y-1">
-                                <Label className="text-sm font-semibold">Activa</Label>
-                                <p className="text-xs leading-5 text-muted-foreground">
-                                    Manten esta variante disponible para la rotacion del envio.
-                                </p>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <Switch
-                                    checked={activeVariant.isActive}
-                                    onCheckedChange={(checked) =>
-                                        onVariantChange(activeVariantIndex, (variant) => ({
-                                            ...variant,
-                                            isActive: checked,
-                                        }))
-                                    }
-                                />
-                                <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-10 rounded-xl px-3 text-destructive hover:text-destructive"
-                                    onClick={() => onRemoveVariant(activeVariantIndex)}
-                                    disabled={form.variants.length === 1}
-                                >
-                                    <Trash2 className="mr-1.5 h-3.5 w-3.5" />
-                                    Quitar
-                                </Button>
+                            <div className="space-y-2">
+                                <Label>Activa</Label>
+                                <div className="flex h-10 items-center justify-between rounded-lg border bg-muted/15 px-3">
+                                    <Switch
+                                        checked={activeVariant.isActive}
+                                        onCheckedChange={(checked) =>
+                                            onVariantChange(activeVariantIndex, (variant) => ({
+                                                ...variant,
+                                                isActive: checked,
+                                            }))
+                                        }
+                                    />
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-8 rounded-md px-2 text-destructive hover:text-destructive"
+                                        onClick={() => onRemoveVariant(activeVariantIndex)}
+                                        disabled={form.variants.length === 1}
+                                    >
+                                        <Trash2 className="mr-1 h-3.5 w-3.5" />
+                                        Quitar
+                                    </Button>
+                                </div>
                             </div>
                         </div>
 
@@ -214,12 +208,12 @@ export function BulkCampaignMessageTab({
                                     }))
                                 }
                                 placeholder={form.type === "text" ? "Escribe la variante del mensaje..." : "Caption opcional para esta variacion..."}
-                                className="min-h-[220px]"
+                                className="min-h-[170px]"
                             />
                         </div>
                     </div>
 
-                    <div className="rounded-[1.3rem] border bg-background/90 p-5">
+                    <div className="rounded-xl border bg-background/90 p-4">
                         <p className="font-medium">Variables disponibles</p>
                         <p className="text-sm leading-6 text-muted-foreground">
                             Se reemplazan con datos del contacto y del agente en el envio real.
@@ -237,7 +231,7 @@ export function BulkCampaignMessageTab({
                                                 : variable.placeholder,
                                         }))
                                     }
-                                    className="rounded-2xl border bg-background px-3 py-1.5 text-xs font-semibold shadow-sm transition hover:border-primary hover:text-primary"
+                                    className="rounded-xl border bg-background px-3 py-1.5 text-xs font-semibold transition hover:border-primary hover:text-primary"
                                 >
                                     {variable.placeholder}
                                 </button>
@@ -252,10 +246,10 @@ export function BulkCampaignMessageTab({
                 </div>
 
                 <div className="min-w-0 space-y-4">
-                    <div className="min-w-0 rounded-[1.5rem] border bg-muted/15 p-5">
+                    <div className="min-w-0 rounded-xl border bg-muted/15 p-4">
                         <div className="flex items-center gap-2">
                             <WandSparkles className="h-4 w-4 text-primary" />
-                            <p className="text-base font-semibold">Vista previa de WhatsApp</p>
+                            <p className="text-sm font-semibold">Vista previa de WhatsApp</p>
                         </div>
                         <p className="mt-1 text-sm leading-6 text-muted-foreground">
                             Render con datos de ejemplo para validar tono, estructura y adjunto.
@@ -273,7 +267,7 @@ export function BulkCampaignMessageTab({
                         </div>
                     </div>
 
-                    <div className="min-w-0 rounded-[1.5rem] border bg-muted/15 p-5">
+                    <div className="min-w-0 rounded-xl border bg-muted/15 p-4">
                         <p className="font-medium">Estrategia aplicada</p>
                         <div className="mt-3 space-y-3 text-sm text-muted-foreground">
                             <div className="rounded-xl border bg-background/80 p-3 leading-6">
@@ -291,7 +285,7 @@ export function BulkCampaignMessageTab({
                         </div>
                     </div>
 
-                    <div className="min-w-0 rounded-[1.5rem] border bg-muted/15 p-5">
+                    <div className="min-w-0 rounded-xl border bg-muted/15 p-4">
                         <p className="font-medium">Borrador</p>
                         <div className="mt-3 grid gap-3 sm:grid-cols-2">
                             <div className="rounded-xl border bg-background/80 p-3 text-sm">

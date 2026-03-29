@@ -2,9 +2,8 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Search, Loader2, User, Briefcase } from "lucide-react";
+import { Briefcase, Loader2, Search, User } from "lucide-react";
 import { useDebounce } from "use-debounce";
-
 import {
     CommandDialog,
     CommandEmpty,
@@ -28,10 +27,10 @@ export function SearchCommand() {
     const [loading, setLoading] = React.useState(false);
 
     React.useEffect(() => {
-        const down = (e: KeyboardEvent) => {
-            if (e.key === "k" && (e.metaKey || e.ctrlKey)) {
-                e.preventDefault();
-                setOpen((open) => !open);
+        const down = (event: KeyboardEvent) => {
+            if (event.key === "k" && (event.metaKey || event.ctrlKey)) {
+                event.preventDefault();
+                setOpen((current) => !current);
             }
         };
         document.addEventListener("keydown", down);
@@ -56,7 +55,7 @@ export function SearchCommand() {
             }
         };
 
-        fetchResults();
+        void fetchResults();
     }, [debouncedQuery]);
 
     const handleSelect = (callback: () => void) => {
@@ -69,17 +68,17 @@ export function SearchCommand() {
             <Button
                 variant="outline"
                 className={cn(
-                    "relative h-11 w-full justify-start rounded-2xl border-border/70 bg-background px-4 text-sm text-muted-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.85),0_1px_2px_rgba(15,23,42,0.05)] sm:pr-12 md:w-56 lg:w-72"
+                    "relative h-10 w-full justify-start rounded-xl border-border/70 bg-background px-3.5 text-sm text-muted-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] sm:pr-14 md:w-56 lg:w-72",
                 )}
                 onClick={() => setOpen(true)}
             >
                 <Search className="mr-2 h-4 w-4" />
-                <span className="hidden lg:inline-flex">Search...</span>
-                <span className="inline-flex lg:hidden">Search...</span>
-                <kbd className="pointer-events-none absolute right-1.5 top-1.5 hidden h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium opacity-100 sm:flex">
-                    <span className="text-xs">⌘</span>K
+                <span>Search...</span>
+                <kbd className="pointer-events-none absolute right-1.5 top-1.5 hidden h-5 select-none items-center rounded border bg-muted px-1.5 font-mono text-[10px] font-medium opacity-100 sm:flex">
+                    Ctrl K
                 </kbd>
             </Button>
+
             <CommandDialog open={open} onOpenChange={setOpen}>
                 <CommandInput
                     placeholder="Type to search contacts or deals..."
@@ -89,16 +88,16 @@ export function SearchCommand() {
                 <CommandList>
                     <CommandEmpty>No results found.</CommandEmpty>
 
-                    {loading && (
+                    {loading ? (
                         <div className="flex items-center justify-center p-4 text-sm text-muted-foreground">
                             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                             Searching...
                         </div>
-                    )}
+                    ) : null}
 
-                    {!loading && data && (
+                    {!loading && data ? (
                         <>
-                            {data.contacts.length > 0 && (
+                            {data.contacts.length > 0 ? (
                                 <CommandGroup heading="Contacts">
                                     {data.contacts.map((contact) => (
                                         <CommandItem
@@ -114,11 +113,11 @@ export function SearchCommand() {
                                         </CommandItem>
                                     ))}
                                 </CommandGroup>
-                            )}
+                            ) : null}
 
-                            {data.contacts.length > 0 && data.deals.length > 0 && <CommandSeparator />}
+                            {data.contacts.length > 0 && data.deals.length > 0 ? <CommandSeparator /> : null}
 
-                            {data.deals.length > 0 && (
+                            {data.deals.length > 0 ? (
                                 <CommandGroup heading="Deals">
                                     {data.deals.map((deal) => (
                                         <CommandItem
@@ -130,15 +129,15 @@ export function SearchCommand() {
                                             <div className="flex flex-col">
                                                 <span>{deal.title}</span>
                                                 <span className="text-xs text-muted-foreground">
-                                                    {new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(deal.value)} • {deal.stageName}
+                                                    {new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format(deal.value)} - {deal.stageName}
                                                 </span>
                                             </div>
                                         </CommandItem>
                                     ))}
                                 </CommandGroup>
-                            )}
+                            ) : null}
                         </>
-                    )}
+                    ) : null}
                 </CommandList>
             </CommandDialog>
         </>

@@ -35,15 +35,15 @@ export function BulkCampaignCampaignList({
     form,
 }: BulkCampaignCampaignListProps) {
     return (
-        <div className="space-y-6 rounded-[1.9rem] border bg-card px-7 py-7 shadow-[0_24px_55px_-42px_rgba(15,23,42,0.55)]">
-            <div className="flex items-start justify-between gap-4">
+        <div className="space-y-4 rounded-xl border bg-card p-4 shadow-[0_12px_28px_-22px_rgba(15,23,42,0.25)]">
+            <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0 space-y-1">
-                    <h2 className="text-lg font-semibold leading-tight">Suite de envios masivos</h2>
-                    <p className="text-sm leading-6 text-muted-foreground">
+                    <h2 className="text-base font-semibold leading-tight">Suite de envios masivos</h2>
+                    <p className="text-sm leading-5 text-muted-foreground">
                         Campanas con audiencia visible, goteo y programacion.
                     </p>
                 </div>
-                <Button variant="outline" size="sm" onClick={onCreateCampaign} className="h-11 shrink-0 rounded-2xl px-4">
+                <Button variant="outline" size="sm" onClick={onCreateCampaign} className="h-9 shrink-0 rounded-xl px-3.5">
                     <Plus className="mr-2 h-4 w-4" />
                     Nueva
                 </Button>
@@ -59,7 +59,7 @@ export function BulkCampaignCampaignList({
                 />
             </div>
 
-            <Button variant="ghost" className="h-11 w-full justify-start rounded-2xl" onClick={onRefreshCampaigns}>
+            <Button variant="ghost" className="h-9 w-full justify-start rounded-xl" onClick={onRefreshCampaigns}>
                 <RefreshCcw className="mr-2 h-4 w-4" />
                 Refrescar campanas
             </Button>
@@ -88,7 +88,7 @@ export function BulkCampaignCampaignList({
                                 type="button"
                                 onClick={() => onSelectCampaign(campaign)}
                                 className={cn(
-                                    "w-full rounded-[1.35rem] border px-4 py-4 text-left transition-all",
+                                    "w-full rounded-xl border px-3.5 py-3.5 text-left transition-all",
                                     selectedCampaignId === campaign.id
                                         ? "border-primary/45 bg-primary/5 shadow-[0_20px_42px_-36px_rgba(37,99,235,0.5)]"
                                         : "hover:border-border/80 hover:bg-muted/25",
@@ -132,7 +132,7 @@ export function BulkCampaignCampaignList({
                 )}
             </div>
 
-            <div className="rounded-[1.35rem] border bg-muted/20 p-4">
+            <div className="rounded-xl border bg-muted/20 p-3.5">
                 <p className="text-sm font-medium">Borrador activo</p>
                 <p className="mt-1 text-xs text-muted-foreground">
                     {form.name || "Nueva campana sin nombre"}

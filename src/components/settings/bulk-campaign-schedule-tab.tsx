@@ -126,7 +126,7 @@ function ScheduledStartPicker({ value, onChange }: ScheduledStartPickerProps) {
                 <Button
                     type="button"
                     variant="outline"
-                    className="h-11 w-full justify-between rounded-xl px-3 font-normal"
+                    className="h-10 w-full justify-between rounded-xl px-3 font-normal"
                 >
                     <span className={cn("truncate text-left", !value && "text-muted-foreground")}>
                         {triggerLabel}
@@ -144,7 +144,7 @@ function ScheduledStartPicker({ value, onChange }: ScheduledStartPickerProps) {
                 </div>
 
                 <div className="space-y-4 p-4">
-                    <div className="rounded-[1.25rem] border bg-background/90 p-2">
+                    <div className="rounded-xl border bg-background/90 p-2">
                         <Calendar
                             mode="single"
                             selected={draftDate}
@@ -199,9 +199,9 @@ export function BulkCampaignScheduleTab({
     onFormChange,
 }: BulkCampaignScheduleTabProps) {
     return (
-        <div className="grid gap-5 min-[1800px]:grid-cols-[1.02fr_0.98fr]">
-            <div className="min-w-0 space-y-5">
-                <div className="min-w-0 rounded-[1.5rem] border bg-muted/15 p-4">
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.02fr)_minmax(0,0.98fr)]">
+            <div className="min-w-0 space-y-4">
+                <div className="min-w-0 rounded-xl border bg-muted/15 p-4">
                     <div className="flex items-center gap-2">
                         <CalendarClock className="h-4 w-4 text-primary" />
                         <p className="font-medium">Disparo inicial</p>
@@ -220,7 +220,7 @@ export function BulkCampaignScheduleTab({
                     </div>
                 </div>
 
-                <div className="min-w-0 rounded-[1.5rem] border bg-muted/15 p-4">
+                <div className="min-w-0 rounded-xl border bg-muted/15 p-4">
                     <div className="flex items-center gap-2">
                         <Clock3 className="h-4 w-4 text-primary" />
                         <p className="font-medium">Pacing humano</p>
@@ -298,13 +298,13 @@ export function BulkCampaignScheduleTab({
                     </div>
                 </div>
 
-                <div className="min-w-0 rounded-[1.5rem] border bg-muted/15 p-4">
+                <div className="min-w-0 rounded-xl border bg-muted/15 p-4">
                     <div className="flex items-center gap-2">
                         <CheckCircle2 className="h-4 w-4 text-primary" />
                         <p className="font-medium">Guardarraíles</p>
                     </div>
                     <div className="mt-4 space-y-4">
-                        <div className="flex flex-wrap items-start justify-between gap-4 rounded-[1.2rem] border bg-background/85 px-4 py-3">
+                        <div className="flex flex-wrap items-start justify-between gap-4 rounded-xl border bg-background/85 px-4 py-3">
                             <div>
                                 <p className="font-medium">Respetar horario hábil del CRM</p>
                                 <p className="text-sm text-muted-foreground">
@@ -320,7 +320,7 @@ export function BulkCampaignScheduleTab({
                             />
                         </div>
 
-                        <div className="flex flex-wrap items-start justify-between gap-4 rounded-[1.2rem] border bg-background/85 px-4 py-3">
+                        <div className="flex flex-wrap items-start justify-between gap-4 rounded-xl border bg-background/85 px-4 py-3">
                             <div>
                                 <p className="font-medium">Cortar seguimiento si el lead responde</p>
                                 <p className="text-sm text-muted-foreground">
@@ -339,8 +339,8 @@ export function BulkCampaignScheduleTab({
                 </div>
             </div>
 
-            <div className="min-w-0 space-y-5">
-                <div className="min-w-0 rounded-[1.5rem] border bg-muted/15 p-4">
+            <div className="min-w-0 space-y-4">
+                <div className="min-w-0 rounded-xl border bg-muted/15 p-4">
                     <div className="flex items-center gap-2">
                         <Clock3 className="h-4 w-4 text-primary" />
                         <p className="font-medium">Simulación de arranque</p>
