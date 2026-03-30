@@ -1367,6 +1367,8 @@ export async function processInboundMessage(
             botInputText || text,
             message.createdAt,
         );
+        const conversationWasBotActive = conversation.botActive ?? true;
+        let shouldScheduleAutomatedReply = conversationWasBotActive;
 
         if (bulkReplyResult.intent === "stop") {
             await prisma.conversation.update({
@@ -1376,8 +1378,9 @@ export async function processInboundMessage(
                     updatedAt: new Date(),
                 },
             });
+            shouldScheduleAutomatedReply = false;
             revalidatePath("/dashboard/pipeline");
-        } else if (bulkReplyResult.activatedBot) {
+        } else if (bulkReplyResult.activatedBot && conversationWasBotActive) {
             await prisma.conversation.update({
                 where: { id: conversation.id },
                 data: {
@@ -1385,6 +1388,9 @@ export async function processInboundMessage(
                     updatedAt: new Date(),
                 },
             });
+            shouldScheduleAutomatedReply = true;
+        } else if (bulkReplyResult.activatedBot && !conversationWasBotActive) {
+            console.log("[Chatbot] Interest detected but the conversation stays in human mode:", conversation.id);
         }
 
         // ── Auto-create Deal for contacts without a deal ──
@@ -1426,7 +1432,7 @@ export async function processInboundMessage(
 
         // ── CHATBOT / N8N FORWARDING ──
         try {
-            if (bulkReplyResult.intent !== "stop") {
+            if (bulkReplyResult.intent !== "stop" && shouldScheduleAutomatedReply) {
                 void maybeSendAutomatedReply(conversation.id, message.id, botInputText);
             }
         } catch (botError) {
