@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils";
 type BulkCampaignScheduleTabProps = {
     form: CampaignFormState;
     totalPreviewRecipients: number;
+    totalPlannedTouches: number;
     estimatedDeliveryMinutes: number;
     onFormChange: (updater: (current: CampaignFormState) => CampaignFormState) => void;
 };
@@ -202,6 +203,7 @@ function ScheduledStartPicker({ value, onChange }: ScheduledStartPickerProps) {
 export function BulkCampaignScheduleTab({
     form,
     totalPreviewRecipients,
+    totalPlannedTouches,
     estimatedDeliveryMinutes,
     onFormChange,
 }: BulkCampaignScheduleTabProps) {
@@ -329,9 +331,11 @@ export function BulkCampaignScheduleTab({
 
                         <div className="flex flex-wrap items-start justify-between gap-4 rounded-xl border bg-background/85 px-4 py-3">
                             <div>
-                                <p className="font-medium">Cortar seguimiento si el lead responde</p>
+                                <p className="font-medium">Detener secuencia cuando el lead responda</p>
                                 <p className="text-sm text-muted-foreground">
-                                    Evita insistir cuando ya hubo interaccion humana.
+                                    {form.stopOnReply
+                                        ? "Si responde cualquier cosa, ya no se enviaran seguimientos extras. 'Detener' tambien lo bloquea de futuros masivos y lo manda a Cerrado Perdido."
+                                        : "Si responde algo neutral, la secuencia puede continuar. 'Detener' siempre bloquea futuros masivos y 'me interesa' activa el bot."}
                                 </p>
                             </div>
                             <Switch
@@ -341,6 +345,32 @@ export function BulkCampaignScheduleTab({
                                 }
                                 className="shrink-0"
                             />
+                        </div>
+
+                        <div className="rounded-xl border bg-background/85 px-4 py-3">
+                            <div className="space-y-2">
+                                <Label>Seguimientos extra si no responde</Label>
+                                <Input
+                                    type="number"
+                                    min={0}
+                                    max={12}
+                                    value={String(form.followUpCount)}
+                                    onChange={(event) =>
+                                        onFormChange((current) => ({
+                                            ...current,
+                                            followUpCount: Math.min(
+                                                12,
+                                                Math.max(0, Number.parseInt(event.target.value || "0", 10) || 0),
+                                            ),
+                                        }))
+                                    }
+                                />
+                                <p className="text-sm text-muted-foreground">
+                                    {form.followUpCount > 0
+                                        ? `Despues del primer mensaje, el CRM intentara hasta ${form.followUpCount} seguimientos adicionales por contacto si la secuencia sigue abierta.`
+                                        : "Solo se enviara el primer mensaje; no habra seguimientos automaticos adicionales."}
+                                </p>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -358,6 +388,9 @@ export function BulkCampaignScheduleTab({
                         </div>
                         <div className="rounded-xl border bg-background/85 p-3">
                             Luego el sistema intercalara delays de <span className="font-semibold text-foreground">{form.randomDelayMinSeconds}</span> a <span className="font-semibold text-foreground">{form.randomDelayMaxSeconds}</span> segundos por mensaje.
+                        </div>
+                        <div className="rounded-xl border bg-background/85 p-3">
+                            La secuencia contempla <span className="font-semibold text-foreground">{form.followUpCount}</span> seguimientos extras por contacto y un total estimado de <span className="font-semibold text-foreground">{totalPlannedTouches}</span> envios.
                         </div>
                         <div className="rounded-xl border bg-background/85 p-3">
                             Cada {form.batchSize} mensajes aplicara una pausa larga de {form.batchDelayMinutes} minutos.
@@ -383,6 +416,14 @@ export function BulkCampaignScheduleTab({
                             <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Cadencia</p>
                             <p className="mt-2 font-medium">
                                 {form.batchSize} mensajes por sublote, {form.batchDelayMinutes} min de pausa larga.
+                            </p>
+                        </div>
+                        <div className="rounded-xl border bg-background/85 p-3">
+                            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Seguimientos</p>
+                            <p className="mt-2 font-medium">
+                                {form.followUpCount > 0
+                                    ? `${form.followUpCount} extras por contacto (${totalPlannedTouches} toques en total)`
+                                    : "Sin seguimientos extras"}
                             </p>
                         </div>
                     </div>

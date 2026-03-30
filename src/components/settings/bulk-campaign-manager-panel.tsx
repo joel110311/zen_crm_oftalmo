@@ -55,6 +55,7 @@ function mapCampaignToForm(campaign: CampaignRecord): CampaignFormState {
         scheduledStartAt: toLocalDateTimeValue(campaign.scheduledStartAt),
         respectBusinessHours: campaign.respectBusinessHours,
         stopOnReply: campaign.stopOnReply,
+        followUpCount: campaign.followUpCount,
         audienceMode: campaign.audienceFilters?.mode || "filters",
         audienceStatuses: campaign.audienceFilters?.statuses || [],
         audienceTags: (campaign.audienceFilters?.tags || []).join(", "),
@@ -273,6 +274,7 @@ export function BulkCampaignManagerPanel() {
                 scheduledStartAt: form.scheduledStartAt ? new Date(form.scheduledStartAt).toISOString() : null,
                 respectBusinessHours: form.respectBusinessHours,
                 stopOnReply: form.stopOnReply,
+                followUpCount: form.followUpCount,
                 audienceFilters: audiencePayload,
                 variants: form.variants.map((variant, index) => ({
                     ...variant,
@@ -439,10 +441,11 @@ export function BulkCampaignManagerPanel() {
     };
 
     const totalPreviewRecipients = audiencePreview?.totals.finalRecipients || form.totalRecipients;
+    const totalPlannedTouches = totalPreviewRecipients * (Math.max(0, form.followUpCount) + 1);
     const averageDelaySeconds = Math.round((form.randomDelayMinSeconds + form.randomDelayMaxSeconds) / 2);
-    const messageIntervals = Math.max(totalPreviewRecipients - 1, 0);
+    const messageIntervals = Math.max(totalPlannedTouches - 1, 0);
     const longPauseCount = form.batchSize > 0
-        ? Math.max(Math.ceil(totalPreviewRecipients / form.batchSize) - 1, 0)
+        ? Math.max(Math.ceil(totalPlannedTouches / form.batchSize) - 1, 0)
         : 0;
     const estimatedDeliveryMinutes = Math.round(
         ((Math.max(messageIntervals - longPauseCount, 0) * averageDelaySeconds) +
@@ -476,6 +479,9 @@ export function BulkCampaignManagerPanel() {
                             <span className="text-sm">Audiencia final</span>
                         </div>
                         <p className="mt-2 text-[1.35rem] font-semibold">{totalPreviewRecipients}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                            {totalPlannedTouches} toques planeados
+                        </p>
                     </div>
                     <div className="min-w-0 rounded-xl border bg-card p-3.5 shadow-[0_12px_24px_-20px_rgba(15,23,42,0.24)]">
                         <div className="flex items-center gap-2 text-muted-foreground">
@@ -654,6 +660,7 @@ export function BulkCampaignManagerPanel() {
                             <BulkCampaignScheduleTab
                                 form={form}
                                 totalPreviewRecipients={totalPreviewRecipients}
+                                totalPlannedTouches={totalPlannedTouches}
                                 estimatedDeliveryMinutes={estimatedDeliveryMinutes}
                                 onFormChange={(updater) => setForm(updater)}
                             />

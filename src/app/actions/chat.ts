@@ -1319,7 +1319,39 @@ export async function processInboundMessage(
             },
         });
 
-        await markBulkCampaignReplyForContact(contact.id, conversation.id, message.createdAt);
+        // â”€â”€ Ensure the contact already exists in the pipeline before evaluating stop rules â”€â”€
+        try {
+            const existingDeal = await prisma.deal.findFirst({
+                where: { contactId: contact.id },
+            });
+
+            if (!existingDeal) {
+                const incomingStage = await prisma.pipelineStage.findFirst({
+                    where: { isIncoming: true },
+                });
+
+                if (incomingStage) {
+                    const displayName = normalizeContactName(contact.name) || normalizedCustomerName;
+                    const dealTitle = displayName
+                        ? `Lead - ${displayName}`
+                        : `Lead WhatsApp - ${from}`;
+
+                    await prisma.deal.create({
+                        data: {
+                            title: dealTitle,
+                            value: 0,
+                            stageId: incomingStage.id,
+                            contactId: contact.id,
+                            source: "whatsapp",
+                            priority: "medium",
+                        },
+                    });
+                    revalidatePath("/dashboard/pipeline");
+                }
+            }
+        } catch (dealError) {
+            console.error("[Pipeline] Failed to auto-create deal:", dealError);
+        }
 
         const botInputText = await buildInboundMediaContext({
             text,
@@ -1328,6 +1360,32 @@ export async function processInboundMessage(
             mediaType: media?.mediaType,
             mediaFileName: media?.mediaFileName,
         });
+
+        const bulkReplyResult = await markBulkCampaignReplyForContact(
+            contact.id,
+            conversation.id,
+            botInputText || text,
+            message.createdAt,
+        );
+
+        if (bulkReplyResult.intent === "stop") {
+            await prisma.conversation.update({
+                where: { id: conversation.id },
+                data: {
+                    botActive: false,
+                    updatedAt: new Date(),
+                },
+            });
+            revalidatePath("/dashboard/pipeline");
+        } else if (bulkReplyResult.activatedBot) {
+            await prisma.conversation.update({
+                where: { id: conversation.id },
+                data: {
+                    botActive: true,
+                    updatedAt: new Date(),
+                },
+            });
+        }
 
         // ── Auto-create Deal for contacts without a deal ──
         // Every contact should be mapped in the pipeline
@@ -1368,7 +1426,9 @@ export async function processInboundMessage(
 
         // ── CHATBOT / N8N FORWARDING ──
         try {
-            void maybeSendAutomatedReply(conversation.id, message.id, botInputText);
+            if (bulkReplyResult.intent !== "stop") {
+                void maybeSendAutomatedReply(conversation.id, message.id, botInputText);
+            }
         } catch (botError) {
             console.error("[Chatbot] Error scheduling automated reply:", botError);
         }

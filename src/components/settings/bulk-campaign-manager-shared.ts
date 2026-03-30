@@ -36,6 +36,7 @@ export type CampaignRecord = {
     scheduledStartAt: string | null;
     respectBusinessHours: boolean;
     stopOnReply: boolean;
+    followUpCount: number;
     totalRecipients: number;
     sentCount: number;
     failedCount: number;
@@ -117,6 +118,7 @@ export type CampaignFormState = {
     scheduledStartAt: string;
     respectBusinessHours: boolean;
     stopOnReply: boolean;
+    followUpCount: number;
     audienceMode: BulkCampaignAudienceMode;
     audienceStatuses: string[];
     audienceTags: string;
@@ -152,6 +154,7 @@ export const EMPTY_FORM: CampaignFormState = {
     scheduledStartAt: "",
     respectBusinessHours: true,
     stopOnReply: true,
+    followUpCount: 0,
     audienceMode: "filters",
     audienceStatuses: ["lead"],
     audienceTags: "",

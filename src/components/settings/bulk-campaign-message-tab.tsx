@@ -278,9 +278,14 @@ export function BulkCampaignMessageTab({
                                 Despues del sublote, el motor esperara <span className="font-semibold text-foreground">{form.batchDelayMinutes}</span> minutos antes de volver a disparar.
                             </div>
                             <div className="rounded-xl border bg-background/80 p-3 leading-6">
+                                {form.followUpCount > 0
+                                    ? `Si no responde, la campana puede enviar hasta ${form.followUpCount} seguimientos adicionales por contacto.`
+                                    : "Esta ola enviara un solo toque por contacto; no habra seguimientos extra."}
+                            </div>
+                            <div className="rounded-xl border bg-background/80 p-3 leading-6">
                                 {form.stopOnReply
-                                    ? "Si el contacto responde, la campana lo marca como respondido y corta seguimiento automatico."
-                                    : "La campana no se detendra automaticamente cuando detecte respuesta."}
+                                    ? "Si el lead responde cualquier cosa, la secuencia de esa campana se cierra. Si escribe algo como 'detener', tambien queda bloqueado de futuros masivos y pasa a Cerrado Perdido."
+                                    : "Con respuestas neutrales la secuencia puede seguir activa. Si escribe 'detener' se bloquean futuros masivos, y si muestra interes el bot toma la conversacion para vender."}
                             </div>
                         </div>
                     </div>

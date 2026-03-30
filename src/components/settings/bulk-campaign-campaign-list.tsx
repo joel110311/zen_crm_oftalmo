@@ -76,10 +76,11 @@ export function BulkCampaignCampaignList({
                     </div>
                 ) : (
                     campaigns.map((campaign) => {
-                        const progressBase = Math.max(campaign.totalRecipients, 1);
+                        const progressBase = Math.max(campaign.totalRecipients * (Math.max(0, campaign.followUpCount) + 1), 1);
+                        const processedTouches = campaign.sentCount + campaign.failedCount + campaign.skippedCount;
                         const progress = Math.min(
                             100,
-                            Math.round(((campaign.sentCount + campaign.failedCount + campaign.skippedCount + campaign.repliedCount) / progressBase) * 100),
+                            Math.round((processedTouches / progressBase) * 100),
                         );
 
                         return (
@@ -112,8 +113,8 @@ export function BulkCampaignCampaignList({
                                         <p>Destinatarios</p>
                                     </div>
                                     <div className="rounded-xl border bg-background/70 px-3 py-2">
-                                        <p className="font-medium text-foreground">{campaign.sentCount}</p>
-                                        <p>Enviados</p>
+                                        <p className="font-medium text-foreground">{processedTouches}/{progressBase}</p>
+                                        <p>Toques</p>
                                     </div>
                                 </div>
 

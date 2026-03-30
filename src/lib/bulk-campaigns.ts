@@ -25,6 +25,10 @@ import {
     type BulkCampaignManualEntry,
     normalizeBulkCampaignAudienceFilters,
 } from "@/lib/bulk-campaign-audience";
+import {
+    classifyBulkCampaignReplyIntent,
+    type BulkCampaignReplyIntent,
+} from "@/lib/bulk-campaign-replies";
 import { buildPhoneMatchClauses, normalizePhoneDigits } from "@/lib/phone";
 
 const DEFAULT_VARIANT_LABELS = ["A", "B", "C", "D", "E"];
@@ -53,12 +57,20 @@ export type BulkCampaignUpsertInput = {
     scheduledStartAt: Date | null;
     respectBusinessHours: boolean;
     stopOnReply: boolean;
+    followUpCount: number;
     audienceFilters: BulkCampaignAudienceFilters;
     variants: BulkCampaignVariantInput[];
 };
 
 export type BulkCampaignRecord = BulkCampaign & {
     variants: BulkCampaignVariant[];
+};
+
+export type BulkCampaignReplyHandlingResult = {
+    intent: BulkCampaignReplyIntent;
+    stoppedCampaignIds: string[];
+    activatedBot: boolean;
+    optedOut: boolean;
 };
 
 function clampInteger(value: unknown, fallback: number, min: number, max: number) {
@@ -143,6 +155,7 @@ export function normalizeBulkCampaignPayload(value: unknown): BulkCampaignUpsert
         scheduledStartAt: normalizeOptionalDate(record.scheduledStartAt),
         respectBusinessHours: record.respectBusinessHours !== false,
         stopOnReply: record.stopOnReply !== false,
+        followUpCount: clampInteger(record.followUpCount, 0, 0, 12),
         audienceFilters: normalizeBulkCampaignAudienceFilters(
             record.audienceFilters,
             MAX_BULK_CAMPAIGN_AUDIENCE_LIMIT,
@@ -191,6 +204,7 @@ function buildAudienceWhere(filters: BulkCampaignAudienceFilters): Prisma.Contac
         phone: {
             not: "",
         },
+        bulkCampaignOptOutAt: null,
         ...(filters.statuses.length > 0 ? { status: { in: filters.statuses } } : {}),
         ...(filters.tags.length > 0 ? { tags: { hasEvery: filters.tags } } : {}),
         ...(query
@@ -216,6 +230,7 @@ const AUDIENCE_CONTACT_SELECT = {
     phone: true,
     status: true,
     tags: true,
+    bulkCampaignOptOutAt: true,
     updatedAt: true,
     createdAt: true,
 } satisfies Prisma.ContactSelect;
@@ -285,6 +300,7 @@ async function loadSelectedAudienceContacts(selectedContactIds: string[]) {
             phone: {
                 not: "",
             },
+            bulkCampaignOptOutAt: null,
         },
         select: AUDIENCE_CONTACT_SELECT,
     });
@@ -473,7 +489,38 @@ async function resolveBulkCampaignAudienceContacts(filters: BulkCampaignAudience
         }
     }
 
-    return Array.from(deduped.values());
+    return Array.from(deduped.values()).filter((contact) => !contact.bulkCampaignOptOutAt);
+}
+
+function buildRecipientQueueRows(
+    campaignId: string,
+    contactIds: string[],
+    followUpCount: number,
+) {
+    const rows: Array<{
+        campaignId: string;
+        contactId: string;
+        status: "queued";
+        sequenceIndex: number;
+        attemptNumber: number;
+    }> = [];
+
+    for (let attemptNumber = 0; attemptNumber <= followUpCount; attemptNumber += 1) {
+        for (let index = 0; index < contactIds.length; index += 1) {
+            const contactId = contactIds[index];
+            if (!contactId) continue;
+
+            rows.push({
+                campaignId,
+                contactId,
+                status: "queued",
+                sequenceIndex: attemptNumber * contactIds.length + index,
+                attemptNumber,
+            });
+        }
+    }
+
+    return rows;
 }
 
 export async function getBulkCampaignAudiencePreview(filters: BulkCampaignAudienceFilters) {
@@ -531,7 +578,7 @@ export async function getBulkCampaignAudiencePreview(filters: BulkCampaignAudien
 }
 
 export async function refreshBulkCampaignStats(campaignId: string) {
-    const [campaign, totalRecipients, sentCount, failedCount, repliedCount, skippedCount, queuedCount] = await prisma.$transaction([
+    const [campaign, distinctRecipients, sentCount, failedCount, distinctReplies, skippedCount, queuedCount] = await prisma.$transaction([
         prisma.bulkCampaign.findUnique({
             where: { id: campaignId },
             select: {
@@ -540,10 +587,18 @@ export async function refreshBulkCampaignStats(campaignId: string) {
                 completedAt: true,
             },
         }),
-        prisma.bulkCampaignRecipient.count({ where: { campaignId } }),
+        prisma.bulkCampaignRecipient.findMany({
+            where: { campaignId },
+            distinct: ["contactId"],
+            select: { contactId: true },
+        }),
         prisma.bulkCampaignRecipient.count({ where: { campaignId, sentAt: { not: null } } }),
         prisma.bulkCampaignRecipient.count({ where: { campaignId, status: "failed" } }),
-        prisma.bulkCampaignRecipient.count({ where: { campaignId, repliedAt: { not: null } } }),
+        prisma.bulkCampaignRecipient.findMany({
+            where: { campaignId, repliedAt: { not: null } },
+            distinct: ["contactId"],
+            select: { contactId: true },
+        }),
         prisma.bulkCampaignRecipient.count({
             where: {
                 campaignId,
@@ -564,10 +619,10 @@ export async function refreshBulkCampaignStats(campaignId: string) {
     return prisma.bulkCampaign.update({
         where: { id: campaignId },
         data: {
-            totalRecipients,
+            totalRecipients: distinctRecipients.length,
             sentCount,
             failedCount,
-            repliedCount,
+            repliedCount: distinctReplies.length,
             skippedCount,
             ...(shouldMarkCompleted
                 ? {
@@ -629,6 +684,7 @@ export async function createBulkCampaign(input: BulkCampaignUpsertInput, created
             scheduledStartAt: input.scheduledStartAt,
             respectBusinessHours: input.respectBusinessHours,
             stopOnReply: input.stopOnReply,
+            followUpCount: input.followUpCount,
             audienceFilters: input.audienceFilters,
             totalRecipients: estimatedRecipients.totalRecipients,
             createdById: createdById || null,
@@ -687,6 +743,7 @@ export async function updateBulkCampaign(id: string, input: BulkCampaignUpsertIn
                 scheduledStartAt: input.scheduledStartAt,
                 respectBusinessHours: input.respectBusinessHours,
                 stopOnReply: input.stopOnReply,
+                followUpCount: input.followUpCount,
                 audienceFilters: input.audienceFilters,
                 totalRecipients: estimatedRecipients.totalRecipients,
                 completedAt: null,
@@ -752,12 +809,11 @@ export async function startBulkCampaign(id: string) {
         });
 
         await tx.bulkCampaignRecipient.createMany({
-            data: contacts.map((contact, index) => ({
-                campaignId: id,
-                contactId: contact.id,
-                status: "queued",
-                sequenceIndex: index,
-            })),
+            data: buildRecipientQueueRows(
+                id,
+                contacts.map((contact) => contact.id),
+                Math.max(0, campaign.followUpCount || 0),
+            ),
         });
 
         await tx.bulkCampaign.update({
@@ -945,6 +1001,45 @@ async function resolveNextCampaignRunAt(campaign: Pick<BulkCampaign, "respectBus
     return now;
 }
 
+async function moveContactDealsToClosedLostStage(contactId: string) {
+    const closedLostStage = await prisma.pipelineStage.findFirst({
+        where: { isClosedLost: true },
+        select: { id: true },
+    });
+
+    if (!closedLostStage) {
+        return false;
+    }
+
+    const openDeals = await prisma.deal.findMany({
+        where: {
+            contactId,
+            stage: {
+                isClosedWon: false,
+                isClosedLost: false,
+            },
+        },
+        select: { id: true },
+    });
+
+    if (openDeals.length === 0) {
+        return false;
+    }
+
+    await prisma.deal.updateMany({
+        where: {
+            id: {
+                in: openDeals.map((deal) => deal.id),
+            },
+        },
+        data: {
+            stageId: closedLostStage.id,
+        },
+    });
+
+    return true;
+}
+
 async function processClaimedCampaign(campaignId: string, lockId: string) {
     const campaign = await prisma.bulkCampaign.findUnique({
         where: { id: campaignId },
@@ -1005,8 +1100,6 @@ async function processClaimedCampaign(campaignId: string, lockId: string) {
             return;
         }
 
-        const settings = await getSystemSettingsOrDefaults();
-
         const recipient = recipients[0];
         if (!recipient) {
             await releaseCampaignLock(campaignId, lockId, {
@@ -1018,6 +1111,85 @@ async function processClaimedCampaign(campaignId: string, lockId: string) {
             return;
         }
 
+        let skipReason: string | null = null;
+
+        if (recipient.contact.bulkCampaignOptOutAt) {
+            skipReason = "Contacto bloqueado para envios masivos por solicitud STOP";
+            await prisma.bulkCampaignRecipient.updateMany({
+                where: {
+                    contactId: recipient.contactId,
+                    status: "queued",
+                },
+                data: {
+                    status: "skipped",
+                    lastError: skipReason,
+                },
+            });
+        } else if (recipient.attemptNumber > 0) {
+            const previousAttempt = await prisma.bulkCampaignRecipient.findUnique({
+                where: {
+                    campaignId_contactId_attemptNumber: {
+                        campaignId,
+                        contactId: recipient.contactId,
+                        attemptNumber: recipient.attemptNumber - 1,
+                    },
+                },
+                select: {
+                    status: true,
+                    sentAt: true,
+                    repliedAt: true,
+                },
+            });
+
+            if (!previousAttempt?.sentAt || previousAttempt.status !== "sent" || previousAttempt.repliedAt) {
+                skipReason = previousAttempt?.status === "replied" || previousAttempt?.repliedAt
+                    ? "Seguimiento detenido porque el lead ya respondio"
+                    : "Seguimiento omitido porque el intento anterior no se envio correctamente";
+
+                await prisma.bulkCampaignRecipient.updateMany({
+                    where: {
+                        campaignId,
+                        contactId: recipient.contactId,
+                        status: "queued",
+                        attemptNumber: {
+                            gte: recipient.attemptNumber,
+                        },
+                    },
+                    data: {
+                        status: "skipped",
+                        lastError: skipReason,
+                    },
+                });
+            }
+        }
+
+        if (skipReason) {
+            const refreshed = await refreshBulkCampaignStats(campaignId);
+            const remainingQueued = await prisma.bulkCampaignRecipient.count({
+                where: {
+                    campaignId,
+                    status: "queued",
+                },
+            });
+
+            if (remainingQueued === 0) {
+                await releaseCampaignLock(campaignId, lockId, {
+                    status: "completed",
+                    completedAt: refreshed?.completedAt || new Date(),
+                    nextRunAt: null,
+                    lastProcessedAt: new Date(),
+                });
+                return;
+            }
+
+            await releaseCampaignLock(campaignId, lockId, {
+                nextRunAt: new Date(Date.now() + resolveBulkCampaignRandomDelayMs(campaign)),
+                lastProcessedAt: new Date(),
+            });
+            return;
+        }
+
+        const settings = await getSystemSettingsOrDefaults();
         const variant = chooseVariant(campaign.variants, campaign.type as OutboundMessageType);
 
         if (!variant) {
@@ -1160,16 +1332,24 @@ export async function processDueBulkCampaigns(limit = 3) {
 export async function markBulkCampaignReplyForContact(
     contactId: string,
     conversationId: string | null,
+    rawText: string,
     repliedAt = new Date(),
 ) {
-    const recipients = await prisma.bulkCampaignRecipient.findMany({
+    const intent = classifyBulkCampaignReplyIntent(rawText);
+    const shouldStopAllQueued = intent === "stop" || intent === "interest";
+
+    const sentRecipients = await prisma.bulkCampaignRecipient.findMany({
         where: {
             contactId,
             sentAt: { not: null },
             repliedAt: null,
-            campaign: {
-                stopOnReply: true,
-            },
+            ...(intent !== "neutral"
+                ? {}
+                : {
+                    campaign: {
+                        stopOnReply: true,
+                    },
+                }),
         },
         select: {
             id: true,
@@ -1177,29 +1357,100 @@ export async function markBulkCampaignReplyForContact(
         },
     });
 
-    if (recipients.length === 0) {
-        return;
-    }
-
-    await prisma.bulkCampaignRecipient.updateMany({
+    const queuedRecipients = await prisma.bulkCampaignRecipient.findMany({
         where: {
-            id: {
-                in: recipients.map((recipient) => recipient.id),
-            },
+            contactId,
+            status: "queued",
+            ...(shouldStopAllQueued
+                ? {}
+                : {
+                    campaignId: {
+                        in: sentRecipients.map((recipient) => recipient.campaignId),
+                    },
+                }),
         },
-        data: {
-            status: "replied",
-            repliedAt,
-            lastInboundAt: repliedAt,
-            conversationId: conversationId || undefined,
+        select: {
+            id: true,
+            campaignId: true,
         },
     });
 
-    const campaignIds = recipients
+    if (
+        sentRecipients.length === 0 &&
+        queuedRecipients.length === 0 &&
+        intent !== "stop"
+    ) {
+        return {
+            intent,
+            stoppedCampaignIds: [],
+            activatedBot: intent === "interest",
+            optedOut: false,
+        } satisfies BulkCampaignReplyHandlingResult;
+    }
+
+    await prisma.$transaction(async (tx) => {
+        if (sentRecipients.length > 0) {
+            await tx.bulkCampaignRecipient.updateMany({
+                where: {
+                    id: {
+                        in: sentRecipients.map((recipient) => recipient.id),
+                    },
+                },
+                data: {
+                    status: "replied",
+                    repliedAt,
+                    lastInboundAt: repliedAt,
+                    conversationId: conversationId || undefined,
+                },
+            });
+        }
+
+        if (queuedRecipients.length > 0) {
+            await tx.bulkCampaignRecipient.updateMany({
+                where: {
+                    id: {
+                        in: queuedRecipients.map((recipient) => recipient.id),
+                    },
+                },
+                data: {
+                    status: "skipped",
+                    lastError: intent === "stop"
+                        ? "Seguimiento cancelado por solicitud STOP del lead"
+                        : intent === "interest"
+                            ? "Seguimiento cancelado porque el lead mostro interes"
+                            : "Seguimiento cancelado porque el lead respondio",
+                    lastInboundAt: repliedAt,
+                },
+            });
+        }
+
+        if (intent === "stop") {
+            await tx.contact.update({
+                where: { id: contactId },
+                data: {
+                    bulkCampaignOptOutAt: repliedAt,
+                    bulkCampaignOptOutReason: rawText.trim().slice(0, 160) || "stop",
+                },
+            });
+        }
+    });
+
+    if (intent === "stop") {
+        await moveContactDealsToClosedLostStage(contactId);
+    }
+
+    const campaignIds = [...sentRecipients, ...queuedRecipients]
         .map((recipient) => recipient.campaignId)
         .filter((campaignId, index, array) => array.indexOf(campaignId) === index);
 
     for (const campaignId of campaignIds) {
         await refreshBulkCampaignStats(campaignId);
     }
+
+    return {
+        intent,
+        stoppedCampaignIds: campaignIds,
+        activatedBot: intent === "interest",
+        optedOut: intent === "stop",
+    } satisfies BulkCampaignReplyHandlingResult;
 }
