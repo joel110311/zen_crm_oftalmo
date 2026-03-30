@@ -13,6 +13,8 @@ export type SendOutboundConversationMessageParams = {
     mediaFileName?: string | null;
     currentUserId?: string | null;
     senderType?: string | null;
+    preserveBotActive?: boolean;
+    botActiveOverride?: boolean;
 };
 
 export async function findOrCreateActiveConversationForContact(contactId: string) {
@@ -72,7 +74,11 @@ export async function sendOutboundConversationMessage(
         where: { id: params.conversationId },
         data: {
             updatedAt: new Date(),
-            botActive: false,
+            botActive: typeof params.botActiveOverride === "boolean"
+                ? params.botActiveOverride
+                : params.preserveBotActive
+                    ? conversation.botActive
+                    : false,
             assignedUserId: params.currentUserId || conversation.assignedUserId,
         },
     });

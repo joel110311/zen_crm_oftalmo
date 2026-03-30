@@ -1303,6 +1303,7 @@ async function processClaimedCampaign(campaignId: string, lockId: string) {
                     mediaType: campaign.type === "text" ? null : campaign.mediaType,
                     mediaFileName: campaign.type === "text" ? null : campaign.mediaFileName,
                     senderType: "human",
+                    botActiveOverride: true,
                 });
 
                 await prisma.bulkCampaignRecipient.update({
@@ -1439,7 +1440,7 @@ export async function markBulkCampaignReplyForContact(
         return {
             intent,
             stoppedCampaignIds: [],
-            activatedBot: intent === "interest",
+            activatedBot: false,
             optedOut: false,
         } satisfies BulkCampaignReplyHandlingResult;
     }
@@ -1506,7 +1507,7 @@ export async function markBulkCampaignReplyForContact(
     return {
         intent,
         stoppedCampaignIds: campaignIds,
-        activatedBot: intent === "interest",
+        activatedBot: false,
         optedOut: intent === "stop",
     } satisfies BulkCampaignReplyHandlingResult;
 }
