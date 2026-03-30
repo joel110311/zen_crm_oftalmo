@@ -56,6 +56,7 @@ function mapCampaignToForm(campaign: CampaignRecord): CampaignFormState {
         respectBusinessHours: campaign.respectBusinessHours,
         stopOnReply: campaign.stopOnReply,
         followUpCount: campaign.followUpCount,
+        followUpDelayDays: campaign.followUpDelayDays,
         audienceMode: campaign.audienceFilters?.mode || "filters",
         audienceStatuses: campaign.audienceFilters?.statuses || [],
         audienceTags: (campaign.audienceFilters?.tags || []).join(", "),
@@ -275,6 +276,7 @@ export function BulkCampaignManagerPanel() {
                 respectBusinessHours: form.respectBusinessHours,
                 stopOnReply: form.stopOnReply,
                 followUpCount: form.followUpCount,
+                followUpDelayDays: form.followUpDelayDays,
                 audienceFilters: audiencePayload,
                 variants: form.variants.map((variant, index) => ({
                     ...variant,
@@ -451,6 +453,7 @@ export function BulkCampaignManagerPanel() {
         ((Math.max(messageIntervals - longPauseCount, 0) * averageDelaySeconds) +
             (longPauseCount * form.batchDelayMinutes * 60)) / 60,
     );
+    const followUpWindowDays = Math.max(0, form.followUpCount * Math.max(1, form.followUpDelayDays));
 
     const filteredCampaignList = filteredCampaigns;
 
@@ -662,6 +665,7 @@ export function BulkCampaignManagerPanel() {
                                 totalPreviewRecipients={totalPreviewRecipients}
                                 totalPlannedTouches={totalPlannedTouches}
                                 estimatedDeliveryMinutes={estimatedDeliveryMinutes}
+                                followUpWindowDays={followUpWindowDays}
                                 onFormChange={(updater) => setForm(updater)}
                             />
                         </TabsContent>

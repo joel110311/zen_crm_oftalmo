@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { format } from "date-fns";
+import { addDays, format } from "date-fns";
 import { es } from "date-fns/locale";
 import { CalendarClock, CheckCircle2, Clock3 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -11,7 +11,11 @@ import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Switch } from "@/components/ui/switch";
 import type { CampaignFormState } from "@/components/settings/bulk-campaign-manager-shared";
-import { formatDateTime, getAudienceModeLabel } from "@/components/settings/bulk-campaign-manager-shared";
+import {
+    formatDateTime,
+    formatFollowUpCadenceLabel,
+    getAudienceModeLabel,
+} from "@/components/settings/bulk-campaign-manager-shared";
 import { cn } from "@/lib/utils";
 
 type BulkCampaignScheduleTabProps = {
@@ -19,6 +23,7 @@ type BulkCampaignScheduleTabProps = {
     totalPreviewRecipients: number;
     totalPlannedTouches: number;
     estimatedDeliveryMinutes: number;
+    followUpWindowDays: number;
     onFormChange: (updater: (current: CampaignFormState) => CampaignFormState) => void;
 };
 
@@ -205,8 +210,33 @@ export function BulkCampaignScheduleTab({
     totalPreviewRecipients,
     totalPlannedTouches,
     estimatedDeliveryMinutes,
+    followUpWindowDays,
     onFormChange,
 }: BulkCampaignScheduleTabProps) {
+    const scheduledStartDate = useMemo(
+        () => parseLocalDateTimeValue(form.scheduledStartAt),
+        [form.scheduledStartAt],
+    );
+    const followUpTimeline = useMemo(() => {
+        if (form.followUpCount <= 0) {
+            return [];
+        }
+
+        return Array.from({ length: form.followUpCount }, (_, index) => {
+            const attemptNumber = index + 1;
+            const offsetDays = attemptNumber * Math.max(1, form.followUpDelayDays);
+            const plannedDate = scheduledStartDate ? addDays(scheduledStartDate, offsetDays) : null;
+
+            return {
+                attemptNumber,
+                offsetDays,
+                label: plannedDate
+                    ? format(plannedDate, "PPP 'a las' p", { locale: es })
+                    : `${offsetDays} ${offsetDays === 1 ? "dia" : "dias"} despues del arranque`,
+            };
+        });
+    }, [form.followUpCount, form.followUpDelayDays, scheduledStartDate]);
+
     return (
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1.02fr)_minmax(0,0.98fr)]">
             <div className="min-w-0 space-y-4">
@@ -348,28 +378,66 @@ export function BulkCampaignScheduleTab({
                         </div>
 
                         <div className="rounded-xl border bg-background/85 px-4 py-3">
-                            <div className="space-y-2">
-                                <Label>Seguimientos extra si no responde</Label>
-                                <Input
-                                    type="number"
-                                    min={0}
-                                    max={12}
-                                    value={String(form.followUpCount)}
-                                    onChange={(event) =>
-                                        onFormChange((current) => ({
-                                            ...current,
-                                            followUpCount: Math.min(
-                                                12,
-                                                Math.max(0, Number.parseInt(event.target.value || "0", 10) || 0),
-                                            ),
-                                        }))
-                                    }
-                                />
+                            <div className="grid gap-4 lg:grid-cols-2">
+                                <div className="space-y-2">
+                                    <Label>Seguimientos extra si no responde</Label>
+                                    <Input
+                                        type="number"
+                                        min={0}
+                                        max={12}
+                                        value={String(form.followUpCount)}
+                                        onChange={(event) =>
+                                            onFormChange((current) => ({
+                                                ...current,
+                                                followUpCount: Math.min(
+                                                    12,
+                                                    Math.max(0, Number.parseInt(event.target.value || "0", 10) || 0),
+                                                ),
+                                            }))
+                                        }
+                                    />
+                                </div>
+
+                                <div className="space-y-2">
+                                    <Label>Cadencia entre seguimientos (dias)</Label>
+                                    <Input
+                                        type="number"
+                                        min={1}
+                                        max={30}
+                                        value={String(form.followUpDelayDays)}
+                                        disabled={form.followUpCount === 0}
+                                        onChange={(event) =>
+                                            onFormChange((current) => ({
+                                                ...current,
+                                                followUpDelayDays: Math.min(
+                                                    30,
+                                                    Math.max(1, Number.parseInt(event.target.value || "1", 10) || 1),
+                                                ),
+                                            }))
+                                        }
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="mt-3 space-y-2">
                                 <p className="text-sm text-muted-foreground">
                                     {form.followUpCount > 0
-                                        ? `Despues del primer mensaje, el CRM intentara hasta ${form.followUpCount} seguimientos adicionales por contacto si la secuencia sigue abierta.`
+                                        ? `Despues del primer mensaje, el CRM intentara hasta ${form.followUpCount} seguimientos adicionales por contacto, ${formatFollowUpCadenceLabel(form.followUpDelayDays)}.`
                                         : "Solo se enviara el primer mensaje; no habra seguimientos automaticos adicionales."}
                                 </p>
+                                {form.followUpCount > 0 ? (
+                                    <div className="rounded-xl border bg-muted/20 p-3 text-sm text-muted-foreground">
+                                        <p className="font-medium text-foreground">Linea de tiempo estimada</p>
+                                        <div className="mt-2 space-y-1.5">
+                                            {followUpTimeline.map((item) => (
+                                                <p key={item.attemptNumber}>
+                                                    Seguimiento {item.attemptNumber}:{" "}
+                                                    <span className="font-medium text-foreground">{item.label}</span>
+                                                </p>
+                                            ))}
+                                        </div>
+                                    </div>
+                                ) : null}
                             </div>
                         </div>
                     </div>
@@ -390,13 +458,29 @@ export function BulkCampaignScheduleTab({
                             Luego el sistema intercalara delays de <span className="font-semibold text-foreground">{form.randomDelayMinSeconds}</span> a <span className="font-semibold text-foreground">{form.randomDelayMaxSeconds}</span> segundos por mensaje.
                         </div>
                         <div className="rounded-xl border bg-background/85 p-3">
-                            La secuencia contempla <span className="font-semibold text-foreground">{form.followUpCount}</span> seguimientos extras por contacto y un total estimado de <span className="font-semibold text-foreground">{totalPlannedTouches}</span> envios.
+                            {form.followUpCount > 0 ? (
+                                <>
+                                    La secuencia contempla <span className="font-semibold text-foreground">{form.followUpCount}</span> seguimientos extras por contacto, <span className="font-semibold text-foreground">{formatFollowUpCadenceLabel(form.followUpDelayDays)}</span>, para un total estimado de <span className="font-semibold text-foreground">{totalPlannedTouches}</span> envios.
+                                </>
+                            ) : (
+                                <>
+                                    La secuencia contempla solo el disparo inicial y un total estimado de <span className="font-semibold text-foreground">{totalPlannedTouches}</span> envios.
+                                </>
+                            )}
                         </div>
                         <div className="rounded-xl border bg-background/85 p-3">
                             Cada {form.batchSize} mensajes aplicara una pausa larga de {form.batchDelayMinutes} minutos.
                         </div>
                         <div className="rounded-xl border bg-background/85 p-3">
-                            Duracion estimada para esta audiencia: <span className="font-semibold text-foreground">{estimatedDeliveryMinutes} minutos</span> para {totalPreviewRecipients} contactos.
+                            {form.followUpCount > 0 ? (
+                                <>
+                                    Ventana total estimada: <span className="font-semibold text-foreground">{followUpWindowDays} {followUpWindowDays === 1 ? "dia" : "dias"}</span> entre el primer envio y el ultimo seguimiento, con <span className="font-semibold text-foreground">{estimatedDeliveryMinutes} minutos</span> aproximados de envio activo.
+                                </>
+                            ) : (
+                                <>
+                                    Duracion estimada para esta audiencia: <span className="font-semibold text-foreground">{estimatedDeliveryMinutes} minutos</span> para {totalPreviewRecipients} contactos.
+                                </>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -422,9 +506,14 @@ export function BulkCampaignScheduleTab({
                             <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Seguimientos</p>
                             <p className="mt-2 font-medium">
                                 {form.followUpCount > 0
-                                    ? `${form.followUpCount} extras por contacto (${totalPlannedTouches} toques en total)`
+                                    ? `${form.followUpCount} extras por contacto, ${formatFollowUpCadenceLabel(form.followUpDelayDays)}`
                                     : "Sin seguimientos extras"}
                             </p>
+                            {form.followUpCount > 0 ? (
+                                <p className="mt-1 text-xs text-muted-foreground">
+                                    Ultimo toque estimado a {followUpWindowDays} {followUpWindowDays === 1 ? "dia" : "dias"} del arranque.
+                                </p>
+                            ) : null}
                         </div>
                     </div>
                 </div>

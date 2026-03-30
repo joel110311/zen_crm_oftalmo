@@ -58,6 +58,7 @@ export type BulkCampaignUpsertInput = {
     respectBusinessHours: boolean;
     stopOnReply: boolean;
     followUpCount: number;
+    followUpDelayDays: number;
     audienceFilters: BulkCampaignAudienceFilters;
     variants: BulkCampaignVariantInput[];
 };
@@ -156,6 +157,7 @@ export function normalizeBulkCampaignPayload(value: unknown): BulkCampaignUpsert
         respectBusinessHours: record.respectBusinessHours !== false,
         stopOnReply: record.stopOnReply !== false,
         followUpCount: clampInteger(record.followUpCount, 0, 0, 12),
+        followUpDelayDays: clampInteger(record.followUpDelayDays, 2, 1, 30),
         audienceFilters: normalizeBulkCampaignAudienceFilters(
             record.audienceFilters,
             MAX_BULK_CAMPAIGN_AUDIENCE_LIMIT,
@@ -496,6 +498,8 @@ function buildRecipientQueueRows(
     campaignId: string,
     contactIds: string[],
     followUpCount: number,
+    initialPlannedAt: Date,
+    followUpDelayDays: number,
 ) {
     const rows: Array<{
         campaignId: string;
@@ -503,9 +507,15 @@ function buildRecipientQueueRows(
         status: "queued";
         sequenceIndex: number;
         attemptNumber: number;
+        plannedAt: Date;
     }> = [];
 
     for (let attemptNumber = 0; attemptNumber <= followUpCount; attemptNumber += 1) {
+        const plannedAt = new Date(
+            initialPlannedAt.getTime() +
+            (attemptNumber * Math.max(1, followUpDelayDays) * 24 * 60 * 60 * 1000),
+        );
+
         for (let index = 0; index < contactIds.length; index += 1) {
             const contactId = contactIds[index];
             if (!contactId) continue;
@@ -516,6 +526,7 @@ function buildRecipientQueueRows(
                 status: "queued",
                 sequenceIndex: attemptNumber * contactIds.length + index,
                 attemptNumber,
+                plannedAt: new Date(plannedAt),
             });
         }
     }
@@ -685,6 +696,7 @@ export async function createBulkCampaign(input: BulkCampaignUpsertInput, created
             respectBusinessHours: input.respectBusinessHours,
             stopOnReply: input.stopOnReply,
             followUpCount: input.followUpCount,
+            followUpDelayDays: input.followUpDelayDays,
             audienceFilters: input.audienceFilters,
             totalRecipients: estimatedRecipients.totalRecipients,
             createdById: createdById || null,
@@ -744,6 +756,7 @@ export async function updateBulkCampaign(id: string, input: BulkCampaignUpsertIn
                 respectBusinessHours: input.respectBusinessHours,
                 stopOnReply: input.stopOnReply,
                 followUpCount: input.followUpCount,
+                followUpDelayDays: input.followUpDelayDays,
                 audienceFilters: input.audienceFilters,
                 totalRecipients: estimatedRecipients.totalRecipients,
                 completedAt: null,
@@ -813,6 +826,8 @@ export async function startBulkCampaign(id: string) {
                 id,
                 contacts.map((contact) => contact.id),
                 Math.max(0, campaign.followUpCount || 0),
+                nextRunAt,
+                Math.max(1, campaign.followUpDelayDays || 1),
             ),
         });
 
@@ -1040,6 +1055,71 @@ async function moveContactDealsToClosedLostStage(contactId: string) {
     return true;
 }
 
+async function getNextQueuedRecipientForCampaign(campaignId: string) {
+    return prisma.bulkCampaignRecipient.findFirst({
+        where: {
+            campaignId,
+            status: "queued",
+        },
+        orderBy: [
+            { plannedAt: "asc" },
+            { sequenceIndex: "asc" },
+        ],
+        select: {
+            id: true,
+            plannedAt: true,
+            sequenceIndex: true,
+        },
+    });
+}
+
+async function releaseCampaignLockForNextRecipient(
+    campaign: Pick<BulkCampaign, "id" | "batchSize" | "batchDelayMinutes" | "randomDelayMinSeconds" | "randomDelayMaxSeconds" | "totalRecipients">,
+    lockId: string,
+    processedSequenceIndex: number | null,
+    now = new Date(),
+) {
+    const nextQueuedRecipient = await getNextQueuedRecipientForCampaign(campaign.id);
+
+    if (!nextQueuedRecipient) {
+        const refreshed = await refreshBulkCampaignStats(campaign.id);
+        await releaseCampaignLock(campaign.id, lockId, {
+            status: "completed",
+            completedAt: refreshed?.completedAt || now,
+            nextRunAt: null,
+            lastProcessedAt: now,
+        });
+        return;
+    }
+
+    if (nextQueuedRecipient.plannedAt.getTime() > now.getTime()) {
+        await releaseCampaignLock(campaign.id, lockId, {
+            nextRunAt: nextQueuedRecipient.plannedAt,
+            lastProcessedAt: now,
+        });
+        return;
+    }
+
+    const perWaveRecipientCount = Math.max(1, campaign.totalRecipients || 1);
+    const currentWaveOffset = processedSequenceIndex === null
+        ? null
+        : processedSequenceIndex % perWaveRecipientCount;
+    const processedBoundary = currentWaveOffset !== null &&
+        (currentWaveOffset + 1) % Math.max(1, campaign.batchSize) === 0;
+    const usesBatchPause = processedBoundary && Math.max(0, campaign.batchDelayMinutes) > 0;
+
+    await releaseCampaignLock(campaign.id, lockId, {
+        nextRunAt: new Date(
+            now.getTime() + (
+                usesBatchPause
+                    ? Math.max(0, campaign.batchDelayMinutes) * 60_000
+                    : resolveBulkCampaignRandomDelayMs(campaign)
+            ),
+        ),
+        lastProcessedAt: now,
+    });
+}
+
 async function processClaimedCampaign(campaignId: string, lockId: string) {
     const campaign = await prisma.bulkCampaign.findUnique({
         where: { id: campaignId },
@@ -1081,20 +1161,35 @@ async function processClaimedCampaign(campaignId: string, lockId: string) {
             where: {
                 campaignId,
                 status: "queued",
+                plannedAt: {
+                    lte: now,
+                },
             },
             include: {
                 contact: true,
             },
-            orderBy: { sequenceIndex: "asc" },
+            orderBy: [
+                { plannedAt: "asc" },
+                { sequenceIndex: "asc" },
+            ],
             take: 1,
         });
 
         if (recipients.length === 0) {
-            await refreshBulkCampaignStats(campaignId);
+            const nextQueuedRecipient = await getNextQueuedRecipientForCampaign(campaignId);
+            if (!nextQueuedRecipient) {
+                await refreshBulkCampaignStats(campaignId);
+                await releaseCampaignLock(campaignId, lockId, {
+                    status: "completed",
+                    completedAt: new Date(),
+                    nextRunAt: null,
+                    lastProcessedAt: now,
+                });
+                return;
+            }
+
             await releaseCampaignLock(campaignId, lockId, {
-                status: "completed",
-                completedAt: new Date(),
-                nextRunAt: null,
+                nextRunAt: nextQueuedRecipient.plannedAt,
                 lastProcessedAt: now,
             });
             return;
@@ -1164,28 +1259,13 @@ async function processClaimedCampaign(campaignId: string, lockId: string) {
         }
 
         if (skipReason) {
-            const refreshed = await refreshBulkCampaignStats(campaignId);
-            const remainingQueued = await prisma.bulkCampaignRecipient.count({
-                where: {
-                    campaignId,
-                    status: "queued",
-                },
-            });
-
-            if (remainingQueued === 0) {
-                await releaseCampaignLock(campaignId, lockId, {
-                    status: "completed",
-                    completedAt: refreshed?.completedAt || new Date(),
-                    nextRunAt: null,
-                    lastProcessedAt: new Date(),
-                });
-                return;
-            }
-
-            await releaseCampaignLock(campaignId, lockId, {
-                nextRunAt: new Date(Date.now() + resolveBulkCampaignRandomDelayMs(campaign)),
-                lastProcessedAt: new Date(),
-            });
+            await refreshBulkCampaignStats(campaignId);
+            await releaseCampaignLockForNextRecipient(
+                campaign,
+                lockId,
+                recipient.sequenceIndex,
+                new Date(),
+            );
             return;
         }
 
@@ -1248,37 +1328,13 @@ async function processClaimedCampaign(campaignId: string, lockId: string) {
             }
         }
 
-        const refreshed = await refreshBulkCampaignStats(campaignId);
-        const remainingQueued = await prisma.bulkCampaignRecipient.count({
-            where: {
-                campaignId,
-                status: "queued",
-            },
-        });
-
-        if (remainingQueued === 0) {
-            await releaseCampaignLock(campaignId, lockId, {
-                status: "completed",
-                completedAt: refreshed?.completedAt || new Date(),
-                nextRunAt: null,
-                lastProcessedAt: new Date(),
-            });
-            return;
-        }
-
-        const processedBoundary = (recipient.sequenceIndex + 1) % Math.max(1, campaign.batchSize) === 0;
-        const usesBatchPause = processedBoundary && Math.max(0, campaign.batchDelayMinutes) > 0;
-        const nextRunAt = new Date(
-            Date.now() + (
-                usesBatchPause
-                    ? Math.max(0, campaign.batchDelayMinutes) * 60_000
-                    : resolveBulkCampaignRandomDelayMs(campaign)
-            ),
+        await refreshBulkCampaignStats(campaignId);
+        await releaseCampaignLockForNextRecipient(
+            campaign,
+            lockId,
+            recipient.sequenceIndex,
+            new Date(),
         );
-        await releaseCampaignLock(campaignId, lockId, {
-            nextRunAt,
-            lastProcessedAt: new Date(),
-        });
     } catch (error) {
         console.error("[BulkCampaigns] Failed to process campaign", campaignId, error);
         await releaseCampaignLock(campaignId, lockId, {

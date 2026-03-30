@@ -37,6 +37,7 @@ export type CampaignRecord = {
     respectBusinessHours: boolean;
     stopOnReply: boolean;
     followUpCount: number;
+    followUpDelayDays: number;
     totalRecipients: number;
     sentCount: number;
     failedCount: number;
@@ -119,6 +120,7 @@ export type CampaignFormState = {
     respectBusinessHours: boolean;
     stopOnReply: boolean;
     followUpCount: number;
+    followUpDelayDays: number;
     audienceMode: BulkCampaignAudienceMode;
     audienceStatuses: string[];
     audienceTags: string;
@@ -155,6 +157,7 @@ export const EMPTY_FORM: CampaignFormState = {
     respectBusinessHours: true,
     stopOnReply: true,
     followUpCount: 0,
+    followUpDelayDays: 2,
     audienceMode: "filters",
     audienceStatuses: ["lead"],
     audienceTags: "",
@@ -250,6 +253,17 @@ export function formatDateTime(value: string | null | undefined) {
         dateStyle: "medium",
         timeStyle: "short",
     });
+}
+
+export function formatFollowUpCadenceLabel(days: number) {
+    const normalizedDays = Math.max(1, Math.round(days || 1));
+    return normalizedDays === 1 ? "cada dia" : `cada ${normalizedDays} dias`;
+}
+
+export function formatFollowUpSpanLabel(days: number) {
+    const normalizedDays = Math.max(0, Math.round(days || 0));
+    if (normalizedDays <= 0) return "sin espera adicional";
+    return normalizedDays === 1 ? "1 dia" : `${normalizedDays} dias`;
 }
 
 export function getStatusBadgeVariant(status: string) {

@@ -266,6 +266,7 @@ model BulkCampaign {
   respectBusinessHours Boolean @default(true)
   stopOnReply      Boolean  @default(true)
   followUpCount    Int      @default(0)
+  followUpDelayDays Int     @default(1)
   senderStrategy   String   @default("primary")
   totalRecipients  Int      @default(0)
   sentCount        Int      @default(0)
@@ -322,6 +323,7 @@ model BulkCampaignRecipient {
   status          String   @default("queued") // queued, sent, failed, replied, skipped, cancelled
   sequenceIndex   Int
   attemptNumber   Int      @default(0)
+  plannedAt       DateTime @default(now())
   sentAt          DateTime?
   repliedAt       DateTime?
   lastInboundAt   DateTime?
@@ -333,6 +335,7 @@ model BulkCampaignRecipient {
 
   @@unique([campaignId, contactId, attemptNumber])
   @@index([campaignId, status, sequenceIndex])
+  @@index([campaignId, status, plannedAt, sequenceIndex])
   @@index([contactId, status])
 }
 
