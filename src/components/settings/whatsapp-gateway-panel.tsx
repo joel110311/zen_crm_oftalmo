@@ -161,7 +161,7 @@ export function WhatsAppGatewayPanel(props: Props) {
                 toast({
                     title: "QR en preparacion",
                     description: historyImportMonths !== "0"
-                        ? `Escanea el QR. Al quedar activo, importaremos hasta ${historyImportMonths} ${historyImportMonths === "1" ? "mes" : "meses"} de chats sin disparar pipelines.`
+                        ? `Escanea el QR. Al quedar activo, importaremos hasta ${historyImportMonths === "1" ? "30 dias" : historyImportMonths === "2" ? "60 dias" : "90 dias"} de chats sin disparar pipelines.`
                         : "Escanea el QR con el telefono y espera unos segundos.",
                 });
             }
@@ -312,9 +312,9 @@ export function WhatsAppGatewayPanel(props: Props) {
                                     </SelectTrigger>
                                     <SelectContent>
                                         <SelectItem value="0">No importar historial</SelectItem>
-                                        <SelectItem value="1">1 mes</SelectItem>
-                                        <SelectItem value="2">2 meses</SelectItem>
-                                        <SelectItem value="3">3 meses</SelectItem>
+                                        <SelectItem value="1">Ultimos 30 dias</SelectItem>
+                                        <SelectItem value="2">Ultimos 60 dias</SelectItem>
+                                        <SelectItem value="3">Ultimos 90 dias</SelectItem>
                                     </SelectContent>
                                 </Select>
                             </div>
@@ -332,7 +332,7 @@ export function WhatsAppGatewayPanel(props: Props) {
                         </div>
 
                         <p className="text-xs text-muted-foreground">
-                            Si eliges 1, 2 o 3 meses antes de escanear el QR, la importacion corre sola cuando el numero quede activo. Solo se importan chats de contactos ya existentes en el CRM.
+                            Si eliges 30, 60 o 90 dias antes de escanear el QR, la importacion corre sola cuando el numero quede activo. Solo se importan chats de contactos ya existentes en el CRM.
                         </p>
                     </div>
 

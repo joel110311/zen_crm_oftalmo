@@ -17,6 +17,12 @@ const HISTORY_FETCH_LIMIT_BY_MONTHS: Record<1 | 2 | 3, number> = {
     3: 5000,
 };
 
+const HISTORY_DAYS_BY_MONTHS: Record<1 | 2 | 3, number> = {
+    1: 30,
+    2: 60,
+    3: 90,
+};
+
 const HISTORY_SYNC_REQUEST_COUNT_BY_MONTHS: Record<1 | 2 | 3, number> = {
     1: 150,
     2: 300,
@@ -51,9 +57,8 @@ function normalizeHistoryMonths(value: number) {
 }
 
 function resolveCutoffDate(months: 1 | 2 | 3) {
-    const cutoff = new Date();
-    cutoff.setMonth(cutoff.getMonth() - months);
-    return cutoff;
+    const days = HISTORY_DAYS_BY_MONTHS[months];
+    return new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 }
 
 function resolveHistoryIndexChatJid(entry: WuzapiHistoryIndexRecord) {
@@ -93,10 +98,31 @@ function resolveDirection(chatPhone: string, senderJid: string) {
         : "outbound";
 }
 
-function parseHistoryTimestamp(value: string | undefined) {
-    if (!value) return null;
-    const parsed = new Date(value);
-    return Number.isNaN(parsed.getTime()) ? null : parsed;
+function parseHistoryTimestamp(value: string | number | undefined | null) {
+    if (value === undefined || value === null) return null;
+
+    const raw = String(value).trim();
+    if (!raw) return null;
+
+    if (/^\d+(\.\d+)?$/.test(raw)) {
+        const numeric = Number.parseFloat(raw);
+        if (Number.isFinite(numeric) && numeric > 0) {
+            const millis = numeric >= 1e12 ? Math.trunc(numeric) : Math.trunc(numeric * 1000);
+            const fromEpoch = new Date(millis);
+            if (!Number.isNaN(fromEpoch.getTime())) {
+                return fromEpoch;
+            }
+        }
+    }
+
+    const parsed = new Date(raw);
+    if (!Number.isNaN(parsed.getTime())) {
+        return parsed;
+    }
+
+    const normalized = raw.replace(" UTC", "").replace(" ", "T");
+    const normalizedParsed = new Date(normalized);
+    return Number.isNaN(normalizedParsed.getTime()) ? null : normalizedParsed;
 }
 
 function mapHistoryMessageType(value: string | undefined) {

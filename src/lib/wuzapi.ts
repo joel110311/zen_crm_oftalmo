@@ -74,7 +74,7 @@ export type WuzapiHistoryMessageRecord = {
     chat_jid?: string;
     sender_jid?: string;
     message_id?: string;
-    timestamp?: string;
+    timestamp?: string | number;
     message_type?: string;
     text_content?: string;
     media_link?: string;
