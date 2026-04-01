@@ -5,6 +5,7 @@ import { buildKnowledgeContext } from "@/lib/brain/knowledge";
 import { getSystemSettingsOrDefaults } from "@/lib/system-settings";
 import { formatBusinessScheduleLines, normalizeBusinessHours } from "@/lib/calendar/business-hours";
 import { getContactFullName } from "@/lib/contact-name";
+import { resolvePhoneLadaContext } from "@/lib/phone";
 
 function mapHistoryToMessages(
     history: Array<{
@@ -163,6 +164,7 @@ export async function generateConversationReply(
         senderType: message.senderType,
     }));
     const businessHours = normalizeBusinessHours(settings);
+    const ladaContext = resolvePhoneLadaContext(conversation.contact?.phone || null);
 
     const dedupedHistory =
         baseHistory.length > 0 &&
@@ -196,6 +198,14 @@ DATOS DEL CONTACTO
 - Empresa: ${conversation.contact?.company || "No registrada"}
 - Estado: ${conversation.contact?.status || "lead"}
 
+CONTEXTO TERRITORIAL DETECTADO POR LADA
+- Telefono normalizado: ${ladaContext.normalizedPhone || "No disponible"}
+- Sufijo 10 digitos: ${ladaContext.suffix10 || "No disponible"}
+- Lada 2 digitos: ${ladaContext.lada2 || "No disponible"}
+- Lada 3 digitos: ${ladaContext.lada3 || "No disponible"}
+- Zona inferida: ${ladaContext.zoneLabel}
+- Regla aplicada: ${ladaContext.ruleApplied}
+
 RESPONSABLE HUMANO VERIFICADO EN CRM
 - Nombre: ${conversation.assignedUser?.name || "No asignado"}
 - Email: ${conversation.assignedUser?.email || "No disponible"}
@@ -206,6 +216,10 @@ REGLAS DE RESPUESTA
 - Si el usuario pide algo que no esta en el contexto, dilo con honestidad.
 - Si el mensaje es ambiguo, haz una sola pregunta aclaratoria.
 - Si la conversacion apunta a venta o seguimiento, intenta cerrar con un siguiente paso concreto.
+- Aplica la zona inferida por lada en el tono comercial y en recomendaciones de cobertura.
+- Si la zona inferida es "Monterrey y zona metropolitana", trata al contacto como local de esa zona.
+- Si la zona inferida es "Fuera de Monterrey y zona metropolitana", tratalo como contacto foraneo.
+- No inventes ciudad cuando la zona por lada sea "No se pudo clasificar por lada".
 - Si el usuario hace una pregunta de seguimiento como "si", "esas", "las casas", "ahi" o "de eso", usa el contexto inmediato de la conversacion para entender a que se refiere.
 - Si recibes una instruccion operativa adicional, siguela sin romper el hilo de la conversacion.
 - No cambies abruptamente a preguntas genericas si el usuario ya esta hablando de un tema concreto.

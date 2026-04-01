@@ -1,6 +1,8 @@
 export const PHONE_MIN_DIGITS = 8;
 export const PHONE_MAX_DIGITS = 15;
 
+const MONTERREY_METRO_PREFIXES = new Set(["811", "812"]);
+
 export function normalizePhoneDigits(value: string | null | undefined) {
     return (value || "").replace(/\D/g, "");
 }
@@ -13,6 +15,57 @@ export function getPhoneSuffix(value: string) {
     const normalized = normalizePhoneDigits(value);
     if (!normalized) return "";
     return normalized.length > 10 ? normalized.slice(-10) : normalized;
+}
+
+export type PhoneLadaContext = {
+    normalizedPhone: string;
+    suffix10: string;
+    lada2: string | null;
+    lada3: string | null;
+    zoneKey: "monterrey_metro" | "fuera_monterrey_metro" | "indefinida";
+    zoneLabel: string;
+    ruleApplied: string;
+};
+
+export function resolvePhoneLadaContext(value: string | null | undefined): PhoneLadaContext {
+    const normalizedPhone = normalizePhoneDigits(value);
+    const suffix10 = getPhoneSuffix(normalizedPhone);
+    const lada2 = suffix10.length >= 2 ? suffix10.slice(0, 2) : null;
+    const lada3 = suffix10.length >= 3 ? suffix10.slice(0, 3) : null;
+
+    if (!suffix10 || suffix10.length < 10 || !lada3) {
+        return {
+            normalizedPhone,
+            suffix10,
+            lada2,
+            lada3,
+            zoneKey: "indefinida",
+            zoneLabel: "No se pudo clasificar por lada",
+            ruleApplied: "Telefono insuficiente o no normalizable a 10 digitos.",
+        };
+    }
+
+    if (MONTERREY_METRO_PREFIXES.has(lada3)) {
+        return {
+            normalizedPhone,
+            suffix10,
+            lada2,
+            lada3,
+            zoneKey: "monterrey_metro",
+            zoneLabel: "Monterrey y zona metropolitana",
+            ruleApplied: `Prefijo ${lada3} pertenece al conjunto metropolitano configurado (${Array.from(MONTERREY_METRO_PREFIXES).join(", ")}).`,
+        };
+    }
+
+    return {
+        normalizedPhone,
+        suffix10,
+        lada2,
+        lada3,
+        zoneKey: "fuera_monterrey_metro",
+        zoneLabel: "Fuera de Monterrey y zona metropolitana",
+        ruleApplied: `Prefijo ${lada3} no coincide con los prefijos metropolitanos configurados (${Array.from(MONTERREY_METRO_PREFIXES).join(", ")}).`,
+    };
 }
 
 export function uniquePhoneCandidates(values: Array<string | null | undefined>) {
