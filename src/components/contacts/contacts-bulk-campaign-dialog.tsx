@@ -99,11 +99,10 @@ export function ContactsBulkCampaignDialog({
     const [form, setForm] = useState<QuickCampaignFormState>(DEFAULT_QUICK_CAMPAIGN_FORM);
 
     const previewContact = contacts[0] || null;
-    const selectedNames = useMemo(
-        () => contacts.slice(0, 5).map((contact) => getContactFullName(contact, "Sin nombre")),
+    const firstSelectedName = useMemo(
+        () => (contacts[0] ? getContactFullName(contacts[0], "Sin nombre") : "Sin nombre"),
         [contacts],
     );
-    const firstSelectedName = selectedNames[0] || "Sin nombre";
 
     const previewContent = useMemo(
         () =>
@@ -350,7 +349,7 @@ export function ContactsBulkCampaignDialog({
                 </Button>
             </DialogTrigger>
 
-            <DialogContent className="max-w-[min(96vw,68rem)] rounded-2xl border-border/70 p-0">
+            <DialogContent className="max-w-[min(96vw,72rem)] rounded-2xl border-border/70 p-0">
                 <div className="border-b border-border/60 px-6 py-5">
                     <DialogHeader className="text-left">
                         <DialogTitle className="flex items-center gap-2">
@@ -363,7 +362,7 @@ export function ContactsBulkCampaignDialog({
                     </DialogHeader>
                 </div>
 
-                <div className="grid max-h-[min(88vh,54rem)] gap-0 overflow-hidden xl:grid-cols-[minmax(0,1fr)_minmax(290px,360px)]">
+                <div className="grid max-h-[min(88vh,54rem)] gap-0 overflow-hidden 2xl:grid-cols-[minmax(0,1fr)_minmax(300px,360px)]">
                     <div className="overflow-y-auto px-6 py-5">
                         <div className="space-y-5">
                             <div className="rounded-2xl border bg-muted/20 p-4">
@@ -397,7 +396,7 @@ export function ContactsBulkCampaignDialog({
                                 ) : null}
                             </div>
 
-                            <div className="grid gap-4 lg:grid-cols-2">
+                            <div className="grid gap-4 xl:grid-cols-2">
                                 <div className="space-y-2">
                                     <Label htmlFor="bulk-contacts-name">Nombre de la campana</Label>
                                     <Input
@@ -601,7 +600,7 @@ export function ContactsBulkCampaignDialog({
                         </div>
                     </div>
 
-                    <div className="overflow-y-auto border-t border-border/60 bg-muted/15 px-6 py-5 xl:border-l xl:border-t-0">
+                    <div className="overflow-y-auto border-t border-border/60 bg-muted/15 px-6 py-5 2xl:border-l 2xl:border-t-0">
                         <div className="space-y-4">
                             <div>
                                 <p className="text-sm font-semibold text-foreground">Vista previa</p>

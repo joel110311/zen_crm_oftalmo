@@ -22,6 +22,13 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
+import {
     Table,
     TableBody,
     TableCell,
@@ -77,7 +84,8 @@ interface ContactsPageProps {
     contacts: ContactTableItem[];
 }
 
-const PAGE_SIZE = 10;
+const DEFAULT_PAGE_SIZE = 10;
+const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
 
 function getHostMeta(contact: ContactTableItem) {
     const conversation = contact.conversations[0];
@@ -133,6 +141,7 @@ export function ContactsTable({ contacts }: ContactsPageProps) {
     const { data: session } = useSession();
     const [isPending, startTransition] = useTransition();
     const [currentPage, setCurrentPage] = useState(1);
+    const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
     const [rawSelectedContactIds, setRawSelectedContactIds] = useState<string[]>([]);
 
     const sessionUser = session?.user as { role?: string } | undefined;
@@ -151,13 +160,13 @@ export function ContactsTable({ contacts }: ContactsPageProps) {
         });
     }, 300);
 
-    const totalPages = Math.max(1, Math.ceil(contacts.length / PAGE_SIZE));
+    const totalPages = Math.max(1, Math.ceil(contacts.length / pageSize));
     const safePage = Math.min(currentPage, totalPages);
 
     const pagedContacts = useMemo(() => {
-        const start = (safePage - 1) * PAGE_SIZE;
-        return contacts.slice(start, start + PAGE_SIZE);
-    }, [contacts, safePage]);
+        const start = (safePage - 1) * pageSize;
+        return contacts.slice(start, start + pageSize);
+    }, [contacts, pageSize, safePage]);
 
     const validContactIds = useMemo(
         () => new Set(contacts.map((contact) => contact.id)),
@@ -269,8 +278,19 @@ export function ContactsTable({ contacts }: ContactsPageProps) {
         setRawSelectedContactIds([]);
     };
 
-    const currentRangeStart = contacts.length === 0 ? 0 : (safePage - 1) * PAGE_SIZE + 1;
-    const currentRangeEnd = Math.min(safePage * PAGE_SIZE, contacts.length);
+    const handlePageSizeChange = (value: string) => {
+        const nextPageSize = Number.parseInt(value, 10);
+
+        if (Number.isNaN(nextPageSize) || !PAGE_SIZE_OPTIONS.includes(nextPageSize)) {
+            return;
+        }
+
+        setPageSize(nextPageSize);
+        setCurrentPage(1);
+    };
+
+    const currentRangeStart = contacts.length === 0 ? 0 : (safePage - 1) * pageSize + 1;
+    const currentRangeEnd = Math.min(safePage * pageSize, contacts.length);
 
     return (
         <div className="flex h-full flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
@@ -508,7 +528,23 @@ export function ContactsTable({ contacts }: ContactsPageProps) {
                     Pagina {safePage} de {totalPages}
                 </div>
 
-                <div className="flex items-center gap-2 self-end">
+                <div className="flex flex-wrap items-center justify-end gap-2 self-end">
+                    <div className="flex items-center gap-2">
+                        <Select value={String(pageSize)} onValueChange={handlePageSizeChange}>
+                            <SelectTrigger size="sm" className="h-9 min-w-[84px] rounded-xl">
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent align="end" position="popper">
+                                {PAGE_SIZE_OPTIONS.map((option) => (
+                                    <SelectItem key={option} value={String(option)}>
+                                        {option}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                        <span className="text-sm text-muted-foreground">filas por pagina</span>
+                    </div>
+
                     <Button
                         type="button"
                         variant="outline"
