@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CalendarClock, Loader2, Megaphone, SlidersHorizontal, Wand2 } from "lucide-react";
+import { Loader2, Megaphone, SlidersHorizontal, Wand2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
     Dialog,
@@ -92,7 +92,6 @@ export function ContactsBulkCampaignDialog({
     onCreated,
 }: ContactsBulkCampaignDialogProps) {
     const { toast } = useToast();
-    const startAtInputRef = useRef<HTMLInputElement | null>(null);
     const bodyLayoutRef = useRef<HTMLDivElement | null>(null);
     const [open, setOpen] = useState(false);
     const [templates, setTemplates] = useState<TemplateRecord[]>([]);
@@ -137,21 +136,6 @@ export function ContactsBulkCampaignDialog({
 
     const useTwoColumnBodyLayout = bodyLayoutWidth >= 980;
     const useTwoColumnFieldLayout = bodyLayoutWidth >= 760;
-
-    const handleOpenDateTimePicker = () => {
-        const input = startAtInputRef.current;
-        if (!input) {
-            return;
-        }
-
-        if (typeof input.showPicker === "function") {
-            input.showPicker();
-            return;
-        }
-
-        input.focus();
-        input.click();
-    };
 
     useEffect(() => {
         if (!open) {
@@ -453,28 +437,15 @@ export function ContactsBulkCampaignDialog({
 
                                 <div className="space-y-2">
                                     <Label htmlFor="bulk-contacts-start-at">Inicio</Label>
-                                    <div className="flex gap-2">
-                                        <Input
-                                            id="bulk-contacts-start-at"
-                                            ref={startAtInputRef}
-                                            type="datetime-local"
-                                            value={form.scheduledStartAt}
-                                            onChange={(event) =>
-                                                setForm((current) => ({ ...current, scheduledStartAt: event.target.value }))
-                                            }
-                                            className="h-11 rounded-xl"
-                                        />
-                                        <Button
-                                            type="button"
-                                            variant="outline"
-                                            className="h-11 w-11 shrink-0 rounded-xl px-0"
-                                            onClick={handleOpenDateTimePicker}
-                                            aria-label="Abrir selector de fecha y hora"
-                                            disabled={isSubmitting}
-                                        >
-                                            <CalendarClock className="h-4 w-4" />
-                                        </Button>
-                                    </div>
+                                    <Input
+                                        id="bulk-contacts-start-at"
+                                        type="datetime-local"
+                                        value={form.scheduledStartAt}
+                                        onChange={(event) =>
+                                            setForm((current) => ({ ...current, scheduledStartAt: event.target.value }))
+                                        }
+                                        className="h-11 rounded-xl"
+                                    />
                                 </div>
                             </div>
 
