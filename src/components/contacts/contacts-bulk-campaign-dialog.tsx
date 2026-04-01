@@ -21,6 +21,7 @@ import { TemplatePicker } from "@/components/inbox/template-picker";
 import { WhatsAppTemplatePreview } from "@/components/templates/whatsapp-template-preview";
 import { getContactFullName } from "@/lib/contact-name";
 import { renderTemplateContent, type TemplateRecord } from "@/lib/templates";
+import { cn } from "@/lib/utils";
 
 type CampaignContact = {
     id: string;
@@ -92,10 +93,12 @@ export function ContactsBulkCampaignDialog({
 }: ContactsBulkCampaignDialogProps) {
     const { toast } = useToast();
     const startAtInputRef = useRef<HTMLInputElement | null>(null);
+    const bodyLayoutRef = useRef<HTMLDivElement | null>(null);
     const [open, setOpen] = useState(false);
     const [templates, setTemplates] = useState<TemplateRecord[]>([]);
     const [isLoadingTemplates, setIsLoadingTemplates] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [bodyLayoutWidth, setBodyLayoutWidth] = useState(0);
     const [form, setForm] = useState<QuickCampaignFormState>(DEFAULT_QUICK_CAMPAIGN_FORM);
 
     const previewContact = contacts[0] || null;
@@ -131,6 +134,9 @@ export function ContactsBulkCampaignDialog({
 
         return "Programar envio";
     }, [form.scheduledStartAt]);
+
+    const useTwoColumnBodyLayout = bodyLayoutWidth >= 980;
+    const useTwoColumnFieldLayout = bodyLayoutWidth >= 760;
 
     const handleOpenDateTimePicker = () => {
         const input = startAtInputRef.current;
@@ -179,6 +185,34 @@ export function ContactsBulkCampaignDialog({
             })
             .finally(() => setIsLoadingTemplates(false));
     }, [contacts.length, isLoadingTemplates, open, templates.length, toast]);
+
+    useEffect(() => {
+        if (!open) {
+            setBodyLayoutWidth(0);
+            return;
+        }
+
+        const container = bodyLayoutRef.current;
+        if (!container) {
+            return;
+        }
+
+        const updateWidth = () => {
+            setBodyLayoutWidth(container.getBoundingClientRect().width);
+        };
+
+        updateWidth();
+
+        const observer = new ResizeObserver(() => {
+            updateWidth();
+        });
+
+        observer.observe(container);
+
+        return () => {
+            observer.disconnect();
+        };
+    }, [open]);
 
     const handleOpenChange = (nextOpen: boolean) => {
         setOpen(nextOpen);
@@ -362,7 +396,15 @@ export function ContactsBulkCampaignDialog({
                     </DialogHeader>
                 </div>
 
-                <div className="grid max-h-[min(88vh,54rem)] gap-0 overflow-hidden 2xl:grid-cols-[minmax(0,1fr)_minmax(300px,360px)]">
+                <div
+                    ref={bodyLayoutRef}
+                    className={cn(
+                        "grid max-h-[min(88vh,54rem)] gap-0 overflow-hidden",
+                        useTwoColumnBodyLayout
+                            ? "grid-cols-[minmax(0,1fr)_minmax(300px,360px)]"
+                            : "grid-cols-1",
+                    )}
+                >
                     <div className="overflow-y-auto px-6 py-5">
                         <div className="space-y-5">
                             <div className="rounded-2xl border bg-muted/20 p-4">
@@ -396,7 +438,7 @@ export function ContactsBulkCampaignDialog({
                                 ) : null}
                             </div>
 
-                            <div className="grid gap-4 xl:grid-cols-2">
+                            <div className={cn("grid gap-4", useTwoColumnFieldLayout && "grid-cols-2")}>
                                 <div className="space-y-2">
                                     <Label htmlFor="bulk-contacts-name">Nombre de la campana</Label>
                                     <Input
@@ -600,7 +642,14 @@ export function ContactsBulkCampaignDialog({
                         </div>
                     </div>
 
-                    <div className="overflow-y-auto border-t border-border/60 bg-muted/15 px-6 py-5 2xl:border-l 2xl:border-t-0">
+                    <div
+                        className={cn(
+                            "overflow-y-auto bg-muted/15 px-6 py-5",
+                            useTwoColumnBodyLayout
+                                ? "border-l border-border/60"
+                                : "border-t border-border/60",
+                        )}
+                    >
                         <div className="space-y-4">
                             <div>
                                 <p className="text-sm font-semibold text-foreground">Vista previa</p>
