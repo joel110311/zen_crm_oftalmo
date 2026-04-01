@@ -186,6 +186,22 @@ export default function BrainConfigPage() {
         appointmentDurationMinutes: Number(appointmentDurationMinutes) || 30,
         businessWeeklySchedule,
     });
+    const catalogAssistantEnabled = catalogOfferImages || catalogOfferPdf || catalogIncludeLink;
+
+    const handleCatalogAssistantToggle = (enabled: boolean) => {
+        if (!enabled) {
+            setCatalogOfferImages(false);
+            setCatalogOfferPdf(false);
+            setCatalogIncludeLink(false);
+            return;
+        }
+
+        if (!catalogOfferImages && !catalogOfferPdf && !catalogIncludeLink) {
+            setCatalogOfferImages(true);
+            setCatalogOfferPdf(true);
+            setCatalogIncludeLink(true);
+        }
+    };
 
     return (
         <div className="mx-auto flex h-full max-w-[1280px] flex-col gap-4">
@@ -667,11 +683,25 @@ export default function BrainConfigPage() {
                     </Card>
 
                     <Card>
-                        <CardHeader>
-                            <CardTitle>Catalogo con imagenes y PDF</CardTitle>
-                            <CardDescription>
-                                Controla si el agente ofrece fotos, catalogos en PDF y la liga del desarrollo cuando detecta una ficha del catalogo estructurado.
-                            </CardDescription>
+                        <CardHeader className="space-y-4 sm:flex sm:flex-row sm:items-start sm:justify-between sm:space-y-0">
+                            <div className="space-y-1">
+                                <CardTitle>Catalogo con imagenes y PDF</CardTitle>
+                                <CardDescription>
+                                    Controla si el agente ofrece fotos, catalogos en PDF y la liga del desarrollo cuando detecta una ficha del catalogo estructurado.
+                                </CardDescription>
+                            </div>
+                            <div className="flex items-center justify-between gap-4 rounded-xl border border-border/60 bg-background px-4 py-3 sm:min-w-[260px]">
+                                <div className="space-y-0.5">
+                                    <p className="text-sm font-medium">Asistente de catalogo</p>
+                                    <p className="text-xs text-muted-foreground">
+                                        Apaga todo el flujo de catalogo cuando no se necesite.
+                                    </p>
+                                </div>
+                                <Switch
+                                    checked={catalogAssistantEnabled}
+                                    onCheckedChange={handleCatalogAssistantToggle}
+                                />
+                            </div>
                         </CardHeader>
                         <CardContent className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
                             <div className="space-y-4">
@@ -679,6 +709,7 @@ export default function BrainConfigPage() {
                                     <Checkbox
                                         checked={catalogOfferImages}
                                         onCheckedChange={(checked) => setCatalogOfferImages(Boolean(checked))}
+                                        disabled={!catalogAssistantEnabled}
                                         className="mt-0.5"
                                     />
                                     <div className="space-y-1">
@@ -693,6 +724,7 @@ export default function BrainConfigPage() {
                                     <Checkbox
                                         checked={catalogOfferPdf}
                                         onCheckedChange={(checked) => setCatalogOfferPdf(Boolean(checked))}
+                                        disabled={!catalogAssistantEnabled}
                                         className="mt-0.5"
                                     />
                                     <div className="space-y-1">
@@ -707,6 +739,7 @@ export default function BrainConfigPage() {
                                     <Checkbox
                                         checked={catalogIncludeLink}
                                         onCheckedChange={(checked) => setCatalogIncludeLink(Boolean(checked))}
+                                        disabled={!catalogAssistantEnabled}
                                         className="mt-0.5"
                                     />
                                     <div className="space-y-1">
@@ -725,6 +758,7 @@ export default function BrainConfigPage() {
                                         <Switch
                                             checked={catalogAskBeforeSending}
                                             onCheckedChange={setCatalogAskBeforeSending}
+                                            disabled={!catalogAssistantEnabled}
                                         />
                                     </div>
                                     <p className="mt-2 text-xs text-muted-foreground">
@@ -746,6 +780,7 @@ export default function BrainConfigPage() {
                                             min={1}
                                             max={10}
                                             step={1}
+                                            disabled={!catalogAssistantEnabled}
                                         />
                                     </div>
                                     <p className="mt-3 text-xs text-muted-foreground">
@@ -757,6 +792,11 @@ export default function BrainConfigPage() {
                                     <p className="font-medium text-foreground">Comportamiento esperado</p>
                                     <p>Si una ficha no tiene imagenes o PDF, el agente no los ofrecera.</p>
                                     <p>Si el cliente responde que si, el CRM enviara los assets disponibles de forma secuencial por WhatsApp.</p>
+                                    {!catalogAssistantEnabled ? (
+                                        <p className="text-foreground">
+                                            El asistente de catalogo esta apagado: el bot ignorara fichas y no ofrecera assets automaticamente.
+                                        </p>
+                                    ) : null}
                                 </div>
                             </div>
                         </CardContent>

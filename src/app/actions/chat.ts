@@ -133,6 +133,16 @@ function hasRecentCatalogOffer(offeredAt: Date | null | undefined) {
     return Date.now() - offeredAt.getTime() <= CATALOG_OFFER_EXPIRY_MS;
 }
 
+function isCatalogAssistantEnabled(
+    settings: Awaited<ReturnType<typeof getSystemSettingsOrDefaults>>,
+) {
+    return Boolean(
+        settings.catalogOfferImages ||
+            settings.catalogOfferPdf ||
+            settings.catalogIncludeLink,
+    );
+}
+
 function buildCatalogInstruction(
     catalogItem: CatalogItemMatch,
     developmentContext: Awaited<ReturnType<typeof getCatalogDevelopmentContext>> | null,
@@ -603,6 +613,10 @@ async function maybeHandleCatalogAssetReply(params: {
         | null
         | undefined;
 }) {
+    if (!isCatalogAssistantEnabled(params.settings)) {
+        return false;
+    }
+
     const state = params.catalogState;
     if (!state?.catalogItem) {
         return false;
@@ -711,6 +725,7 @@ async function maybeSendAutomatedReply(
 ) {
     try {
         const settings = await getSystemSettingsOrDefaults();
+        const catalogAssistantEnabled = isCatalogAssistantEnabled(settings);
         if (!settings.isBotEnabled) return;
         if (shouldSkipAutoReplyText(latestUserMessage)) return;
 
@@ -802,13 +817,15 @@ async function maybeSendAutomatedReply(
             }
         }
 
-        const handledCatalogReply = await maybeHandleCatalogAssetReply({
-            conversationId,
-            phone: latestConversation.contact.phone,
-            latestUserMessage,
-            settings,
-            catalogState: latestConversation.catalogState,
-        });
+        const handledCatalogReply = catalogAssistantEnabled
+            ? await maybeHandleCatalogAssetReply({
+                conversationId,
+                phone: latestConversation.contact.phone,
+                latestUserMessage,
+                settings,
+                catalogState: latestConversation.catalogState,
+            })
+            : false;
 
         if (handledCatalogReply) {
             return;
@@ -835,6 +852,7 @@ async function maybeSendAutomatedReply(
         let sendCatalogImagesNow = false;
         let sendCatalogPdfNow = false;
         let sendCatalogLinkNow = false;
+        let sendOnlyFirstCatalogImageNow = false;
         let usedCatalogAvailabilitySummary = false;
         let catalogDevelopmentContext: Awaited<ReturnType<typeof getCatalogDevelopmentContext>> | null = null;
         let replyFromModel = false;
@@ -856,118 +874,136 @@ async function maybeSendAutomatedReply(
                     ].join(" ")
                     : null;
 
-            const activeCatalogItem = latestConversation.catalogState?.catalogItem || null;
-            const shouldStickToCurrentDevelopment = activeCatalogItem
-                ? (
-                    latestMessageMentionsDevelopment(latestUserMessage, activeCatalogItem.development) ||
-                    isCatalogDetailFollowUp(latestUserMessage)
-                )
-                : false;
-            const catalogLookupQuery = shouldStickToCurrentDevelopment
-                ? latestUserMessage
-                : buildCatalogLookupQuery(
-                    latestConversation.messages.map((message) => ({
-                        content: message.content,
-                        direction: message.direction,
-                    })),
-                    latestUserMessage,
-                );
-            const developmentScopedCatalogItem =
-                shouldStickToCurrentDevelopment && activeCatalogItem
-                    ? await findBestCatalogItemInDevelopment(
-                        activeCatalogItem.development,
-                        latestUserMessage,
+            if (catalogAssistantEnabled) {
+                const activeCatalogItem = latestConversation.catalogState?.catalogItem || null;
+                const shouldStickToCurrentDevelopment = activeCatalogItem
+                    ? (
+                        latestMessageMentionsDevelopment(latestUserMessage, activeCatalogItem.development) ||
+                        isCatalogDetailFollowUp(latestUserMessage)
                     )
-                    : null;
-            const latestCatalogAvailabilitySummary = shouldStickToCurrentDevelopment
-                ? null
-                : await findCatalogAvailabilitySummary(latestUserMessage);
-            const latestRequestedLocation = latestCatalogAvailabilitySummary?.requestedLocation || null;
-            const catalogAvailabilitySummary = latestCatalogAvailabilitySummary ||
-                (
-                    !shouldStickToCurrentDevelopment &&
-                    catalogLookupQuery !== latestUserMessage &&
-                    !latestRequestedLocation
-                        ? await findCatalogAvailabilitySummary(catalogLookupQuery)
-                        : null
-                );
-            const shouldSuppressCatalogItemLookup = Boolean(catalogAvailabilitySummary?.noDirectMatches);
-            catalogItem =
-                shouldSuppressCatalogItemLookup
-                    ? null
-                    : developmentScopedCatalogItem ||
-                await findBestCatalogItem(latestUserMessage) ||
-                (
-                    !shouldStickToCurrentDevelopment &&
-                    !shouldSuppressCatalogItemLookup &&
-                    catalogLookupQuery !== latestUserMessage
-                        ? await findBestCatalogItem(catalogLookupQuery)
-                        : null
-                ) ||
-                (
-                    shouldStickToCurrentDevelopment
-                        ? activeCatalogItem
-                        : null
-                );
-            const catalogIntent = parseCatalogAssetIntent(latestUserMessage);
-            const shouldPreferCatalogSummary =
-                Boolean(catalogAvailabilitySummary) &&
-                !shouldStickToCurrentDevelopment &&
-                (!catalogItem || !latestMessageMentionsDevelopment(latestUserMessage, catalogItem.development));
-
-            if (shouldPreferCatalogSummary) {
-                reply = buildCatalogAvailabilityReply(catalogAvailabilitySummary);
-                catalogItem = null;
-                usedCatalogAvailabilitySummary = true;
-            } else if (catalogItem) {
-                catalogDevelopmentContext = await getCatalogDevelopmentContext(
-                    catalogItem.id,
-                    6,
-                    latestUserMessage,
-                );
-                const { imageAssets, pdfAsset, linkAsset } = splitCatalogAssets(
-                    catalogItem.assets,
-                    settings.catalogMaxImagesToSend,
-                );
-
-                const requestedImages = Boolean(catalogIntent.wantsImages && imageAssets.length > 0);
-                const requestedPdf = Boolean(catalogIntent.wantsPdf && pdfAsset);
-
-                sendCatalogImagesNow =
-                    requestedImages ||
-                    (!settings.catalogAskBeforeSending &&
-                        settings.catalogOfferImages &&
-                        imageAssets.length > 0);
-                sendCatalogPdfNow =
-                    requestedPdf ||
-                    (!settings.catalogAskBeforeSending &&
-                        settings.catalogOfferPdf &&
-                        Boolean(pdfAsset));
-
-                pendingCatalogImages =
-                    settings.catalogAskBeforeSending &&
-                    settings.catalogOfferImages &&
-                    imageAssets.length > 0 &&
-                    !requestedImages;
-                pendingCatalogPdf =
-                    settings.catalogAskBeforeSending &&
-                    settings.catalogOfferPdf &&
-                    Boolean(pdfAsset) &&
-                    !requestedPdf;
-
-                sendCatalogLinkNow =
-                    settings.catalogIncludeLink &&
-                    Boolean(linkAsset) &&
-                    (
-                        sendCatalogImagesNow ||
-                        sendCatalogPdfNow ||
-                        (!pendingCatalogImages && !pendingCatalogPdf)
+                    : false;
+                const catalogLookupQuery = shouldStickToCurrentDevelopment
+                    ? latestUserMessage
+                    : buildCatalogLookupQuery(
+                        latestConversation.messages.map((message) => ({
+                            content: message.content,
+                            direction: message.direction,
+                        })),
+                        latestUserMessage,
                     );
-                pendingCatalogLink =
-                    settings.catalogIncludeLink &&
-                    Boolean(linkAsset) &&
-                    !sendCatalogLinkNow &&
-                    (pendingCatalogImages || pendingCatalogPdf);
+                const developmentScopedCatalogItem =
+                    shouldStickToCurrentDevelopment && activeCatalogItem
+                        ? await findBestCatalogItemInDevelopment(
+                            activeCatalogItem.development,
+                            latestUserMessage,
+                        )
+                        : null;
+                const latestCatalogAvailabilitySummary = shouldStickToCurrentDevelopment
+                    ? null
+                    : await findCatalogAvailabilitySummary(latestUserMessage);
+                const latestRequestedLocation = latestCatalogAvailabilitySummary?.requestedLocation || null;
+                const catalogAvailabilitySummary = latestCatalogAvailabilitySummary ||
+                    (
+                        !shouldStickToCurrentDevelopment &&
+                        catalogLookupQuery !== latestUserMessage &&
+                        !latestRequestedLocation
+                            ? await findCatalogAvailabilitySummary(catalogLookupQuery)
+                            : null
+                    );
+                const shouldSuppressCatalogItemLookup = Boolean(catalogAvailabilitySummary?.noDirectMatches);
+                catalogItem =
+                    shouldSuppressCatalogItemLookup
+                        ? null
+                        : developmentScopedCatalogItem ||
+                    await findBestCatalogItem(latestUserMessage) ||
+                    (
+                        !shouldStickToCurrentDevelopment &&
+                        !shouldSuppressCatalogItemLookup &&
+                        catalogLookupQuery !== latestUserMessage
+                            ? await findBestCatalogItem(catalogLookupQuery)
+                            : null
+                    ) ||
+                    (
+                        shouldStickToCurrentDevelopment
+                            ? activeCatalogItem
+                            : null
+                    );
+                const catalogIntent = parseCatalogAssetIntent(latestUserMessage);
+                const shouldPreferCatalogSummary =
+                    Boolean(catalogAvailabilitySummary) &&
+                    !shouldStickToCurrentDevelopment &&
+                    (!catalogItem || !latestMessageMentionsDevelopment(latestUserMessage, catalogItem.development));
+
+                if (shouldPreferCatalogSummary) {
+                    reply = buildCatalogAvailabilityReply(catalogAvailabilitySummary);
+                    catalogItem = null;
+                    usedCatalogAvailabilitySummary = true;
+                } else if (catalogItem) {
+                    catalogDevelopmentContext = await getCatalogDevelopmentContext(
+                        catalogItem.id,
+                        6,
+                        latestUserMessage,
+                    );
+                    const { imageAssets, pdfAsset, linkAsset } = splitCatalogAssets(
+                        catalogItem.assets,
+                        settings.catalogMaxImagesToSend,
+                    );
+
+                    const requestedImages = Boolean(catalogIntent.wantsImages && imageAssets.length > 0);
+                    const requestedPdf = Boolean(catalogIntent.wantsPdf && pdfAsset);
+                    const alreadySentCurrentItemAssets = Boolean(
+                        latestConversation.catalogState?.catalogItemId === catalogItem.id &&
+                        latestConversation.catalogState?.lastSentAt,
+                    );
+                    const shouldAutoSendFirstImage =
+                        settings.catalogAskBeforeSending &&
+                        settings.catalogOfferImages &&
+                        imageAssets.length > 0 &&
+                        !requestedImages &&
+                        !alreadySentCurrentItemAssets;
+                    const remainingImagesAfterAutoSend = Math.max(
+                        0,
+                        imageAssets.length - (shouldAutoSendFirstImage ? 1 : 0),
+                    );
+
+                    sendOnlyFirstCatalogImageNow = shouldAutoSendFirstImage;
+                    sendCatalogImagesNow =
+                        requestedImages ||
+                        shouldAutoSendFirstImage ||
+                        (!settings.catalogAskBeforeSending &&
+                            settings.catalogOfferImages &&
+                            imageAssets.length > 0);
+                    sendCatalogPdfNow =
+                        requestedPdf ||
+                        (!settings.catalogAskBeforeSending &&
+                            settings.catalogOfferPdf &&
+                            Boolean(pdfAsset));
+
+                    pendingCatalogImages =
+                        settings.catalogAskBeforeSending &&
+                        settings.catalogOfferImages &&
+                        remainingImagesAfterAutoSend > 0 &&
+                        !requestedImages;
+                    pendingCatalogPdf =
+                        settings.catalogAskBeforeSending &&
+                        settings.catalogOfferPdf &&
+                        Boolean(pdfAsset) &&
+                        !requestedPdf;
+
+                    sendCatalogLinkNow =
+                        settings.catalogIncludeLink &&
+                        Boolean(linkAsset) &&
+                        (
+                            sendCatalogImagesNow ||
+                            sendCatalogPdfNow ||
+                            (!pendingCatalogImages && !pendingCatalogPdf)
+                        );
+                    pendingCatalogLink =
+                        settings.catalogIncludeLink &&
+                        Boolean(linkAsset) &&
+                        !sendCatalogLinkNow &&
+                        (pendingCatalogImages || pendingCatalogPdf);
+                }
             }
 
             if (!reply) {
@@ -1006,15 +1042,20 @@ async function maybeSendAutomatedReply(
             sendCatalogImagesNow = false;
             sendCatalogPdfNow = false;
             sendCatalogLinkNow = false;
+            sendOnlyFirstCatalogImageNow = false;
         }
 
         if (catalogItem && settings.catalogAskBeforeSending) {
-            const offerText = buildCatalogOfferText({
-                offerImages: pendingCatalogImages,
-                imageCount: splitCatalogAssets(
+            const imageCountForOffer = Math.max(
+                0,
+                splitCatalogAssets(
                     catalogItem.assets,
                     settings.catalogMaxImagesToSend,
-                ).imageAssets.length,
+                ).imageAssets.length - (sendOnlyFirstCatalogImageNow ? 1 : 0),
+            );
+            const offerText = buildCatalogOfferText({
+                offerImages: pendingCatalogImages,
+                imageCount: imageCountForOffer,
                 offerPdf: pendingCatalogPdf,
             });
             if (shouldAppendCatalogOffer(reply, {
@@ -1047,13 +1088,16 @@ async function maybeSendAutomatedReply(
                 catalogItem.assets,
                 settings.catalogMaxImagesToSend,
             );
+            const imageAssetsToSend = sendOnlyFirstCatalogImageNow
+                ? imageAssets.slice(0, 1)
+                : imageAssets;
 
             if (sendCatalogImagesNow || sendCatalogPdfNow || sendCatalogLinkNow) {
                 await sendCatalogAssets({
                     conversationId,
                     phone: latestConversation.contact.phone,
                     development: catalogItem.development,
-                    imageAssets,
+                    imageAssets: imageAssetsToSend,
                     pdfAsset,
                     linkAsset,
                     sendImages: sendCatalogImagesNow,

@@ -51,7 +51,7 @@ const SOURCE_OPTIONS = [
     { value: "sitemap", label: "Sitemap", icon: Globe, help: "Importa URLs desde un sitemap XML." },
     { value: "github", label: "GitHub", icon: Github, help: "Lee codigo y docs de un repositorio publico." },
     { value: "youtube", label: "YouTube", icon: Youtube, help: "Usa la transcripcion del video como contexto." },
-    { value: "text", label: "Texto", icon: Bot, help: "Notas, FAQs, prompts o guias internas." },
+    { value: "text", label: "Bloc de notas", icon: Bot, help: "Notas rapidas, FAQs, prompts y fichas de producto." },
     { value: "file", label: "Archivo", icon: FileText, help: "PDF, TXT, MD, CSV, JSON, DOCX, MP3, MP4 y mas." },
 ];
 
@@ -266,11 +266,11 @@ export function KnowledgeBase() {
 
                     {sourceType === "text" ? (
                         <div className="space-y-2">
-                            <Label>Contenido</Label>
+                            <Label>Contenido del bloc</Label>
                             <Textarea
                                 value={noteContent}
                                 onChange={(event) => setNoteContent(event.target.value)}
-                                placeholder="Pega FAQs, instrucciones, politicas, informacion comercial o prompts internos."
+                                placeholder="Pega FAQs, instrucciones o fichas cortas (producto + descripcion + URL de imagen) para respuestas rapidas."
                                 className="min-h-[180px]"
                             />
                         </div>
