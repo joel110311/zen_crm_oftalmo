@@ -28,6 +28,7 @@ type WhatsAppTemplatePreviewProps = {
     mediaFileName?: string | null;
     className?: string;
     showComposer?: boolean;
+    density?: "default" | "compact";
 };
 
 const PHONE_WALLPAPER_PATTERN = `url("data:image/svg+xml,${encodeURIComponent(`
@@ -54,14 +55,17 @@ export function WhatsAppTemplatePreview({
     mediaFileName,
     className,
     showComposer = true,
+    density = "default",
 }: WhatsAppTemplatePreviewProps) {
     const safeMediaUrl = getSafeMediaUrl(mediaUrl);
     const hasText = Boolean(content.trim());
+    const isCompact = density === "compact";
 
     return (
         <div
             className={cn(
-                "mx-auto w-full max-w-[428px] rounded-[2.35rem] bg-white p-2.5 shadow-[0_28px_70px_-36px_rgba(15,23,42,0.34)] ring-1 ring-slate-200/80",
+                "mx-auto w-full rounded-[2.35rem] bg-white p-2.5 shadow-[0_28px_70px_-36px_rgba(15,23,42,0.34)] ring-1 ring-slate-200/80",
+                isCompact ? "max-w-[360px]" : "max-w-[428px]",
                 className,
             )}
         >
@@ -91,7 +95,10 @@ export function WhatsAppTemplatePreview({
                 </div>
 
                 <div
-                    className="flex h-[35rem] flex-col justify-between px-4 pb-4 pt-5 sm:h-[37rem]"
+                    className={cn(
+                        "flex flex-col justify-between px-4 pb-4 pt-5",
+                        isCompact ? "h-[28rem] sm:h-[30rem]" : "h-[35rem] sm:h-[37rem]",
+                    )}
                     style={{
                         backgroundImage: `${PHONE_WALLPAPER_PATTERN}, linear-gradient(180deg, #efe5d9 0%, #e8ddd1 100%)`,
                         backgroundRepeat: "repeat, no-repeat",
@@ -107,10 +114,18 @@ export function WhatsAppTemplatePreview({
                                             <img
                                                 src={safeMediaUrl}
                                                 alt={mediaFileName || "Vista previa"}
-                                                className="h-44 w-full rounded-[1rem] object-cover"
+                                                className={cn(
+                                                    "w-full rounded-[1rem] object-cover",
+                                                    isCompact ? "h-32" : "h-44",
+                                                )}
                                             />
                                         ) : (
-                                            <div className="flex h-44 w-full items-center justify-center rounded-[1rem] bg-slate-100 text-slate-400">
+                                            <div
+                                                className={cn(
+                                                    "flex w-full items-center justify-center rounded-[1rem] bg-slate-100 text-slate-400",
+                                                    isCompact ? "h-32" : "h-44",
+                                                )}
+                                            >
                                                 <ImageIcon className="h-9 w-9" />
                                             </div>
                                         )}

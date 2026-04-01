@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { CalendarClock, Loader2, Megaphone, Wand2 } from "lucide-react";
+import { CalendarClock, Loader2, Megaphone, SlidersHorizontal, Wand2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
     Dialog,
@@ -333,7 +333,7 @@ export function ContactsBulkCampaignDialog({
                 </Button>
             </DialogTrigger>
 
-            <DialogContent className="max-w-6xl rounded-2xl border-border/70 p-0">
+            <DialogContent className="max-w-[min(96vw,68rem)] rounded-2xl border-border/70 p-0">
                 <div className="border-b border-border/60 px-6 py-5">
                     <DialogHeader className="text-left">
                         <DialogTitle className="flex items-center gap-2">
@@ -346,7 +346,7 @@ export function ContactsBulkCampaignDialog({
                     </DialogHeader>
                 </div>
 
-                <div className="grid max-h-[min(86vh,52rem)] gap-0 overflow-hidden xl:grid-cols-[minmax(0,1.05fr)_minmax(340px,0.95fr)]">
+                <div className="grid max-h-[min(88vh,54rem)] gap-0 overflow-hidden lg:grid-cols-[minmax(0,1fr)_minmax(290px,360px)]">
                     <div className="overflow-y-auto px-6 py-5">
                         <div className="space-y-5">
                             <div className="rounded-2xl border bg-muted/20 p-4">
@@ -362,7 +362,7 @@ export function ContactsBulkCampaignDialog({
                                                 : ""}
                                         </p>
                                     </div>
-                                    <div className="flex items-center gap-3 rounded-xl border bg-background px-3 py-2">
+                                    <div className="flex w-full items-center justify-between gap-3 rounded-xl border bg-background px-3 py-2 sm:w-auto">
                                         <span className="text-sm font-medium text-foreground">Cargar plantilla</span>
                                         {isLoadingTemplates ? (
                                             <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
@@ -421,148 +421,162 @@ export function ContactsBulkCampaignDialog({
                                         setForm((current) => ({ ...current, content: event.target.value }))
                                     }
                                     placeholder="Escribe el mensaje o carga una plantilla para precargarlo..."
-                                    className="min-h-[160px] rounded-2xl"
+                                    className="min-h-[140px] rounded-2xl"
                                 />
                             </div>
 
-                            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                                <div className="space-y-2">
-                                    <Label>Sub-lote</Label>
-                                    <Input
-                                        type="number"
-                                        min={1}
-                                        max={100}
-                                        value={String(form.batchSize)}
-                                        onChange={(event) =>
-                                            setForm((current) => ({
-                                                ...current,
-                                                batchSize: Math.max(1, Number.parseInt(event.target.value || "1", 10) || 1),
-                                            }))
-                                        }
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label>Pausa por lote (min)</Label>
-                                    <Input
-                                        type="number"
-                                        min={0}
-                                        max={1440}
-                                        value={String(form.batchDelayMinutes)}
-                                        onChange={(event) =>
-                                            setForm((current) => ({
-                                                ...current,
-                                                batchDelayMinutes: Math.max(0, Number.parseInt(event.target.value || "0", 10) || 0),
-                                            }))
-                                        }
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label>Delay min (seg)</Label>
-                                    <Input
-                                        type="number"
-                                        min={5}
-                                        max={1800}
-                                        value={String(form.randomDelayMinSeconds)}
-                                        onChange={(event) =>
-                                            setForm((current) => ({
-                                                ...current,
-                                                randomDelayMinSeconds: Math.max(5, Number.parseInt(event.target.value || "5", 10) || 5),
-                                            }))
-                                        }
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label>Delay max (seg)</Label>
-                                    <Input
-                                        type="number"
-                                        min={5}
-                                        max={1800}
-                                        value={String(form.randomDelayMaxSeconds)}
-                                        onChange={(event) =>
-                                            setForm((current) => ({
-                                                ...current,
-                                                randomDelayMaxSeconds: Math.max(5, Number.parseInt(event.target.value || "5", 10) || 5),
-                                            }))
-                                        }
-                                    />
-                                </div>
-                            </div>
-
-                            <div className="grid gap-4 md:grid-cols-2">
-                                <div className="space-y-2">
-                                    <Label>Seguimientos extra</Label>
-                                    <Input
-                                        type="number"
-                                        min={0}
-                                        max={12}
-                                        value={String(form.followUpCount)}
-                                        onChange={(event) =>
-                                            setForm((current) => ({
-                                                ...current,
-                                                followUpCount: Math.min(
-                                                    12,
-                                                    Math.max(0, Number.parseInt(event.target.value || "0", 10) || 0),
-                                                ),
-                                            }))
-                                        }
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label>Cadencia seguimientos (dias)</Label>
-                                    <Input
-                                        type="number"
-                                        min={1}
-                                        max={30}
-                                        value={String(form.followUpDelayDays)}
-                                        disabled={form.followUpCount === 0}
-                                        onChange={(event) =>
-                                            setForm((current) => ({
-                                                ...current,
-                                                followUpDelayDays: Math.min(
-                                                    30,
-                                                    Math.max(1, Number.parseInt(event.target.value || "1", 10) || 1),
-                                                ),
-                                            }))
-                                        }
-                                    />
-                                </div>
-                            </div>
-
-                            <div className="grid gap-3 md:grid-cols-2">
-                                <div className="flex items-start justify-between gap-4 rounded-2xl border bg-background px-4 py-3">
-                                    <div>
-                                        <p className="font-medium text-foreground">Respetar horario habil</p>
-                                        <p className="text-sm text-muted-foreground">
-                                            Usa la franja configurada en el CRM.
-                                        </p>
+                            <details className="rounded-2xl border bg-background open:pb-4">
+                                <summary className="flex cursor-pointer list-none items-center justify-between rounded-2xl px-4 py-3">
+                                    <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                                        <SlidersHorizontal className="h-4 w-4 text-muted-foreground" />
+                                        Opciones avanzadas
                                     </div>
-                                    <Switch
-                                        checked={form.respectBusinessHours}
-                                        onCheckedChange={(checked) =>
-                                            setForm((current) => ({ ...current, respectBusinessHours: checked }))
-                                        }
-                                    />
-                                </div>
+                                    <span className="text-xs text-muted-foreground">
+                                        Lotes, delays, seguimientos y reglas
+                                    </span>
+                                </summary>
 
-                                <div className="flex items-start justify-between gap-4 rounded-2xl border bg-background px-4 py-3">
-                                    <div>
-                                        <p className="font-medium text-foreground">Detener al responder</p>
-                                        <p className="text-sm text-muted-foreground">
-                                            Corta la secuencia si el lead responde.
-                                        </p>
+                                <div className="space-y-4 px-4">
+                                    <div className="grid gap-4 sm:grid-cols-2">
+                                        <div className="space-y-2">
+                                            <Label>Sub-lote</Label>
+                                            <Input
+                                                type="number"
+                                                min={1}
+                                                max={100}
+                                                value={String(form.batchSize)}
+                                                onChange={(event) =>
+                                                    setForm((current) => ({
+                                                        ...current,
+                                                        batchSize: Math.max(1, Number.parseInt(event.target.value || "1", 10) || 1),
+                                                    }))
+                                                }
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label>Pausa por lote (min)</Label>
+                                            <Input
+                                                type="number"
+                                                min={0}
+                                                max={1440}
+                                                value={String(form.batchDelayMinutes)}
+                                                onChange={(event) =>
+                                                    setForm((current) => ({
+                                                        ...current,
+                                                        batchDelayMinutes: Math.max(0, Number.parseInt(event.target.value || "0", 10) || 0),
+                                                    }))
+                                                }
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label>Delay min (seg)</Label>
+                                            <Input
+                                                type="number"
+                                                min={5}
+                                                max={1800}
+                                                value={String(form.randomDelayMinSeconds)}
+                                                onChange={(event) =>
+                                                    setForm((current) => ({
+                                                        ...current,
+                                                        randomDelayMinSeconds: Math.max(5, Number.parseInt(event.target.value || "5", 10) || 5),
+                                                    }))
+                                                }
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label>Delay max (seg)</Label>
+                                            <Input
+                                                type="number"
+                                                min={5}
+                                                max={1800}
+                                                value={String(form.randomDelayMaxSeconds)}
+                                                onChange={(event) =>
+                                                    setForm((current) => ({
+                                                        ...current,
+                                                        randomDelayMaxSeconds: Math.max(5, Number.parseInt(event.target.value || "5", 10) || 5),
+                                                    }))
+                                                }
+                                            />
+                                        </div>
                                     </div>
-                                    <Switch
-                                        checked={form.stopOnReply}
-                                        onCheckedChange={(checked) =>
-                                            setForm((current) => ({ ...current, stopOnReply: checked }))
-                                        }
-                                    />
+
+                                    <div className="grid gap-4 sm:grid-cols-2">
+                                        <div className="space-y-2">
+                                            <Label>Seguimientos extra</Label>
+                                            <Input
+                                                type="number"
+                                                min={0}
+                                                max={12}
+                                                value={String(form.followUpCount)}
+                                                onChange={(event) =>
+                                                    setForm((current) => ({
+                                                        ...current,
+                                                        followUpCount: Math.min(
+                                                            12,
+                                                            Math.max(0, Number.parseInt(event.target.value || "0", 10) || 0),
+                                                        ),
+                                                    }))
+                                                }
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label>Cadencia seguimientos (dias)</Label>
+                                            <Input
+                                                type="number"
+                                                min={1}
+                                                max={30}
+                                                value={String(form.followUpDelayDays)}
+                                                disabled={form.followUpCount === 0}
+                                                onChange={(event) =>
+                                                    setForm((current) => ({
+                                                        ...current,
+                                                        followUpDelayDays: Math.min(
+                                                            30,
+                                                            Math.max(1, Number.parseInt(event.target.value || "1", 10) || 1),
+                                                        ),
+                                                    }))
+                                                }
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="grid gap-3 sm:grid-cols-2">
+                                        <div className="flex items-start justify-between gap-4 rounded-2xl border bg-muted/15 px-4 py-3">
+                                            <div>
+                                                <p className="font-medium text-foreground">Respetar horario habil</p>
+                                                <p className="text-sm text-muted-foreground">
+                                                    Usa la franja configurada en el CRM.
+                                                </p>
+                                            </div>
+                                            <Switch
+                                                checked={form.respectBusinessHours}
+                                                onCheckedChange={(checked) =>
+                                                    setForm((current) => ({ ...current, respectBusinessHours: checked }))
+                                                }
+                                            />
+                                        </div>
+
+                                        <div className="flex items-start justify-between gap-4 rounded-2xl border bg-muted/15 px-4 py-3">
+                                            <div>
+                                                <p className="font-medium text-foreground">Detener al responder</p>
+                                                <p className="text-sm text-muted-foreground">
+                                                    Corta la secuencia si el lead responde.
+                                                </p>
+                                            </div>
+                                            <Switch
+                                                checked={form.stopOnReply}
+                                                onCheckedChange={(checked) =>
+                                                    setForm((current) => ({ ...current, stopOnReply: checked }))
+                                                }
+                                            />
+                                        </div>
+                                    </div>
                                 </div>
-                            </div>
+                            </details>
                         </div>
                     </div>
 
-                    <div className="border-t border-border/60 bg-muted/15 px-6 py-5 xl:border-l xl:border-t-0">
+                    <div className="overflow-y-auto border-t border-border/60 bg-muted/15 px-6 py-5 lg:border-l lg:border-t-0">
                         <div className="space-y-4">
                             <div>
                                 <p className="text-sm font-semibold text-foreground">Vista previa</p>
@@ -579,6 +593,7 @@ export function ContactsBulkCampaignDialog({
                                 mediaUrl={form.mediaUrl}
                                 mediaType={form.mediaType}
                                 mediaFileName={form.mediaFileName}
+                                density="compact"
                             />
 
                             <div className="rounded-2xl border bg-background p-4 text-sm text-muted-foreground">
