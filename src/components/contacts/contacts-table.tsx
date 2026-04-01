@@ -2,21 +2,25 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useSession } from "next-auth/react";
 import Link from "next/link";
 import { useDebouncedCallback } from "use-debounce";
 import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
 import {
+    CheckSquare2,
     ChevronLeft,
     ChevronRight,
     Download,
     RotateCw,
     Search,
     Star,
+    X,
 } from "lucide-react";
 
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
     Table,
     TableBody,
@@ -28,16 +32,55 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { NewContactDialog } from "@/components/contacts/new-contact-dialog";
 import { ContactActions } from "@/components/contacts/contact-actions";
+import { ContactsBulkCampaignDialog } from "@/components/contacts/contacts-bulk-campaign-dialog";
+import { ContactsBulkDeleteDialog } from "@/components/contacts/contacts-bulk-delete-dialog";
 import { getContactFullName, getContactInitial } from "@/lib/contact-name";
+import { cn } from "@/lib/utils";
+
+type ContactConversationSummary = {
+    botActive: boolean;
+    assignedUser: {
+        name: string | null;
+    } | null;
+    updatedAt: string | Date;
+};
+
+type ContactDealSummary = {
+    stage: {
+        name: string;
+        color: string;
+        isClosedWon: boolean;
+        isClosedLost: boolean;
+    } | null;
+    intelligence: {
+        score: number;
+        interestStatus: string;
+        currentStep: string;
+    } | null;
+};
+
+type ContactTableItem = {
+    id: string;
+    name: string | null;
+    lastName: string | null;
+    email: string | null;
+    phone: string | null;
+    company: string | null;
+    status: string;
+    createdAt: string | Date;
+    whatsappAvatarUrl: string | null;
+    conversations: ContactConversationSummary[];
+    deals: ContactDealSummary[];
+};
 
 interface ContactsPageProps {
-    contacts: any[];
+    contacts: ContactTableItem[];
 }
 
 const PAGE_SIZE = 10;
 
-function getHostMeta(contact: any) {
-    const conversation = contact.conversations?.[0];
+function getHostMeta(contact: ContactTableItem) {
+    const conversation = contact.conversations[0];
 
     if (!conversation) {
         return {
@@ -62,8 +105,8 @@ function getHostMeta(contact: any) {
     };
 }
 
-function getStatusMeta(contact: any) {
-    const stage = contact.deals?.[0]?.stage;
+function getStatusMeta(contact: ContactTableItem) {
+    const stage = contact.deals[0]?.stage;
     const fallbackMap: Record<string, { label: string; color: string }> = {
         lead: { label: "Nuevo lead", color: "#94A3B8" },
         qualified: { label: "Calificado", color: "#10B981" },
@@ -77,8 +120,8 @@ function getStatusMeta(contact: any) {
     };
 }
 
-function getScoreMeta(contact: any) {
-    const score = contact.deals?.[0]?.intelligence?.score ?? 0;
+function getScoreMeta(contact: ContactTableItem) {
+    const score = contact.deals[0]?.intelligence?.score ?? 0;
     const tone =
         score >= 70 ? "text-emerald-600" : score >= 40 ? "text-amber-500" : "text-slate-400";
     return { score, tone };
@@ -87,8 +130,13 @@ function getScoreMeta(contact: any) {
 export function ContactsTable({ contacts }: ContactsPageProps) {
     const router = useRouter();
     const searchParams = useSearchParams();
+    const { data: session } = useSession();
     const [isPending, startTransition] = useTransition();
     const [currentPage, setCurrentPage] = useState(1);
+    const [rawSelectedContactIds, setRawSelectedContactIds] = useState<string[]>([]);
+
+    const sessionUser = session?.user as { role?: string } | undefined;
+    const isSuperadmin = sessionUser?.role === "SUPERADMIN";
 
     const handleSearch = useDebouncedCallback((term: string) => {
         const params = new URLSearchParams(searchParams);
@@ -111,6 +159,43 @@ export function ContactsTable({ contacts }: ContactsPageProps) {
         return contacts.slice(start, start + PAGE_SIZE);
     }, [contacts, safePage]);
 
+    const validContactIds = useMemo(
+        () => new Set(contacts.map((contact) => contact.id)),
+        [contacts],
+    );
+
+    const selectedContactIds = useMemo(
+        () => rawSelectedContactIds.filter((contactId) => validContactIds.has(contactId)),
+        [rawSelectedContactIds, validContactIds],
+    );
+
+    const selectedContactIdSet = useMemo(
+        () => new Set(selectedContactIds),
+        [selectedContactIds],
+    );
+
+    const selectedContacts = useMemo(
+        () => contacts.filter((contact) => selectedContactIdSet.has(contact.id)),
+        [contacts, selectedContactIdSet],
+    );
+
+    const currentPageSelectedCount = useMemo(
+        () => pagedContacts.filter((contact) => selectedContactIdSet.has(contact.id)).length,
+        [pagedContacts, selectedContactIdSet],
+    );
+
+    const pageSelectionState =
+        pagedContacts.length === 0
+            ? false
+            : currentPageSelectedCount === pagedContacts.length
+                ? true
+                : currentPageSelectedCount > 0
+                    ? "indeterminate"
+                    : false;
+
+    const areAllFilteredSelected =
+        contacts.length > 0 && selectedContacts.length === contacts.length;
+
     const handleRefresh = () => {
         startTransition(() => {
             router.refresh();
@@ -118,7 +203,9 @@ export function ContactsTable({ contacts }: ContactsPageProps) {
     };
 
     const handleExport = () => {
-        const rows = contacts.map((contact) => {
+        const contactsToExport = selectedContacts.length > 0 ? selectedContacts : contacts;
+
+        const rows = contactsToExport.map((contact) => {
             const host = getHostMeta(contact);
             const status = getStatusMeta(contact);
             const score = getScoreMeta(contact);
@@ -143,11 +230,43 @@ export function ContactsTable({ contacts }: ContactsPageProps) {
         const url = URL.createObjectURL(blob);
         const link = document.createElement("a");
         link.href = url;
-        link.download = "contactos.csv";
+        link.download = selectedContacts.length > 0 ? "contactos-seleccionados.csv" : "contactos.csv";
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
         URL.revokeObjectURL(url);
+    };
+
+    const handleRowSelection = (contactId: string, checked: boolean) => {
+        setRawSelectedContactIds((current) => {
+            const next = new Set(current.filter((entry) => validContactIds.has(entry)));
+            if (checked) {
+                next.add(contactId);
+            } else {
+                next.delete(contactId);
+            }
+            return Array.from(next);
+        });
+    };
+
+    const handlePageSelection = (checked: boolean) => {
+        setRawSelectedContactIds((current) => {
+            const next = new Set(current.filter((entry) => validContactIds.has(entry)));
+
+            for (const contact of pagedContacts) {
+                if (checked) {
+                    next.add(contact.id);
+                } else {
+                    next.delete(contact.id);
+                }
+            }
+
+            return Array.from(next);
+        });
+    };
+
+    const clearSelection = () => {
+        setRawSelectedContactIds([]);
     };
 
     const currentRangeStart = contacts.length === 0 ? 0 : (safePage - 1) * PAGE_SIZE + 1;
@@ -171,7 +290,7 @@ export function ContactsTable({ contacts }: ContactsPageProps) {
                             onClick={handleRefresh}
                             disabled={isPending}
                         >
-                            <RotateCw className={`h-4 w-4 ${isPending ? "animate-spin" : ""}`} />
+                            <RotateCw className={cn("h-4 w-4", isPending && "animate-spin")} />
                         </Button>
                         <Button
                             type="button"
@@ -193,7 +312,7 @@ export function ContactsTable({ contacts }: ContactsPageProps) {
                             placeholder="Buscar por nombre, email, telefono o compania..."
                             className="h-11 w-full rounded-xl border-input bg-background pl-9"
                             defaultValue={searchParams.get("query")?.toString()}
-                            onChange={(e) => handleSearch(e.target.value)}
+                            onChange={(event) => handleSearch(event.target.value)}
                         />
                     </div>
 
@@ -201,12 +320,78 @@ export function ContactsTable({ contacts }: ContactsPageProps) {
                         Mostrando {currentRangeStart}-{currentRangeEnd} de {contacts.length} contactos
                     </div>
                 </div>
+
+                {selectedContacts.length > 0 ? (
+                    <div className="rounded-2xl border border-primary/15 bg-primary/5 p-4">
+                        <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+                            <div className="min-w-0">
+                                <div className="flex items-center gap-2 text-sm text-foreground">
+                                    <CheckSquare2 className="h-4 w-4 text-primary" />
+                                    <span className="font-semibold">{selectedContacts.length}</span>
+                                    <span>contacto{selectedContacts.length === 1 ? "" : "s"} seleccionado{selectedContacts.length === 1 ? "" : "s"}</span>
+                                </div>
+                                <p className="mt-1 text-sm text-muted-foreground">
+                                    {areAllFilteredSelected
+                                        ? "La seleccion cubre toda la lista filtrada actual."
+                                        : `Tienes ${contacts.length - selectedContacts.length} contacto${contacts.length - selectedContacts.length === 1 ? "" : "s"} mas dentro del filtro actual.`}
+                                </p>
+                            </div>
+
+                            <div className="flex flex-wrap items-center gap-2">
+                                {!areAllFilteredSelected && contacts.length > selectedContacts.length ? (
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        className="h-10 rounded-xl bg-background px-4"
+                                        onClick={() => setRawSelectedContactIds(contacts.map((contact) => contact.id))}
+                                    >
+                                        Seleccionar los {contacts.length} filtrados
+                                    </Button>
+                                ) : null}
+
+                                <Button
+                                    type="button"
+                                    variant="ghost"
+                                    className="h-10 rounded-xl px-3"
+                                    onClick={clearSelection}
+                                >
+                                    <X className="mr-2 h-4 w-4" />
+                                    Limpiar
+                                </Button>
+
+                                {isSuperadmin ? (
+                                    <ContactsBulkCampaignDialog
+                                        contacts={selectedContacts}
+                                        onCreated={clearSelection}
+                                    />
+                                ) : null}
+
+                                <ContactsBulkDeleteDialog
+                                    contacts={selectedContacts}
+                                    onDeleted={() => {
+                                        clearSelection();
+                                        startTransition(() => {
+                                            router.refresh();
+                                        });
+                                    }}
+                                />
+                            </div>
+                        </div>
+                    </div>
+                ) : null}
             </div>
 
             <div className="flex-1 overflow-auto bg-card">
                 <Table>
                     <TableHeader className="sticky top-0 z-10 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/85">
                         <TableRow className="border-b border-border hover:bg-transparent">
+                            <TableHead className="w-12">
+                                <Checkbox
+                                    checked={pageSelectionState}
+                                    onCheckedChange={(checked) => handlePageSelection(checked === true)}
+                                    aria-label="Seleccionar contactos de esta pagina"
+                                />
+                            </TableHead>
                             <TableHead className="text-muted-foreground">Nombre</TableHead>
                             <TableHead className="hidden lg:table-cell text-muted-foreground">Email</TableHead>
                             <TableHead className="text-muted-foreground">Telefono</TableHead>
@@ -220,7 +405,7 @@ export function ContactsTable({ contacts }: ContactsPageProps) {
                     <TableBody>
                         {contacts.length === 0 ? (
                             <TableRow>
-                                <TableCell colSpan={8} className="h-32 text-center text-muted-foreground">
+                                <TableCell colSpan={9} className="h-32 text-center text-muted-foreground">
                                     No se encontraron contactos.
                                 </TableCell>
                             </TableRow>
@@ -230,12 +415,23 @@ export function ContactsTable({ contacts }: ContactsPageProps) {
                                 const host = getHostMeta(contact);
                                 const status = getStatusMeta(contact);
                                 const score = getScoreMeta(contact);
+                                const isSelected = selectedContactIdSet.has(contact.id);
 
                                 return (
                                     <TableRow
                                         key={contact.id}
-                                        className="group border-b border-border/70 transition-colors hover:bg-muted/35"
+                                        className={cn(
+                                            "group border-b border-border/70 transition-colors hover:bg-muted/35",
+                                            isSelected && "bg-primary/5 hover:bg-primary/10",
+                                        )}
                                     >
+                                        <TableCell>
+                                            <Checkbox
+                                                checked={isSelected}
+                                                onCheckedChange={(checked) => handleRowSelection(contact.id, checked === true)}
+                                                aria-label={`Seleccionar ${fullName}`}
+                                            />
+                                        </TableCell>
                                         <TableCell>
                                             <Link href={`/dashboard/contacts/${contact.id}`} className="flex items-center gap-3">
                                                 <Avatar className="h-10 w-10 border border-primary/10 shadow-sm">
