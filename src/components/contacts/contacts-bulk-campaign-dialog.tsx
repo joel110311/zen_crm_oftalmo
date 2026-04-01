@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { CalendarClock, Loader2, Megaphone, SlidersHorizontal, Wand2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -91,6 +91,7 @@ export function ContactsBulkCampaignDialog({
     onCreated,
 }: ContactsBulkCampaignDialogProps) {
     const { toast } = useToast();
+    const startAtInputRef = useRef<HTMLInputElement | null>(null);
     const [open, setOpen] = useState(false);
     const [templates, setTemplates] = useState<TemplateRecord[]>([]);
     const [isLoadingTemplates, setIsLoadingTemplates] = useState(false);
@@ -102,6 +103,7 @@ export function ContactsBulkCampaignDialog({
         () => contacts.slice(0, 5).map((contact) => getContactFullName(contact, "Sin nombre")),
         [contacts],
     );
+    const firstSelectedName = selectedNames[0] || "Sin nombre";
 
     const previewContent = useMemo(
         () =>
@@ -130,6 +132,21 @@ export function ContactsBulkCampaignDialog({
 
         return "Programar envio";
     }, [form.scheduledStartAt]);
+
+    const handleOpenDateTimePicker = () => {
+        const input = startAtInputRef.current;
+        if (!input) {
+            return;
+        }
+
+        if (typeof input.showPicker === "function") {
+            input.showPicker();
+            return;
+        }
+
+        input.focus();
+        input.click();
+    };
 
     useEffect(() => {
         if (!open) {
@@ -346,7 +363,7 @@ export function ContactsBulkCampaignDialog({
                     </DialogHeader>
                 </div>
 
-                <div className="grid max-h-[min(88vh,54rem)] gap-0 overflow-hidden lg:grid-cols-[minmax(0,1fr)_minmax(290px,360px)]">
+                <div className="grid max-h-[min(88vh,54rem)] gap-0 overflow-hidden xl:grid-cols-[minmax(0,1fr)_minmax(290px,360px)]">
                     <div className="overflow-y-auto px-6 py-5">
                         <div className="space-y-5">
                             <div className="rounded-2xl border bg-muted/20 p-4">
@@ -356,10 +373,8 @@ export function ContactsBulkCampaignDialog({
                                             {contacts.length} contacto{contacts.length === 1 ? "" : "s"} seleccionado{contacts.length === 1 ? "" : "s"}
                                         </p>
                                         <p className="mt-1 text-sm text-muted-foreground">
-                                            {selectedNames.join(", ")}
-                                            {contacts.length > selectedNames.length
-                                                ? ` y ${contacts.length - selectedNames.length} mas`
-                                                : ""}
+                                            Ejemplo: {firstSelectedName}
+                                            {contacts.length > 1 ? ` y ${contacts.length - 1} mas` : ""}
                                         </p>
                                     </div>
                                     <div className="flex w-full items-center justify-between gap-3 rounded-xl border bg-background px-3 py-2 sm:w-auto">
@@ -382,7 +397,7 @@ export function ContactsBulkCampaignDialog({
                                 ) : null}
                             </div>
 
-                            <div className="grid gap-4 md:grid-cols-2">
+                            <div className="grid gap-4 lg:grid-cols-2">
                                 <div className="space-y-2">
                                     <Label htmlFor="bulk-contacts-name">Nombre de la campana</Label>
                                     <Input
@@ -397,17 +412,27 @@ export function ContactsBulkCampaignDialog({
 
                                 <div className="space-y-2">
                                     <Label htmlFor="bulk-contacts-start-at">Inicio</Label>
-                                    <div className="relative">
-                                        <CalendarClock className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                                    <div className="flex gap-2">
                                         <Input
                                             id="bulk-contacts-start-at"
+                                            ref={startAtInputRef}
                                             type="datetime-local"
                                             value={form.scheduledStartAt}
                                             onChange={(event) =>
                                                 setForm((current) => ({ ...current, scheduledStartAt: event.target.value }))
                                             }
-                                            className="h-11 rounded-xl pr-10"
+                                            className="h-11 rounded-xl"
                                         />
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            className="h-11 w-11 shrink-0 rounded-xl px-0"
+                                            onClick={handleOpenDateTimePicker}
+                                            aria-label="Abrir selector de fecha y hora"
+                                            disabled={isSubmitting}
+                                        >
+                                            <CalendarClock className="h-4 w-4" />
+                                        </Button>
                                     </div>
                                 </div>
                             </div>
@@ -431,7 +456,7 @@ export function ContactsBulkCampaignDialog({
                                         <SlidersHorizontal className="h-4 w-4 text-muted-foreground" />
                                         Opciones avanzadas
                                     </div>
-                                    <span className="text-xs text-muted-foreground">
+                                    <span className="hidden text-xs text-muted-foreground sm:inline">
                                         Lotes, delays, seguimientos y reglas
                                     </span>
                                 </summary>
@@ -576,7 +601,7 @@ export function ContactsBulkCampaignDialog({
                         </div>
                     </div>
 
-                    <div className="overflow-y-auto border-t border-border/60 bg-muted/15 px-6 py-5 lg:border-l lg:border-t-0">
+                    <div className="overflow-y-auto border-t border-border/60 bg-muted/15 px-6 py-5 xl:border-l xl:border-t-0">
                         <div className="space-y-4">
                             <div>
                                 <p className="text-sm font-semibold text-foreground">Vista previa</p>
