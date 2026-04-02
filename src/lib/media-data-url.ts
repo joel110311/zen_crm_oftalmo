@@ -82,6 +82,45 @@ function toFetchableExternalMediaUrl(mediaUrl: string) {
     return mediaUrl;
 }
 
+function isGoogleDriveHost(hostname: string) {
+    return /(^|\.)drive\.google\.com$/i.test(hostname) || /(^|\.)googleusercontent\.com$/i.test(hostname);
+}
+
+function decodeEscapedJsonUrl(value: string) {
+    return value
+        .replace(/\\u003d/g, "=")
+        .replace(/\\u0026/g, "&")
+        .replace(/\\\//g, "/")
+        .replace(/&amp;/g, "&");
+}
+
+function extractGoogleDriveHtmlDownloadUrl(html: string) {
+    const patterns = [
+        /href="(\/uc\?export=download[^"]+)"/i,
+        /"downloadUrl":"([^"]+)"/i,
+        /action="(https:\/\/drive\.google\.com\/uc\?export=download[^"]+)"/i,
+    ];
+
+    for (const pattern of patterns) {
+        const match = html.match(pattern);
+        const candidate = match?.[1];
+        if (!candidate) continue;
+
+        const decodedCandidate = decodeEscapedJsonUrl(candidate).trim();
+        if (!decodedCandidate) continue;
+
+        if (decodedCandidate.startsWith("/")) {
+            return `https://drive.google.com${decodedCandidate}`;
+        }
+
+        if (/^https?:\/\//i.test(decodedCandidate)) {
+            return decodedCandidate;
+        }
+    }
+
+    return null;
+}
+
 function inferFileNameFromContentDisposition(contentDisposition: string | null) {
     if (!contentDisposition) return null;
 
@@ -228,27 +267,51 @@ export async function resolveMediaToDataUrl(
     }
 
     if (isHttpUrl(mediaUrl)) {
-        const response = await fetch(toFetchableExternalMediaUrl(mediaUrl), { cache: "no-store" });
+        const initialFetchUrl = toFetchableExternalMediaUrl(mediaUrl);
+        let response = await fetch(initialFetchUrl, { cache: "no-store" });
         if (!response.ok) {
             throw new Error(`No pude descargar el archivo desde ${mediaUrl}`);
         }
 
+        const responseUrl = parseUrl(response.url);
         const responseMimeType = response.headers.get("content-type") || mimeType;
         const normalizedResponseMimeType = responseMimeType.split(";")[0]?.trim().toLowerCase() || mimeType;
+
+        if (
+            normalizedResponseMimeType.startsWith("text/html") &&
+            responseUrl &&
+            isGoogleDriveHost(responseUrl.hostname)
+        ) {
+            const html = await response.text();
+            const extractedUrl = extractGoogleDriveHtmlDownloadUrl(html);
+            if (extractedUrl) {
+                response = await fetch(extractedUrl, { cache: "no-store" });
+                if (!response.ok) {
+                    throw new Error(`No pude descargar el archivo desde ${mediaUrl}`);
+                }
+            } else {
+                throw new Error(
+                    "Google Drive no devolvio el archivo directamente. Verifica que el enlace sea publico y de descarga directa.",
+                );
+            }
+        }
+
+        const finalResponseMimeType = response.headers.get("content-type") || responseMimeType;
+        const finalNormalizedMimeType = finalResponseMimeType.split(";")[0]?.trim().toLowerCase() || mimeType;
         const contentDispositionFileName = inferFileNameFromContentDisposition(
             response.headers.get("content-disposition"),
         );
         let resolvedFileName = contentDispositionFileName || fileName;
 
         if (!path.extname(resolvedFileName)) {
-            const inferredExtension = EXTENSION_BY_MIME[normalizedResponseMimeType];
+            const inferredExtension = EXTENSION_BY_MIME[finalNormalizedMimeType];
             if (inferredExtension) {
                 resolvedFileName = `${resolvedFileName}${inferredExtension}`;
             }
         }
 
         const buffer = Buffer.from(await response.arrayBuffer());
-        return finalizeMedia(buffer, resolvedFileName, responseMimeType);
+        return finalizeMedia(buffer, resolvedFileName, finalResponseMimeType);
     }
 
     throw new Error("No pude resolver el archivo multimedia.");

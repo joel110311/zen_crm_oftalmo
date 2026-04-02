@@ -193,6 +193,60 @@ function stripKnowledgeImageUrlsFromReply(reply: string, imageUrls: string[]) {
     return cleaned;
 }
 
+async function sendPreferredImageUrlsFromReply(params: {
+    conversationId: string;
+    phone: string;
+    imageUrls: string[];
+}) {
+    const normalizedUrls = [...new Set(
+        params.imageUrls
+            .map((url) => normalizeKnowledgeImageUrl(url))
+            .filter(Boolean),
+    )];
+
+    if (normalizedUrls.length === 0) {
+        return false;
+    }
+
+    let sentSomething = false;
+
+    for (const imageUrl of normalizedUrls) {
+        const alreadySent = await prisma.message.findFirst({
+            where: {
+                conversationId: params.conversationId,
+                direction: "outbound",
+                senderType: "bot",
+                type: "image",
+                mediaUrl: imageUrl,
+                status: {
+                    not: "failed",
+                },
+            },
+            select: { id: true },
+        });
+
+        if (alreadySent) {
+            continue;
+        }
+
+        const sent = await sendAutomatedBotMedia({
+            conversationId: params.conversationId,
+            phone: params.phone,
+            mediaCategory: "image",
+            mediaUrl: imageUrl,
+            mediaLabel: "imagen_producto",
+            development: "producto",
+        });
+
+        if (sent) {
+            sentSomething = true;
+            break;
+        }
+    }
+
+    return sentSomething;
+}
+
 function sanitizeComparablePhone(value: string | null | undefined) {
     return (value || "").replace(/\D/g, "");
 }
@@ -1446,6 +1500,7 @@ async function maybeSendAutomatedReply(
         }
 
         let replyToSend = reply;
+        let preferredReplyImageSent = false;
         let knowledgeImageSent = false;
         const preferredKnowledgeImageUrls =
             !shouldEscalate && !catalogItem
@@ -1453,15 +1508,25 @@ async function maybeSendAutomatedReply(
                 : [];
 
         if (!shouldEscalate && !catalogItem) {
-            knowledgeImageSent = await maybeSendKnowledgeImageFromTextSources({
-                conversationId,
-                phone: latestConversation.contact.phone,
-                latestUserMessage,
-                assistantReply: reply,
-                preferredImageUrls: preferredKnowledgeImageUrls,
-            });
+            if (preferredKnowledgeImageUrls.length > 0) {
+                preferredReplyImageSent = await sendPreferredImageUrlsFromReply({
+                    conversationId,
+                    phone: latestConversation.contact.phone,
+                    imageUrls: preferredKnowledgeImageUrls,
+                });
+            }
 
-            if (knowledgeImageSent && preferredKnowledgeImageUrls.length > 0) {
+            if (!preferredReplyImageSent) {
+                knowledgeImageSent = await maybeSendKnowledgeImageFromTextSources({
+                    conversationId,
+                    phone: latestConversation.contact.phone,
+                    latestUserMessage,
+                    assistantReply: reply,
+                    preferredImageUrls: preferredKnowledgeImageUrls,
+                });
+            }
+
+            if ((preferredReplyImageSent || knowledgeImageSent) && preferredKnowledgeImageUrls.length > 0) {
                 const strippedReply = stripKnowledgeImageUrlsFromReply(reply, preferredKnowledgeImageUrls);
                 replyToSend = strippedReply || "Te comparto la imagen por aqui.";
             }
