@@ -29,7 +29,7 @@ export function PipelineColumn({ stage, deals, onDealClick, activeDealId }: Pipe
     return (
         <div
             ref={setNodeRef}
-            className={`flex h-full min-w-[214px] w-[214px] flex-col rounded-2xl border transition-all duration-200 md:w-[232px] md:min-w-[232px] 2xl:w-[262px] 2xl:min-w-[262px] ${isOver
+            className={`flex h-full min-w-[208px] w-[208px] flex-col rounded-2xl border transition-all duration-200 md:w-[224px] md:min-w-[224px] 2xl:w-[256px] 2xl:min-w-[256px] ${isOver
                 ? "border-dashed border-primary/45 ring-2 ring-primary/20 bg-accent/55"
                 : hasActiveDeal
                     ? "border-border/80 bg-card shadow-soft ring-1 ring-primary/20"
@@ -86,7 +86,7 @@ export function PipelineColumn({ stage, deals, onDealClick, activeDealId }: Pipe
 
             {/* Cards Area */}
             <SortableContext items={deals.map((d) => d.id)} strategy={verticalListSortingStrategy}>
-                <div className="flex-1 space-y-2.5 overflow-y-auto px-3 py-3" style={{ minHeight: "100px" }}>
+                <div className="flex-1 space-y-2 overflow-y-auto px-3 py-3" style={{ minHeight: "100px" }}>
                     {deals.length === 0 && isOver && (
                         /* Empty column drop placeholder */
                         <div className="rounded-lg border-2 border-dashed border-primary/30 bg-primary/5 h-[72px] flex items-center justify-center">

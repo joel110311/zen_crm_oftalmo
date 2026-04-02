@@ -7,10 +7,20 @@ import { incrementUnreadCounts } from "@/lib/inbox-browser-badge";
 
 type ConversationSnapshot = {
     id: string;
+    lastMessageTime?: string | Date;
     updatedAt?: string | Date;
     lastMessageDirection?: string;
     isMuted?: boolean;
 };
+
+function toIsoTimestamp(value: string | Date | undefined) {
+    if (!value) return null;
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) {
+        return null;
+    }
+    return parsed.toISOString();
+}
 
 export function InboxNotifier() {
     const pathname = usePathname();
@@ -35,7 +45,10 @@ export function InboxNotifier() {
                 const changedInboundConversationIds: string[] = [];
 
                 for (const conversation of conversations) {
-                    const timestamp = new Date(conversation.updatedAt || Date.now()).toISOString();
+                    const timestamp =
+                        toIsoTimestamp(conversation.lastMessageTime) ||
+                        toIsoTimestamp(conversation.updatedAt) ||
+                        new Date().toISOString();
                     nextTimestamps[conversation.id] = timestamp;
 
                     if (isFirstFetchRef.current) {

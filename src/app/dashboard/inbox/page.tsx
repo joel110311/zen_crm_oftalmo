@@ -30,7 +30,7 @@ import { TemplatePicker } from "@/components/inbox/template-picker";
 import { WhatsAppFormattedText } from "@/components/shared/whatsapp-formatted-text";
 import { getSafeMediaUrl } from "@/lib/media-url";
 import { TemplateRecord, extractTemplateSlashQuery, renderTemplateContent } from "@/lib/templates";
-import { readUnreadCounts, writeUnreadCounts } from "@/lib/inbox-browser-badge";
+import { writeUnreadCounts } from "@/lib/inbox-browser-badge";
 
 const REACTION_EMOJIS = [
     "👍", "👎", "❤️", "🩵", "🔥", "✨", "🎉", "👏",
@@ -68,6 +68,13 @@ function normalizeMessageRecord(raw: any): Message {
         mediaFileName: raw.mediaFileName ?? null,
         reaction: raw.reaction ?? null,
     };
+}
+
+function toIsoTimestamp(value: string | Date | undefined) {
+    if (!value) return null;
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return null;
+    return parsed.toISOString();
 }
 
 function isTemporaryMessage(message: Message) {
@@ -1170,7 +1177,8 @@ export default function InboxPage() {
     }, []);
 
     useEffect(() => {
-        setUnreadCounts(readUnreadCounts());
+        setUnreadCounts({});
+        writeUnreadCounts({});
         setHasLoadedUnreadCounts(true);
     }, []);
 
@@ -1284,9 +1292,9 @@ export default function InboxPage() {
                             // Skip the currently selected chat (user is viewing it)
                             if (conv.id === currentId) continue;
                             const prevTime = prevTimestamps[conv.id];
-                            const newTime = new Date(conv.updatedAt).toISOString();
+                            const newTime = toIsoTimestamp(conv.updatedAt);
                             const hasInboundActivity = conv.messages[0]?.direction === "inbound";
-                            if (prevTime && newTime !== prevTime && hasInboundActivity) {
+                            if (prevTime && newTime && newTime !== prevTime && hasInboundActivity) {
                                 // Conversation has a new inbound message
                                 next[conv.id] = (next[conv.id] || 0) + 1;
 
@@ -1303,7 +1311,10 @@ export default function InboxPage() {
                 // Save current timestamps for next comparison
                 const timestamps: Record<string, string> = {};
                 for (const conv of transformed) {
-                    timestamps[conv.id] = new Date(conv.updatedAt).toISOString();
+                    const timestamp = toIsoTimestamp(conv.updatedAt);
+                    if (timestamp) {
+                        timestamps[conv.id] = timestamp;
+                    }
                 }
                 prevConvTimestampsRef.current = timestamps;
 

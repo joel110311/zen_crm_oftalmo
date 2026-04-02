@@ -43,7 +43,7 @@ export function DealCard({ deal, onDealClick, isOverlay }: DealCardProps) {
             <div
                 ref={setNodeRef}
                 style={style}
-                className="rounded-lg border-2 border-dashed border-primary/30 bg-primary/5 h-[72px]"
+                className="h-[62px] rounded-lg border-2 border-dashed border-primary/30 bg-primary/5"
             />
         );
     }
@@ -59,13 +59,13 @@ export function DealCard({ deal, onDealClick, isOverlay }: DealCardProps) {
             onClick={() => onDealClick(deal)}
         >
             <div
-                className={`h-[108px] overflow-hidden rounded-xl border border-border/75 bg-card px-3 py-2.5 transition-all duration-150 ${isOverlay ? "scale-105 rotate-[2deg] shadow-soft-hover" : "shadow-soft group-hover:border-primary/35 group-hover:shadow-soft-hover"
+                className={`h-[92px] overflow-hidden rounded-lg border border-border/75 bg-card px-2.5 py-2 transition-all duration-150 ${isOverlay ? "scale-105 rotate-[2deg] shadow-soft-hover" : "shadow-soft group-hover:border-primary/35 group-hover:shadow-soft-hover"
                     }`}
             >
                 {/* Contact row: avatar + name/phone + value */}
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5">
                     <div
-                        className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-primary/12 text-xs font-semibold text-primary"
+                        className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-primary/12 text-[11px] font-semibold text-primary"
                     >
                         {contactName.charAt(0).toUpperCase()}
                     </div>
@@ -74,7 +74,7 @@ export function DealCard({ deal, onDealClick, isOverlay }: DealCardProps) {
                             {contactName}
                         </p>
                         {contactPhone && (
-                            <p className="truncate text-xs leading-tight text-muted-foreground">
+                            <p className="truncate text-[12px] leading-tight text-muted-foreground">
                                 <Phone className="h-2.5 w-2.5 inline mr-0.5" />
                                 +{contactPhone}
                             </p>
@@ -91,7 +91,7 @@ export function DealCard({ deal, onDealClick, isOverlay }: DealCardProps) {
 
                 {/* Message preview */}
                 <p
-                    className="text-xs mt-1.5 leading-snug text-muted-foreground truncate whitespace-nowrap"
+                    className="mt-1 text-xs leading-snug text-muted-foreground truncate whitespace-nowrap"
                     title={messagePreview || undefined}
                 >
                     {messagePreview || "\u00A0"}

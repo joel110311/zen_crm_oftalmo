@@ -1,10 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
   <rect x="2" y="2" width="60" height="60" rx="16" fill="white"/>
-  <path d="M13 10V52H54" stroke="#DBEAFE" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M23 25V55" stroke="#BFDBFE" stroke-width="2.2" stroke-linecap="round"/>
-  <path d="M36 14V52" stroke="#93C5FD" stroke-width="2.2" stroke-linecap="round"/>
-  <path d="M51 4V48" stroke="#2563EB" stroke-width="2.2" stroke-linecap="round"/>
-  <rect x="19" y="35" width="8" height="17" rx="3" fill="#BFDBFE"/>
-  <rect x="31" y="24" width="10" height="25" rx="3" fill="#93C5FD"/>
-  <rect x="45" y="12" width="12" height="32" rx="3" fill="#2563EB"/>
+  <path d="M13 10V52H54" stroke="#D8ECE0" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M23 25V55" stroke="#A4D8B4" stroke-width="2.2" stroke-linecap="round"/>
+  <path d="M36 14V52" stroke="#69B886" stroke-width="2.2" stroke-linecap="round"/>
+  <path d="M51 4V48" stroke="#2F8F52" stroke-width="2.2" stroke-linecap="round"/>
+  <rect x="19" y="35" width="8" height="17" rx="3" fill="#A4D8B4"/>
+  <rect x="31" y="24" width="10" height="25" rx="3" fill="#69B886"/>
+  <rect x="45" y="12" width="12" height="32" rx="3" fill="#2F8F52"/>
 </svg>
