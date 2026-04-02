@@ -7,7 +7,8 @@ type WhatsAppFormattedTextProps = {
     variableClassName?: string;
 };
 
-const URL_REGEX = /((?:https?:\/\/|www\.)[^\s<]+)/gi;
+const MARKDOWN_IMAGE_REGEX = /!\[([^\]]*)\]\((https?:\/\/[^\s)]+)\)/gi;
+const MARKDOWN_LINK_REGEX = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/gi;
 
 function normalizeHref(rawUrl: string) {
     return rawUrl.startsWith("www.") ? `https://${rawUrl}` : rawUrl;
@@ -28,11 +29,17 @@ function splitTrailingPunctuation(rawUrl: string) {
 
 function renderPlainTextWithLinks(text: string, keyPrefix: string): React.ReactNode[] {
     const nodes: React.ReactNode[] = [];
+    const regex = /((?:https?:\/\/|www\.)[^\s<]+)/gi;
     let lastIndex = 0;
     let match: RegExpExecArray | null;
     let index = 0;
 
-    while ((match = URL_REGEX.exec(text)) !== null) {
+    while ((match = regex.exec(text)) !== null) {
+        if (match[0].length === 0) {
+            regex.lastIndex += 1;
+            continue;
+        }
+
         if (match.index > lastIndex) {
             nodes.push(
                 <React.Fragment key={`${keyPrefix}-text-${index}`}>
@@ -81,20 +88,27 @@ function renderPlainTextWithLinks(text: string, keyPrefix: string): React.ReactN
     return nodes;
 }
 
+function normalizeMarkdownArtifacts(text: string) {
+    return text
+        .replace(MARKDOWN_IMAGE_REGEX, (_full, label) => label || "imagen")
+        .replace(MARKDOWN_LINK_REGEX, (_full, label, url) => `${label}: ${url}`);
+}
+
 function renderInlineSegments(
     text: string,
     keyPrefix: string,
     variableClassName: string,
 ): React.ReactNode[] {
+    const normalizedText = normalizeMarkdownArtifacts(text);
     const nodes: React.ReactNode[] = [];
     const tokenRegex = /(\*[^*\n]+\*|_[^_\n]+_|~[^~\n]+~|{{\s*[a-zA-Z0-9_]+\s*}})/g;
     let lastIndex = 0;
     let match: RegExpExecArray | null;
     let index = 0;
 
-    while ((match = tokenRegex.exec(text)) !== null) {
+    while ((match = tokenRegex.exec(normalizedText)) !== null) {
         if (match.index > lastIndex) {
-            nodes.push(...renderPlainTextWithLinks(text.slice(lastIndex, match.index), `${keyPrefix}-plain-${index}`));
+            nodes.push(...renderPlainTextWithLinks(normalizedText.slice(lastIndex, match.index), `${keyPrefix}-plain-${index}`));
             index += 1;
         }
 
@@ -104,19 +118,19 @@ function renderInlineSegments(
         if (token.startsWith("*") && token.endsWith("*")) {
             nodes.push(
                 <strong key={tokenKey} className="font-semibold text-slate-900">
-                    {renderInlineSegments(token.slice(1, -1), `${tokenKey}-bold`, variableClassName)}
+                    {renderPlainTextWithLinks(token.slice(1, -1), `${tokenKey}-bold`)}
                 </strong>,
             );
         } else if (token.startsWith("_") && token.endsWith("_")) {
             nodes.push(
                 <em key={tokenKey}>
-                    {renderInlineSegments(token.slice(1, -1), `${tokenKey}-italic`, variableClassName)}
+                    {renderPlainTextWithLinks(token.slice(1, -1), `${tokenKey}-italic`)}
                 </em>,
             );
         } else if (token.startsWith("~") && token.endsWith("~")) {
             nodes.push(
                 <s key={tokenKey}>
-                    {renderInlineSegments(token.slice(1, -1), `${tokenKey}-strike`, variableClassName)}
+                    {renderPlainTextWithLinks(token.slice(1, -1), `${tokenKey}-strike`)}
                 </s>,
             );
         } else {
@@ -131,8 +145,8 @@ function renderInlineSegments(
         index += 1;
     }
 
-    if (lastIndex < text.length) {
-        nodes.push(...renderPlainTextWithLinks(text.slice(lastIndex), `${keyPrefix}-tail`));
+    if (lastIndex < normalizedText.length) {
+        nodes.push(...renderPlainTextWithLinks(normalizedText.slice(lastIndex), `${keyPrefix}-tail`));
     }
 
     return nodes;

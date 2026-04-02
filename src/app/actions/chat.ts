@@ -178,7 +178,7 @@ function stripKnowledgeImageUrlsFromReply(reply: string, imageUrls: string[]) {
         const escapedUrl = escapeRegexPattern(url);
 
         cleaned = cleaned.replace(
-            new RegExp(`\\[[^\\]\\n]{1,180}\\]\\(\\s*${escapedUrl}\\s*\\)`, "gi"),
+            new RegExp(`!?\\[[^\\]\\n]{1,180}\\]\\(\\s*${escapedUrl}\\s*\\)`, "gi"),
             "",
         );
         cleaned = cleaned.replace(new RegExp(escapedUrl, "gi"), "");
@@ -1529,6 +1529,9 @@ async function maybeSendAutomatedReply(
             if ((preferredReplyImageSent || knowledgeImageSent) && preferredKnowledgeImageUrls.length > 0) {
                 const strippedReply = stripKnowledgeImageUrlsFromReply(reply, preferredKnowledgeImageUrls);
                 replyToSend = strippedReply || "Te comparto la imagen por aqui.";
+            } else if (preferredKnowledgeImageUrls.length > 0) {
+                const strippedReply = stripKnowledgeImageUrlsFromReply(reply, preferredKnowledgeImageUrls);
+                replyToSend = strippedReply || "No pude adjuntar la imagen en este momento, pero te ayudo con la informacion por aqui.";
             }
         }
 
