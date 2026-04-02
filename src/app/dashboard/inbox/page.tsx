@@ -636,7 +636,6 @@ function MediaContent({ msg, onImageClick }: { msg: Message, onImageClick?: (msg
                     alt={msg.content || "Image"}
                     className="max-w-[280px] rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
                     onClick={() => onImageClick ? onImageClick(msg.id) : window.open(cleanUrl, "_blank")}
-                    loading="lazy"
                 />
                 {msg.content && !["[Imagen]", "[Sticker]", "[image]"].includes(msg.content) && (
                     <WhatsAppFormattedText text={msg.content} className="text-sm whitespace-pre-wrap" />
