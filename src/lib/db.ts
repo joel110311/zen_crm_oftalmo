@@ -1,15 +1,15 @@
 import "dotenv/config";
-import { PrismaClient } from "@prisma/client";
+import { Prisma, PrismaClient } from "@prisma/client";
 import { Pool } from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
 
 const globalForPrisma = globalThis as unknown as {
     prisma: PrismaClient | undefined;
 };
-const prismaLogLevels =
+const prismaLogLevels: Prisma.LogLevel[] =
     process.env.PRISMA_LOG_QUERIES === "true"
-        ? ["query", "warn", "error"] as const
-        : ["warn", "error"] as const;
+        ? ["query", "warn", "error"]
+        : ["warn", "error"];
 
 // Safe Prisma client initialization to prevent build-time crashes
 let prismaInstance: PrismaClient;
