@@ -86,7 +86,7 @@ export function PipelineColumn({ stage, deals, onDealClick, activeDealId }: Pipe
 
             {/* Cards Area */}
             <SortableContext items={deals.map((d) => d.id)} strategy={verticalListSortingStrategy}>
-                <div className="flex-1 space-y-2 overflow-y-auto px-3 py-3" style={{ minHeight: "100px" }}>
+                <div className="flex-1 space-y-1.5 overflow-y-auto px-3 py-3" style={{ minHeight: "100px" }}>
                     {deals.length === 0 && isOver && (
                         /* Empty column drop placeholder */
                         <div className="rounded-lg border-2 border-dashed border-primary/30 bg-primary/5 h-[72px] flex items-center justify-center">

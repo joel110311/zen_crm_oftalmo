@@ -35,7 +35,6 @@ export function DealCard({ deal, onDealClick, isOverlay }: DealCardProps) {
         .join(" ") || "Sin nombre";
     const contactPhone = deal.contact?.phone || "";
     const messagePreview = deal.lastMessage?.trim() || "";
-    const tags = deal.dealTags?.map((dt) => dt.tag) || [];
 
     // When this card is being dragged, show a dashed placeholder in its original spot
     if (isDragging) {
@@ -43,7 +42,7 @@ export function DealCard({ deal, onDealClick, isOverlay }: DealCardProps) {
             <div
                 ref={setNodeRef}
                 style={style}
-                className="h-[62px] rounded-lg border-2 border-dashed border-primary/30 bg-primary/5"
+                className="h-[56px] rounded-lg border-2 border-dashed border-primary/30 bg-primary/5"
             />
         );
     }
@@ -59,31 +58,29 @@ export function DealCard({ deal, onDealClick, isOverlay }: DealCardProps) {
             onClick={() => onDealClick(deal)}
         >
             <div
-                className={`h-[92px] overflow-hidden rounded-lg border border-border/75 bg-card px-2.5 py-2 transition-all duration-150 ${isOverlay ? "scale-105 rotate-[2deg] shadow-soft-hover" : "shadow-soft group-hover:border-primary/35 group-hover:shadow-soft-hover"
+                className={`h-[82px] min-h-[82px] max-h-[82px] overflow-hidden rounded-lg border border-border/75 bg-card px-2 py-1.5 transition-all duration-150 ${isOverlay ? "scale-105 rotate-[2deg] shadow-soft-hover" : "shadow-soft group-hover:border-primary/35 group-hover:shadow-soft-hover"
                     }`}
             >
                 {/* Contact row: avatar + name/phone + value */}
                 <div className="flex items-center gap-1.5">
                     <div
-                        className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-primary/12 text-[11px] font-semibold text-primary"
+                        className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-primary/12 text-[10px] font-semibold text-primary"
                     >
                         {contactName.charAt(0).toUpperCase()}
                     </div>
                     <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-semibold leading-tight text-foreground">
+                        <p className="truncate text-[13px] font-semibold leading-tight text-foreground">
                             {contactName}
                         </p>
                         {contactPhone && (
-                            <p className="truncate text-[12px] leading-tight text-muted-foreground">
+                            <p className="truncate text-[11px] leading-tight text-muted-foreground">
                                 <Phone className="h-2.5 w-2.5 inline mr-0.5" />
                                 +{contactPhone}
                             </p>
                         )}
                     </div>
                     {deal.value > 0 && (
-                        <span
-                            className="text-sm font-bold flex-shrink-0 text-foreground"
-                        >
+                        <span className="text-xs font-bold flex-shrink-0 text-foreground">
                             ${deal.value.toLocaleString("es-MX")}
                         </span>
                     )}
@@ -91,30 +88,11 @@ export function DealCard({ deal, onDealClick, isOverlay }: DealCardProps) {
 
                 {/* Message preview */}
                 <p
-                    className="mt-1 text-xs leading-snug text-muted-foreground truncate whitespace-nowrap"
+                    className="mt-0.5 truncate whitespace-nowrap text-[12px] leading-5 text-muted-foreground"
                     title={messagePreview || undefined}
                 >
                     {messagePreview || "\u00A0"}
                 </p>
-
-                {/* Tags */}
-                {tags.length > 0 && (
-                    <div className="flex flex-wrap gap-1 mt-1.5">
-                        {tags.map((tag) => (
-                            <span
-                                key={tag.id}
-                                className="text-[10px] font-medium px-1.5 py-0.5 rounded"
-                                style={{
-                                    backgroundColor: tag.color + "15",
-                                    color: tag.color,
-                                    border: `1px solid ${tag.color}30`,
-                                }}
-                            >
-                                {tag.name}
-                            </span>
-                        ))}
-                    </div>
-                )}
             </div>
         </div>
     );
