@@ -1,5 +1,8 @@
 "use server";
 
+import crypto from "crypto";
+import { mkdir, writeFile } from "fs/promises";
+import path from "path";
 import { prisma } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 import { enrichContactFromMessage } from "@/lib/ai-enrichment";
@@ -69,6 +72,77 @@ type KnowledgeImageEntry = {
     searchableText: string;
     normalizedLabel: string;
 };
+
+const FALLBACK_EXTENSION_BY_MIME: Record<string, string> = {
+    "image/jpeg": ".jpg",
+    "image/png": ".png",
+    "image/webp": ".webp",
+    "image/gif": ".gif",
+    "image/bmp": ".bmp",
+    "image/svg+xml": ".svg",
+    "image/heic": ".heic",
+    "image/heif": ".heif",
+    "image/avif": ".avif",
+    "application/pdf": ".pdf",
+};
+
+function buildSourceMediaHash(sourceUrl: string) {
+    return crypto.createHash("sha1").update(sourceUrl).digest("hex").slice(0, 16);
+}
+
+function sanitizeMediaBaseName(fileName: string) {
+    const parsed = path.parse(fileName || "media");
+    const normalized = (parsed.name || "media")
+        .replace(/[^\w-]+/g, "-")
+        .replace(/-+/g, "-")
+        .replace(/^-+|-+$/g, "")
+        .slice(0, 48);
+
+    return normalized || "media";
+}
+
+function normalizeMediaExtension(fileName: string, mimeType: string) {
+    const parsed = path.parse(fileName || "media");
+    const extension = parsed.ext?.toLowerCase();
+    if (extension) {
+        return extension.startsWith(".") ? extension : `.${extension}`;
+    }
+
+    const normalizedMime = (mimeType || "").split(";")[0]?.trim().toLowerCase();
+    return FALLBACK_EXTENSION_BY_MIME[normalizedMime] || ".bin";
+}
+
+function decodeBase64DataUrl(dataUrl: string) {
+    const commaIndex = dataUrl.indexOf(",");
+    if (commaIndex === -1) {
+        throw new Error("Formato de data URL invalido.");
+    }
+
+    const payload = dataUrl.slice(commaIndex + 1);
+    return Buffer.from(payload, "base64");
+}
+
+async function persistAutomatedMediaToUploads(params: {
+    sourceUrl: string;
+    dataUrl: string;
+    fileName: string;
+    mimeType: string;
+}) {
+    const uploadsDir = path.join(process.cwd(), "public", "uploads");
+    await mkdir(uploadsDir, { recursive: true });
+
+    const sourceHash = buildSourceMediaHash(params.sourceUrl);
+    const baseName = sanitizeMediaBaseName(params.fileName);
+    const extension = normalizeMediaExtension(params.fileName, params.mimeType);
+    const safeFileName = `${baseName}-${sourceHash}${extension}`;
+
+    await writeFile(path.join(uploadsDir, safeFileName), decodeBase64DataUrl(params.dataUrl));
+
+    return {
+        mediaUrl: `/uploads/${safeFileName}`,
+        sourceHash,
+    };
+}
 
 function normalizeContactName(name?: string | null) {
     const normalized = name?.trim().replace(/\s+/g, " ") || "";
@@ -211,13 +285,17 @@ async function sendPreferredImageUrlsFromReply(params: {
     let sentSomething = false;
 
     for (const imageUrl of normalizedUrls) {
+        const sourceHash = buildSourceMediaHash(imageUrl);
         const alreadySent = await prisma.message.findFirst({
             where: {
                 conversationId: params.conversationId,
                 direction: "outbound",
                 senderType: "bot",
                 type: "image",
-                mediaUrl: imageUrl,
+                OR: [
+                    { mediaUrl: imageUrl },
+                    { mediaUrl: { contains: sourceHash } },
+                ],
                 status: {
                     not: "failed",
                 },
@@ -785,9 +863,22 @@ async function sendAutomatedBotMedia(params: {
     development: string;
 }) {
     const placeholderContent = params.mediaCategory === "image" ? "[image]" : "[document]";
+    let storedMediaUrl = params.mediaUrl;
 
     try {
         const resolvedMedia = await resolveMediaToDataUrl(params.mediaUrl);
+        try {
+            const persisted = await persistAutomatedMediaToUploads({
+                sourceUrl: params.mediaUrl,
+                dataUrl: resolvedMedia.dataUrl,
+                fileName: resolvedMedia.fileName,
+                mimeType: resolvedMedia.mimeType,
+            });
+            storedMediaUrl = persisted.mediaUrl;
+        } catch (persistError) {
+            console.warn("[Catalog] Failed to persist automated media locally:", persistError);
+        }
+
         const result = await sendWuzapiMediaMessage({
             phone: params.phone,
             mediaCategory: params.mediaCategory,
@@ -805,7 +896,7 @@ async function sendAutomatedBotMedia(params: {
                 status: "sent",
                 type: params.mediaCategory,
                 senderType: "bot",
-                mediaUrl: params.mediaUrl,
+                mediaUrl: storedMediaUrl,
                 mediaType: resolvedMedia.mimeType,
                 mediaFileName: resolvedMedia.fileName,
                 providerMessageId: result?.Id || null,
@@ -824,7 +915,7 @@ async function sendAutomatedBotMedia(params: {
                 status: "failed",
                 type: params.mediaCategory,
                 senderType: "bot",
-                mediaUrl: params.mediaUrl,
+                mediaUrl: storedMediaUrl,
                 mediaFileName: params.mediaLabel || null,
             },
         });
