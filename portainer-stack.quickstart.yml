@@ -15,13 +15,14 @@ services:
   zen-crm:
     image: ghcr.io/joel110311/zen_crm_go:latest
     environment:
-      - DATABASE_URL=postgresql://zencrm:change_this_postgres_password@zen-crm-db:5432/zencrm
+      - DATABASE_URL=postgresql://zencrm:change_this_postgres_password@${CRM_DB_HOST:-zen-crm-db}:5432/zencrm
       - WHATSAPP_GATEWAY_URL=http://whatsapp-gateway:8080
       - WUZAPI_ADMIN_TOKEN=change_this_admin_token
       - WUZAPI_USER_TOKEN=change_this_user_token
       - WHATSAPP_INSTANCE_NAME=zen-crm
       - WUZAPI_GLOBAL_ENCRYPTION_KEY=change_this_32_char_encryption_key
       - WUZAPI_GLOBAL_HMAC_KEY=change_this_32_char_hmac_key
+      - PRISMA_LOG_QUERIES=false
       - ALLOW_ENV_AI_FALLBACK=false
       - OPENAI_API_KEY=
       - GEMINI_API_KEY=
@@ -56,6 +57,11 @@ services:
       timeout: 10s
       retries: 5
       start_period: 60s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "5"
     deploy:
       replicas: 1
       restart_policy:
@@ -78,7 +84,7 @@ services:
       - DB_USER=wuzapi
       - DB_PASSWORD=change_this_wuzapi_db_password
       - DB_NAME=wuzapi
-      - DB_HOST=whatsapp-db
+      - DB_HOST=${WUZAPI_DB_HOST:-whatsapp-db}
       - DB_PORT=5432
       - DB_SSLMODE=false
       - TZ=America/Mexico_City
@@ -86,6 +92,11 @@ services:
       - SESSION_DEVICE_NAME=Zen CRM Cliente 1
     networks:
       - SociosNet
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "5"
     deploy:
       replicas: 1
       restart_policy:
@@ -108,6 +119,11 @@ services:
       timeout: 5s
       retries: 5
       start_period: 20s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "5"
     deploy:
       replicas: 1
       restart_policy:
@@ -130,6 +146,11 @@ services:
       timeout: 5s
       retries: 5
       start_period: 20s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "5"
     deploy:
       replicas: 1
       restart_policy:

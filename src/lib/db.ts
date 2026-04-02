@@ -6,6 +6,10 @@ import { PrismaPg } from "@prisma/adapter-pg";
 const globalForPrisma = globalThis as unknown as {
     prisma: PrismaClient | undefined;
 };
+const prismaLogLevels =
+    process.env.PRISMA_LOG_QUERIES === "true"
+        ? ["query", "warn", "error"] as const
+        : ["warn", "error"] as const;
 
 // Safe Prisma client initialization to prevent build-time crashes
 let prismaInstance: PrismaClient;
@@ -17,7 +21,7 @@ try {
         const connectionString = process.env.DATABASE_URL;
         const pool = new Pool({ connectionString });
         const adapter = new PrismaPg(pool);
-        prismaInstance = new PrismaClient({ adapter, log: ["query"] });
+        prismaInstance = new PrismaClient({ adapter, log: prismaLogLevels });
     }
 } catch (error) {
     console.warn("Failed to initialize Prisma Client (this is expected during build):", error);

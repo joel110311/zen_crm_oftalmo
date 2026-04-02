@@ -2,13 +2,14 @@ services:
   zen-crm:
     image: ghcr.io/joel110311/zen_crm_go:latest
     environment:
-      - DATABASE_URL=postgresql://zencrm:${POSTGRES_PASSWORD}@zen-crm-db:5432/${POSTGRES_DB}
+      - DATABASE_URL=postgresql://zencrm:${POSTGRES_PASSWORD}@${CRM_DB_HOST:-zen-crm-db}:5432/${POSTGRES_DB}
       - WHATSAPP_GATEWAY_URL=http://whatsapp-gateway:8080
       - WUZAPI_ADMIN_TOKEN=${WUZAPI_ADMIN_TOKEN}
       - WUZAPI_USER_TOKEN=${WUZAPI_USER_TOKEN:-change_this_user_token}
       - WHATSAPP_INSTANCE_NAME=${WHATSAPP_INSTANCE_NAME:-zen-crm}
       - WUZAPI_GLOBAL_ENCRYPTION_KEY=${WUZAPI_GLOBAL_ENCRYPTION_KEY}
       - WUZAPI_GLOBAL_HMAC_KEY=${WUZAPI_GLOBAL_HMAC_KEY}
+      - PRISMA_LOG_QUERIES=${PRISMA_LOG_QUERIES:-false}
       - ALLOW_ENV_AI_FALLBACK=${ALLOW_ENV_AI_FALLBACK:-false}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
@@ -43,6 +44,11 @@ services:
       timeout: 10s
       retries: 5
       start_period: 60s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "5"
     deploy:
       replicas: 1
       restart_policy:
@@ -65,7 +71,7 @@ services:
       - DB_USER=${WUZAPI_DB_USER:-wuzapi}
       - DB_PASSWORD=${WUZAPI_DB_PASSWORD}
       - DB_NAME=${WUZAPI_DB_NAME:-wuzapi}
-      - DB_HOST=whatsapp-db
+      - DB_HOST=${WUZAPI_DB_HOST:-whatsapp-db}
       - DB_PORT=5432
       - DB_SSLMODE=false
       - TZ=${TZ:-America/Mexico_City}
@@ -73,6 +79,11 @@ services:
       - SESSION_DEVICE_NAME=${SESSION_DEVICE_NAME:-Zen CRM Cliente 1}
     networks:
       - traefik-public
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "5"
     deploy:
       replicas: 1
       restart_policy:
@@ -95,6 +106,11 @@ services:
       timeout: 5s
       retries: 5
       start_period: 20s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "5"
     deploy:
       replicas: 1
       restart_policy:
@@ -117,6 +133,11 @@ services:
       timeout: 5s
       retries: 5
       start_period: 20s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "5"
     deploy:
       replicas: 1
       restart_policy:
