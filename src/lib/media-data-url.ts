@@ -27,15 +27,100 @@ const MIME_BY_EXTENSION: Record<string, string> = {
     ".webm": "video/webm",
 };
 
+const EXTENSION_BY_MIME: Record<string, string> = {
+    "image/jpeg": ".jpg",
+    "image/png": ".png",
+    "image/webp": ".webp",
+    "image/gif": ".gif",
+    "image/bmp": ".bmp",
+    "image/svg+xml": ".svg",
+    "image/heic": ".heic",
+    "image/heif": ".heif",
+    "image/avif": ".avif",
+    "application/pdf": ".pdf",
+};
+
 function inferMimeType(fileName: string, explicitMimeType?: string | null) {
     if (explicitMimeType) return explicitMimeType;
     const extension = path.extname(fileName).toLowerCase();
     return MIME_BY_EXTENSION[extension] || "application/octet-stream";
 }
 
+function parseUrl(value: string) {
+    try {
+        return new URL(value);
+    } catch {
+        return null;
+    }
+}
+
+function extractGoogleDriveFileId(mediaUrl: string) {
+    const parsed = parseUrl(mediaUrl);
+    if (!parsed || !/(^|\.)drive\.google\.com$/i.test(parsed.hostname)) {
+        return null;
+    }
+
+    const pathMatch = parsed.pathname.match(/\/file\/d\/([^/]+)/i);
+    if (pathMatch?.[1]) {
+        return pathMatch[1];
+    }
+
+    const queryId = parsed.searchParams.get("id");
+    if (queryId) {
+        return queryId;
+    }
+
+    return null;
+}
+
+function toFetchableExternalMediaUrl(mediaUrl: string) {
+    const driveFileId = extractGoogleDriveFileId(mediaUrl);
+    if (driveFileId) {
+        return `https://drive.google.com/uc?export=download&id=${encodeURIComponent(driveFileId)}`;
+    }
+
+    return mediaUrl;
+}
+
+function inferFileNameFromContentDisposition(contentDisposition: string | null) {
+    if (!contentDisposition) return null;
+
+    const utf8FileNameMatch = contentDisposition.match(/filename\*=UTF-8''([^;]+)/i);
+    if (utf8FileNameMatch?.[1]) {
+        try {
+            return decodeURIComponent(utf8FileNameMatch[1]).replace(/[\\/]/g, "_");
+        } catch {
+            return utf8FileNameMatch[1].replace(/[\\/]/g, "_");
+        }
+    }
+
+    const quotedFileNameMatch = contentDisposition.match(/filename="?([^";]+)"?/i);
+    if (quotedFileNameMatch?.[1]) {
+        return quotedFileNameMatch[1].replace(/[\\/]/g, "_");
+    }
+
+    return null;
+}
+
 function fileNameFromUrl(mediaUrl: string) {
+    const parsed = parseUrl(mediaUrl);
+    if (parsed) {
+        const directName = path.basename(parsed.pathname);
+        if (directName && directName !== "/" && directName !== "uc") {
+            return directName;
+        }
+
+        const driveFileId = extractGoogleDriveFileId(mediaUrl);
+        if (driveFileId) {
+            return `drive_${driveFileId}`;
+        }
+
+        return "archivo";
+    }
+
     const clean = mediaUrl.split("?")[0];
-    return path.basename(clean);
+    const fallback = path.basename(clean);
+    return fallback || "archivo";
 }
 
 function isHttpUrl(value: string) {
@@ -143,14 +228,27 @@ export async function resolveMediaToDataUrl(
     }
 
     if (isHttpUrl(mediaUrl)) {
-        const response = await fetch(mediaUrl, { cache: "no-store" });
+        const response = await fetch(toFetchableExternalMediaUrl(mediaUrl), { cache: "no-store" });
         if (!response.ok) {
             throw new Error(`No pude descargar el archivo desde ${mediaUrl}`);
         }
 
         const responseMimeType = response.headers.get("content-type") || mimeType;
+        const normalizedResponseMimeType = responseMimeType.split(";")[0]?.trim().toLowerCase() || mimeType;
+        const contentDispositionFileName = inferFileNameFromContentDisposition(
+            response.headers.get("content-disposition"),
+        );
+        let resolvedFileName = contentDispositionFileName || fileName;
+
+        if (!path.extname(resolvedFileName)) {
+            const inferredExtension = EXTENSION_BY_MIME[normalizedResponseMimeType];
+            if (inferredExtension) {
+                resolvedFileName = `${resolvedFileName}${inferredExtension}`;
+            }
+        }
+
         const buffer = Buffer.from(await response.arrayBuffer());
-        return finalizeMedia(buffer, fileName, responseMimeType);
+        return finalizeMedia(buffer, resolvedFileName, responseMimeType);
     }
 
     throw new Error("No pude resolver el archivo multimedia.");

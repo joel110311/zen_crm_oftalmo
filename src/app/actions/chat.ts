@@ -24,6 +24,7 @@ import { refreshWhatsAppAvatarForContact } from "@/lib/whatsapp-avatar";
 
 const CATALOG_OFFER_EXPIRY_MS = 1000 * 60 * 90;
 const KNOWLEDGE_IMAGE_URL_REGEX = /https?:\/\/[^\s<>"']+/gi;
+const KNOWLEDGE_MARKDOWN_LINK_WITH_URL_REGEX = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/gi;
 const KNOWLEDGE_IMAGE_MIN_SCORE = 3;
 const KNOWLEDGE_IMAGE_TOKEN_STOPWORDS = new Set([
     "de",
@@ -94,6 +95,102 @@ function normalizeCatalogComparableText(value: string | null | undefined) {
         .replace(/[^a-z0-9]+/g, " ")
         .replace(/\s+/g, " ")
         .trim();
+}
+
+function stripInternalDisclosureLines(content: string) {
+    const lines = content.replace(/\r\n?/g, "\n").split("\n");
+    const keptLines = lines.filter((line) => {
+        const normalized = normalizeCatalogComparableText(line);
+        if (!normalized) return true;
+
+        return ![
+            /\balerta interna\b/,
+            /\balertas internas\b/,
+            /\bnotificacion interna\b/,
+            /\bnotificaciones internas\b/,
+            /\baviso interno\b/,
+            /\bcorreo interno\b/,
+            /\binternal alert\b/,
+            /\binternal notification\b/,
+            /\bposible pedido\b/,
+        ].some((pattern) => pattern.test(normalized));
+    });
+
+    return keptLines
+        .join("\n")
+        .replace(/[ \t]+$/gm, "")
+        .replace(/\n{3,}/g, "\n\n")
+        .trim();
+}
+
+function escapeRegexPattern(value: string) {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function normalizeKnowledgeImageUrl(value: string | null | undefined) {
+    return (value || "")
+        .trim()
+        .replace(/[),.;|]+$/g, "");
+}
+
+function isLikelyKnowledgeImageUrl(url: string) {
+    if (!url) return false;
+
+    if (/\.(?:png|jpe?g|webp|gif|bmp|svg|heic|heif|avif)(?:[?#].*)?$/i.test(url)) {
+        return true;
+    }
+
+    return /drive\.google\.com\/(?:file\/d\/|open\?id=|uc\?)/i.test(url);
+}
+
+function extractKnowledgeImageUrlsFromReply(reply: string) {
+    const urls = new Set<string>();
+
+    for (const match of reply.matchAll(KNOWLEDGE_MARKDOWN_LINK_WITH_URL_REGEX)) {
+        const label = (match[1] || "").toLowerCase();
+        const url = normalizeKnowledgeImageUrl(match[2]);
+        if (!url) continue;
+
+        if (/\b(imagen|imagenes|foto|fotos|galeria|galería|ver)\b/.test(label) || isLikelyKnowledgeImageUrl(url)) {
+            urls.add(url);
+        }
+    }
+
+    for (const match of reply.matchAll(KNOWLEDGE_IMAGE_URL_REGEX)) {
+        const url = normalizeKnowledgeImageUrl(match[0]);
+        if (!url || !isLikelyKnowledgeImageUrl(url)) continue;
+        urls.add(url);
+    }
+
+    return [...urls];
+}
+
+function stripKnowledgeImageUrlsFromReply(reply: string, imageUrls: string[]) {
+    if (!reply.trim() || imageUrls.length === 0) {
+        return reply.trim();
+    }
+
+    let cleaned = reply;
+
+    for (const rawUrl of imageUrls) {
+        const url = normalizeKnowledgeImageUrl(rawUrl);
+        if (!url) continue;
+        const escapedUrl = escapeRegexPattern(url);
+
+        cleaned = cleaned.replace(
+            new RegExp(`\\[[^\\]\\n]{1,180}\\]\\(\\s*${escapedUrl}\\s*\\)`, "gi"),
+            "",
+        );
+        cleaned = cleaned.replace(new RegExp(escapedUrl, "gi"), "");
+    }
+
+    cleaned = cleaned
+        .replace(/[ \t]+$/gm, "")
+        .replace(/\n{3,}/g, "\n\n")
+        .replace(/(^|\n)[\s>*-]*\n/g, "$1")
+        .trim();
+
+    return cleaned;
 }
 
 function sanitizeComparablePhone(value: string | null | undefined) {
@@ -592,7 +689,7 @@ async function sendAutomatedBotText(params: {
     phone: string;
     content: string;
 }) {
-    const content = params.content.trim();
+    const content = stripInternalDisclosureLines(params.content).trim();
     if (!content) return;
 
     try {
@@ -737,6 +834,7 @@ async function maybeSendKnowledgeImageFromTextSources(params: {
     phone: string;
     latestUserMessage: string;
     assistantReply: string;
+    preferredImageUrls?: string[];
 }) {
     try {
         const sources = await prisma.knowledgeSource.findMany({
@@ -760,11 +858,17 @@ async function maybeSendKnowledgeImageFromTextSources(params: {
         }
 
         const entriesByUrl = new Map<string, KnowledgeImageEntry>();
+        const entriesByNormalizedUrl = new Map<string, KnowledgeImageEntry>();
 
         for (const source of sources) {
             for (const entry of extractKnowledgeImageEntries(source.rawContent)) {
                 if (!entriesByUrl.has(entry.imageUrl)) {
                     entriesByUrl.set(entry.imageUrl, entry);
+                }
+
+                const normalizedEntryUrl = normalizeKnowledgeImageUrl(entry.imageUrl);
+                if (normalizedEntryUrl && !entriesByNormalizedUrl.has(normalizedEntryUrl)) {
+                    entriesByNormalizedUrl.set(normalizedEntryUrl, entry);
                 }
             }
         }
@@ -772,6 +876,47 @@ async function maybeSendKnowledgeImageFromTextSources(params: {
         const entries = [...entriesByUrl.values()];
         if (entries.length === 0) {
             return false;
+        }
+
+        const preferredEntries = [...new Set(
+            (params.preferredImageUrls || [])
+                .map((rawUrl) => normalizeKnowledgeImageUrl(rawUrl))
+                .filter(Boolean),
+        )]
+            .map((normalizedUrl) => entriesByNormalizedUrl.get(normalizedUrl))
+            .filter((entry): entry is KnowledgeImageEntry => Boolean(entry));
+
+        for (const entry of preferredEntries) {
+            const alreadySent = await prisma.message.findFirst({
+                where: {
+                    conversationId: params.conversationId,
+                    direction: "outbound",
+                    senderType: "bot",
+                    type: "image",
+                    mediaUrl: entry.imageUrl,
+                    status: {
+                        not: "failed",
+                    },
+                },
+                select: { id: true },
+            });
+
+            if (alreadySent) {
+                continue;
+            }
+
+            const sent = await sendAutomatedBotMedia({
+                conversationId: params.conversationId,
+                phone: params.phone,
+                mediaCategory: "image",
+                mediaUrl: entry.imageUrl,
+                mediaLabel: entry.label,
+                development: entry.label,
+            });
+
+            if (sent) {
+                return true;
+            }
         }
 
         const combinedNeedle = `${params.latestUserMessage}\n${params.assistantReply}`;
@@ -1300,20 +1445,33 @@ async function maybeSendAutomatedReply(
             }
         }
 
-        await sendAutomatedBotText({
-            conversationId,
-            phone: latestConversation.contact.phone,
-            content: reply,
-        });
+        let replyToSend = reply;
+        let knowledgeImageSent = false;
+        const preferredKnowledgeImageUrls =
+            !shouldEscalate && !catalogItem
+                ? extractKnowledgeImageUrlsFromReply(reply)
+                : [];
 
         if (!shouldEscalate && !catalogItem) {
-            await maybeSendKnowledgeImageFromTextSources({
+            knowledgeImageSent = await maybeSendKnowledgeImageFromTextSources({
                 conversationId,
                 phone: latestConversation.contact.phone,
                 latestUserMessage,
                 assistantReply: reply,
+                preferredImageUrls: preferredKnowledgeImageUrls,
             });
+
+            if (knowledgeImageSent && preferredKnowledgeImageUrls.length > 0) {
+                const strippedReply = stripKnowledgeImageUrlsFromReply(reply, preferredKnowledgeImageUrls);
+                replyToSend = strippedReply || "Te comparto la imagen por aqui.";
+            }
         }
+
+        await sendAutomatedBotText({
+            conversationId,
+            phone: latestConversation.contact.phone,
+            content: replyToSend,
+        });
 
         if (shouldEscalate) {
             await triggerHumanEscalation({

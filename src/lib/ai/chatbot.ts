@@ -230,6 +230,7 @@ REGLAS DE RESPUESTA
 - Nunca inventes nombres, telefonos ni correos de asesores, ejecutivos o responsables.
 - Solo puedes mencionar un responsable humano si aparece en los DATOS VERIFICADOS DEL CRM.
 - Nunca inventes telefonos de personas del equipo. Si no existe un dato verificado, omitelo.
+- Nunca menciones al cliente acciones internas del negocio como alertas internas, correos internos, notificaciones al equipo o asuntos de correo.
 - Si el cliente pregunta con quien habla o quien le atiende, puedes usar el nombre del agente o marca indicado en IDENTIDAD DEL AGENTE.
 - Horario comercial por dia:
 ${formatBusinessScheduleLines(businessHours)}
