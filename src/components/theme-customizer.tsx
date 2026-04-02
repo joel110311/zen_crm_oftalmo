@@ -1,36 +1,83 @@
-"use client"
+"use client";
 
-import * as React from "react"
-import { Check } from "lucide-react"
-import { cn } from "@/lib/utils"
+import * as React from "react";
+import { Check } from "lucide-react";
+import { cn } from "@/lib/utils";
+import {
+    applyColorTheme,
+    DEFAULT_COLOR_THEME,
+    persistColorTheme,
+    readStoredColorTheme,
+    type ColorTheme,
+} from "@/lib/color-theme";
+
+const COLOR_THEME_OPTIONS: Array<{
+    id: ColorTheme;
+    name: string;
+    description: string;
+    gradient: string;
+}> = [
+        {
+            id: "green",
+            name: "Green",
+            description: "Tema verde actual del CRM",
+            gradient: "from-[#2f8f53] to-[#0f2c1e]",
+        },
+        {
+            id: "black",
+            name: "Black",
+            description: "Sidebar negra con acentos azules",
+            gradient: "from-[#3B82F6] to-[#05070d]",
+        },
+    ];
 
 export function ThemeCustomizer() {
-    // The Nexus dark theme is the only theme now — 
-    // this component is kept for future theme expansion.
-    const [mounted, setMounted] = React.useState(false)
+    const [mounted, setMounted] = React.useState(false);
+    const [activeColorTheme, setActiveColorTheme] = React.useState<ColorTheme>(DEFAULT_COLOR_THEME);
 
     React.useEffect(() => {
-        setMounted(true)
-        // Remove any legacy theme classes
-        document.body.classList.remove("theme-lime")
-    }, [])
+        setMounted(true);
+        const storedTheme = readStoredColorTheme();
+        setActiveColorTheme(storedTheme);
+        applyColorTheme(storedTheme);
+    }, []);
 
-    if (!mounted) {
-        return null
-    }
+    const handleColorThemeChange = (nextTheme: ColorTheme) => {
+        setActiveColorTheme(nextTheme);
+        applyColorTheme(nextTheme);
+        persistColorTheme(nextTheme);
+    };
+
+    if (!mounted) return null;
 
     return (
-        <div className="grid grid-cols-1 gap-4">
-            <div className="cursor-default rounded-xl border-2 border-primary p-1">
-                <div className="flex items-center space-x-3 rounded-lg bg-secondary p-3">
-                    <div className="h-10 w-10 rounded-full bg-gradient-to-br from-[#3B82F6] to-[#1a1f37] shadow-md" />
-                    <div className="space-y-0.5">
-                        <p className="text-sm font-semibold text-foreground">Nexus Dark</p>
-                        <p className="text-xs text-muted-foreground">Tema único — oscuro y profesional</p>
-                    </div>
-                    <Check className="ml-auto h-4 w-4 text-primary" />
-                </div>
-            </div>
+        <div className="grid grid-cols-1 gap-3">
+            {COLOR_THEME_OPTIONS.map((option) => {
+                const isActive = activeColorTheme === option.id;
+                return (
+                    <button
+                        key={option.id}
+                        type="button"
+                        onClick={() => handleColorThemeChange(option.id)}
+                        className={cn(
+                            "w-full rounded-xl border-2 p-1 text-left transition-all",
+                            isActive
+                                ? "border-primary"
+                                : "border-border hover:border-primary/40"
+                        )}
+                    >
+                        <div className="flex items-center gap-3 rounded-lg bg-secondary p-3">
+                            <div className={cn("h-10 w-10 rounded-full bg-gradient-to-br shadow-md", option.gradient)} />
+                            <div className="space-y-0.5">
+                                <p className="text-sm font-semibold text-foreground">{option.name}</p>
+                                <p className="text-xs text-muted-foreground">{option.description}</p>
+                            </div>
+                            {isActive ? <Check className="ml-auto h-4 w-4 text-primary" /> : null}
+                        </div>
+                    </button>
+                );
+            })}
         </div>
-    )
+    );
 }
+

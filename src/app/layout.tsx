@@ -14,7 +14,9 @@ export const metadata: Metadata = {
 import { ThemeProvider } from "@/components/theme-provider"
 import { Toaster } from "@/components/ui/toaster"
 import { SessionProvider } from "@/components/providers/session-provider"
+import { ColorThemeProvider } from "@/components/color-theme-provider"
 import { auth } from "@/lib/auth"
+import { COLOR_THEME_STORAGE_KEY, DEFAULT_COLOR_THEME } from "@/lib/color-theme"
 
 const manrope = Manrope({
   subsets: ["latin"],
@@ -22,6 +24,18 @@ const manrope = Manrope({
   variable: "--font-manrope",
   display: "swap",
 });
+
+const colorThemeInitScript = `
+(() => {
+  try {
+    const stored = window.localStorage.getItem("${COLOR_THEME_STORAGE_KEY}");
+    const nextTheme = stored === "black" || stored === "green" ? stored : "${DEFAULT_COLOR_THEME}";
+    document.documentElement.setAttribute("data-color-theme", nextTheme);
+  } catch {
+    document.documentElement.setAttribute("data-color-theme", "${DEFAULT_COLOR_THEME}");
+  }
+})();
+`;
 
 export default async function RootLayout({
   children,
@@ -31,9 +45,10 @@ export default async function RootLayout({
   const session = await auth();
 
   return (
-    <html lang="es" suppressHydrationWarning>
+    <html lang="es" suppressHydrationWarning data-color-theme={DEFAULT_COLOR_THEME}>
       <head>
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <script dangerouslySetInnerHTML={{ __html: colorThemeInitScript }} />
       </head>
       <body className={`${manrope.variable} font-sans antialiased`}>
         <SessionProvider session={session}>
@@ -43,8 +58,10 @@ export default async function RootLayout({
             enableSystem={false}
             disableTransitionOnChange
           >
-            {children}
-            <Toaster />
+            <ColorThemeProvider>
+              {children}
+              <Toaster />
+            </ColorThemeProvider>
           </ThemeProvider>
         </SessionProvider>
       </body>
