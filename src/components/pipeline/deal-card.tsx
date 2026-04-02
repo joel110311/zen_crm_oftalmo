@@ -34,9 +34,7 @@ export function DealCard({ deal, onDealClick, isOverlay }: DealCardProps) {
         .filter(Boolean)
         .join(" ") || "Sin nombre";
     const contactPhone = deal.contact?.phone || "";
-    const messagePreview = deal.lastMessage
-        ? (deal.lastMessage.length > 50 ? deal.lastMessage.slice(0, 50) + "..." : deal.lastMessage)
-        : null;
+    const messagePreview = deal.lastMessage?.trim() || "";
     const tags = deal.dealTags?.map((dt) => dt.tag) || [];
 
     // When this card is being dragged, show a dashed placeholder in its original spot
@@ -61,7 +59,7 @@ export function DealCard({ deal, onDealClick, isOverlay }: DealCardProps) {
             onClick={() => onDealClick(deal)}
         >
             <div
-                className={`rounded-lg px-3 py-2.5 transition-all duration-150 bg-card border border-border ${isOverlay ? "shadow-2xl scale-105 rotate-[2deg]" : "shadow-sm group-hover:shadow-md group-hover:border-primary/50"
+                className={`rounded-lg h-[108px] overflow-hidden px-3 py-2.5 transition-all duration-150 bg-card border border-border ${isOverlay ? "shadow-2xl scale-105 rotate-[2deg]" : "shadow-sm group-hover:shadow-md group-hover:border-primary/50"
                     }`}
             >
                 {/* Contact row: avatar + name/phone + value */}
@@ -92,13 +90,12 @@ export function DealCard({ deal, onDealClick, isOverlay }: DealCardProps) {
                 </div>
 
                 {/* Message preview */}
-                {messagePreview && (
-                    <p
-                        className="text-xs mt-1.5 leading-snug text-muted-foreground"
-                    >
-                        {messagePreview}
-                    </p>
-                )}
+                <p
+                    className="text-xs mt-1.5 leading-snug text-muted-foreground truncate whitespace-nowrap"
+                    title={messagePreview || undefined}
+                >
+                    {messagePreview || "\u00A0"}
+                </p>
 
                 {/* Tags */}
                 {tags.length > 0 && (
