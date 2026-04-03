@@ -286,13 +286,25 @@ function getNextPendingCaptureField(
         emailCaptured: boolean;
         nameDeclined: boolean;
         emailDeclined: boolean;
+        nameAsked: boolean;
+        emailAsked: boolean;
     },
 ): PendingCaptureField | null {
-    if (settings.captureLeadName && !state.nameCaptured && !state.nameDeclined) {
+    if (
+        settings.captureLeadName &&
+        !state.nameCaptured &&
+        !state.nameDeclined &&
+        !state.nameAsked
+    ) {
         return "name";
     }
 
-    if (settings.captureLeadEmail && !state.emailCaptured && !state.emailDeclined) {
+    if (
+        settings.captureLeadEmail &&
+        !state.emailCaptured &&
+        !state.emailDeclined &&
+        !state.emailAsked
+    ) {
         return "email";
     }
 
@@ -554,6 +566,8 @@ export async function processLeadAutomationTurn(params: {
     let emailDeclined = intelligence.emailDeclined;
     let capturedName = intelligence.capturedName;
     let capturedEmail = intelligence.capturedEmail || conversation.contact?.email || null;
+    const nameAskedBefore = Boolean(intelligence.askedForNameAt);
+    const emailAskedBefore = Boolean(intelligence.askedForEmailAt);
 
     let savedNameThisTurn = false;
     let savedEmailThisTurn = false;
@@ -600,6 +614,8 @@ export async function processLeadAutomationTurn(params: {
         emailCaptured,
         nameDeclined,
         emailDeclined,
+        nameAsked: nameAskedBefore,
+        emailAsked: emailAskedBefore,
     });
 
     const intelligenceState = resolveIntelligenceState({
@@ -627,6 +643,10 @@ export async function processLeadAutomationTurn(params: {
     const shouldAskForNextField = Boolean(
         thresholdReached &&
         nextPendingField &&
+        !(
+            (nextPendingField === "name" && nameAskedBefore) ||
+            (nextPendingField === "email" && emailAskedBefore)
+        ) &&
         (
             pendingCaptureField !== nextPendingField ||
             savedNameThisTurn ||
