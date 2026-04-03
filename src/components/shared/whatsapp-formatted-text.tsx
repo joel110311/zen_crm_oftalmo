@@ -117,7 +117,7 @@ function renderInlineSegments(
 
         if (token.startsWith("*") && token.endsWith("*")) {
             nodes.push(
-                <strong key={tokenKey} className="font-semibold text-slate-900">
+                <strong key={tokenKey} className="font-semibold text-current">
                     {renderPlainTextWithLinks(token.slice(1, -1), `${tokenKey}-bold`)}
                 </strong>,
             );
