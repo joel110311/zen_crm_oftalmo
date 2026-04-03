@@ -72,10 +72,10 @@ function drawBaseIcon(ctx: CanvasRenderingContext2D, size: number) {
     ctx.clearRect(0, 0, size, size);
 
     drawRoundedRect(ctx, 2, 2, size - 4, size - 4, 16);
-    ctx.fillStyle = "#ffffff";
+    ctx.fillStyle = "#0b0d12";
     ctx.fill();
 
-    ctx.strokeStyle = "#e5e7eb";
+    ctx.strokeStyle = "#2e3442";
     ctx.lineWidth = 3;
     ctx.beginPath();
     ctx.moveTo(13, 10);
@@ -84,9 +84,9 @@ function drawBaseIcon(ctx: CanvasRenderingContext2D, size: number) {
     ctx.stroke();
 
     const bars = [
-        { x: 19, y: 35, w: 8, h: 17, color: "#9ca3af", wickTop: 25, wickBottom: 55 },
-        { x: 31, y: 24, w: 10, h: 25, color: "#6b7280", wickTop: 14, wickBottom: 52 },
-        { x: 45, y: 12, w: 12, h: 32, color: "#111827", wickTop: 4, wickBottom: 48 },
+        { x: 19, y: 35, w: 8, h: 17, color: "#7b8597", wickTop: 25, wickBottom: 55 },
+        { x: 31, y: 24, w: 10, h: 25, color: "#b2bdcc", wickTop: 14, wickBottom: 52 },
+        { x: 45, y: 12, w: 12, h: 32, color: "#f1f5f9", wickTop: 4, wickBottom: 48 },
     ];
 
     for (const bar of bars) {
