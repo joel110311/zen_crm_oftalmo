@@ -600,6 +600,7 @@ async function storeOutboundEcho(
     phoneCandidates: string[],
     text: string,
     media: MediaPayload,
+    customerName?: string,
     providerMessageId?: string,
 ) {
     if (providerMessageId) {
@@ -632,10 +633,36 @@ async function storeOutboundEcho(
     const normalizedCandidates = uniquePhoneCandidates(phoneCandidates);
     if (normalizedCandidates.length === 0) return;
 
+    const normalizedCustomerName = normalizeCustomerNameValue(customerName);
     let contact = await findContactByPhoneCandidates(normalizedCandidates);
 
     if (!contact) {
-        console.warn("[Webhook] Ignoring outbound echo without matched contact", {
+        const primaryPhone = normalizedCandidates[0];
+        try {
+            contact = await prisma.contact.create({
+                data: {
+                    phone: primaryPhone,
+                    name: normalizedCustomerName,
+                    status: "lead",
+                },
+            });
+        } catch (error) {
+            console.warn("[Webhook] Failed to create contact from outbound echo, retrying lookup", {
+                phone: primaryPhone,
+                providerMessageId,
+                error,
+            });
+            contact = await findContactByPhoneCandidates(normalizedCandidates);
+        }
+    } else if (normalizedCustomerName && !normalizeCustomerNameValue(contact.name)) {
+        contact = await prisma.contact.update({
+            where: { id: contact.id },
+            data: { name: normalizedCustomerName },
+        });
+    }
+
+    if (!contact) {
+        console.warn("[Webhook] Outbound echo ignored because contact could not be resolved", {
             providerMessageId,
             phoneCandidates: normalizedCandidates,
         });
@@ -655,6 +682,7 @@ async function storeOutboundEcho(
             data: {
                 contactId: contact.id,
                 status: "active",
+                botActive: false,
             },
         });
     }
@@ -681,6 +709,14 @@ async function storeOutboundEcho(
                 data: { providerMessageId },
             });
         }
+
+        await prisma.conversation.update({
+            where: { id: conversation.id },
+            data: {
+                updatedAt: new Date(),
+                botActive: false,
+            },
+        });
         return;
     }
 
@@ -757,7 +793,8 @@ export async function POST(req: NextRequest) {
         }
 
         if (isFromMe) {
-            await storeOutboundEcho(phoneCandidates, messageDetails.text, media || {}, providerMessageId);
+            const customerName = resolveCustomerName(payload, info);
+            await storeOutboundEcho(phoneCandidates, messageDetails.text, media || {}, customerName, providerMessageId);
             return new NextResponse("EVENT_RECEIVED", { status: 200 });
         }
 
