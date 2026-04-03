@@ -35,6 +35,9 @@ export function DealCard({ deal, onDealClick, isOverlay }: DealCardProps) {
         .join(" ") || "Sin nombre";
     const contactPhone = deal.contact?.phone || "";
     const messagePreview = deal.lastMessage?.trim() || "";
+    const tags = deal.dealTags?.map((item) => item.tag) || [];
+    const primaryTag = tags[0] || null;
+    const remainingTagCount = Math.max(0, tags.length - 1);
 
     // When this card is being dragged, show a dashed placeholder in its original spot
     if (isDragging) {
@@ -86,13 +89,36 @@ export function DealCard({ deal, onDealClick, isOverlay }: DealCardProps) {
                     )}
                 </div>
 
-                {/* Message preview */}
-                <p
-                    className="mt-0.5 truncate whitespace-nowrap text-[12px] leading-5 text-muted-foreground"
-                    title={messagePreview || undefined}
-                >
-                    {messagePreview || "\u00A0"}
-                </p>
+                {/* Message preview + compact tags */}
+                <div className="mt-0.5 flex items-center gap-1">
+                    {primaryTag ? (
+                        <span
+                            className="max-w-[92px] shrink-0 truncate rounded px-1.5 py-[1px] text-[10px] font-medium leading-4"
+                            style={{
+                                backgroundColor: `${primaryTag.color}16`,
+                                color: primaryTag.color,
+                                border: `1px solid ${primaryTag.color}38`,
+                            }}
+                            title={primaryTag.name}
+                        >
+                            {primaryTag.name}
+                        </span>
+                    ) : null}
+                    <p
+                        className="min-w-0 flex-1 truncate whitespace-nowrap text-[12px] leading-5 text-muted-foreground"
+                        title={messagePreview || undefined}
+                    >
+                        {messagePreview || "\u00A0"}
+                    </p>
+                    {remainingTagCount > 0 ? (
+                        <span
+                            className="shrink-0 text-[10px] font-medium text-muted-foreground"
+                            title={`${remainingTagCount} etiqueta${remainingTagCount === 1 ? "" : "s"} adicional${remainingTagCount === 1 ? "" : "es"}`}
+                        >
+                            +{remainingTagCount}
+                        </span>
+                    ) : null}
+                </div>
             </div>
         </div>
     );
