@@ -36,8 +36,8 @@ export function DealCard({ deal, onDealClick, isOverlay }: DealCardProps) {
     const contactPhone = deal.contact?.phone || "";
     const messagePreview = deal.lastMessage?.trim() || "";
     const tags = deal.dealTags?.map((item) => item.tag) || [];
-    const primaryTag = tags[0] || null;
-    const remainingTagCount = Math.max(0, tags.length - 1);
+    const visibleTags = tags.slice(0, 2);
+    const remainingTagCount = Math.max(0, tags.length - visibleTags.length);
 
     // When this card is being dragged, show a dashed placeholder in its original spot
     if (isDragging) {
@@ -61,7 +61,7 @@ export function DealCard({ deal, onDealClick, isOverlay }: DealCardProps) {
             onClick={() => onDealClick(deal)}
         >
             <div
-                className={`h-[82px] min-h-[82px] max-h-[82px] overflow-hidden rounded-lg border border-border/75 bg-card px-2 py-1.5 transition-all duration-150 ${isOverlay ? "scale-105 rotate-[2deg] shadow-soft-hover" : "shadow-soft group-hover:border-primary/35 group-hover:shadow-soft-hover"
+                className={`h-[96px] min-h-[96px] max-h-[96px] overflow-hidden rounded-lg border border-border/75 bg-card px-2 py-1.5 transition-all duration-150 ${isOverlay ? "scale-105 rotate-[2deg] shadow-soft-hover" : "shadow-soft group-hover:border-primary/35 group-hover:shadow-soft-hover"
                     }`}
             >
                 {/* Contact row: avatar + name/phone + value */}
@@ -89,30 +89,33 @@ export function DealCard({ deal, onDealClick, isOverlay }: DealCardProps) {
                     )}
                 </div>
 
-                {/* Message preview + compact tags */}
-                <div className="mt-0.5 flex items-center gap-1">
-                    {primaryTag ? (
+                {/* Message preview */}
+                <p
+                    className="mt-0.5 truncate whitespace-nowrap text-[12px] leading-5 text-muted-foreground"
+                    title={messagePreview || undefined}
+                >
+                    {messagePreview || "\u00A0"}
+                </p>
+
+                {/* Tags row */}
+                <div className="mt-0.5 flex items-center gap-1 overflow-hidden">
+                    {visibleTags.map((tag) => (
                         <span
-                            className="max-w-[92px] shrink-0 truncate rounded px-1.5 py-[1px] text-[10px] font-medium leading-4"
+                            key={tag.id}
+                            className="max-w-[94px] truncate rounded-md px-2 py-[1px] text-[11px] font-medium leading-4"
                             style={{
-                                backgroundColor: `${primaryTag.color}16`,
-                                color: primaryTag.color,
-                                border: `1px solid ${primaryTag.color}38`,
+                                backgroundColor: `${tag.color}16`,
+                                color: tag.color,
+                                border: `1px solid ${tag.color}38`,
                             }}
-                            title={primaryTag.name}
+                            title={tag.name}
                         >
-                            {primaryTag.name}
+                            {tag.name}
                         </span>
-                    ) : null}
-                    <p
-                        className="min-w-0 flex-1 truncate whitespace-nowrap text-[12px] leading-5 text-muted-foreground"
-                        title={messagePreview || undefined}
-                    >
-                        {messagePreview || "\u00A0"}
-                    </p>
+                    ))}
                     {remainingTagCount > 0 ? (
                         <span
-                            className="shrink-0 text-[10px] font-medium text-muted-foreground"
+                            className="shrink-0 rounded-md border border-border/70 px-1.5 py-[1px] text-[10px] font-medium text-muted-foreground"
                             title={`${remainingTagCount} etiqueta${remainingTagCount === 1 ? "" : "s"} adicional${remainingTagCount === 1 ? "" : "es"}`}
                         >
                             +{remainingTagCount}
