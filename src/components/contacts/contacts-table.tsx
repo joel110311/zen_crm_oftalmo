@@ -12,6 +12,7 @@ import {
     ChevronLeft,
     ChevronRight,
     Download,
+    MessageSquare,
     RotateCw,
     Search,
     Star,
@@ -108,7 +109,7 @@ function getHostMeta(contact: ContactTableItem) {
 
     return {
         label: "Humano",
-        detail: conversation.assignedUser?.name || "Asignacion manual",
+        detail: conversation.assignedUser?.name || "Sin asignar",
         classes: "bg-amber-50 text-amber-700",
     };
 }
@@ -419,13 +420,14 @@ export function ContactsTable({ contacts }: ContactsPageProps) {
                             <TableHead className="hidden md:table-cell text-muted-foreground">Estado</TableHead>
                             <TableHead className="hidden xl:table-cell text-muted-foreground">Creado</TableHead>
                             <TableHead className="text-muted-foreground">Calidad</TableHead>
+                            <TableHead className="w-[140px] text-right text-muted-foreground">Chat</TableHead>
                             <TableHead className="w-[56px]"></TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
                         {contacts.length === 0 ? (
                             <TableRow>
-                                <TableCell colSpan={9} className="h-32 text-center text-muted-foreground">
+                                <TableCell colSpan={10} className="h-32 text-center text-muted-foreground">
                                     No se encontraron contactos.
                                 </TableCell>
                             </TableRow>
@@ -467,9 +469,11 @@ export function ContactsTable({ contacts }: ContactsPageProps) {
                                                     <div className="truncate font-semibold text-foreground transition-colors group-hover:text-primary">
                                                         {fullName}
                                                     </div>
-                                                    <div className="truncate text-xs text-muted-foreground">
-                                                        {contact.company || "Sin compania"}
-                                                    </div>
+                                                    {contact.company ? (
+                                                        <div className="truncate text-xs text-muted-foreground">
+                                                            {contact.company}
+                                                        </div>
+                                                    ) : null}
                                                 </div>
                                             </Link>
                                         </TableCell>
@@ -511,6 +515,19 @@ export function ContactsTable({ contacts }: ContactsPageProps) {
                                                 <Star className="h-4 w-4 fill-current" />
                                                 <span>{score.score}/100</span>
                                             </div>
+                                        </TableCell>
+                                        <TableCell className="text-right">
+                                            {contact.phone ? (
+                                                <Link
+                                                    href={`/dashboard/inbox?phone=${encodeURIComponent(contact.phone)}`}
+                                                    className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-primary/25 bg-primary/10 px-3 text-xs font-medium text-primary transition-colors hover:bg-primary/15"
+                                                >
+                                                    <MessageSquare className="h-3.5 w-3.5" />
+                                                    Ir al chat
+                                                </Link>
+                                            ) : (
+                                                <span className="text-xs text-muted-foreground">-</span>
+                                            )}
                                         </TableCell>
                                         <TableCell>
                                             <ContactActions contactId={contact.id} />
