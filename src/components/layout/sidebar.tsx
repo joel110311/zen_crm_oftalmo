@@ -129,7 +129,7 @@ export function Sidebar({ className }: React.HTMLAttributes<HTMLDivElement>) {
                 </button>
 
                 <Link href="/dashboard" className="flex items-center gap-2.5 text-sidebar-foreground">
-                    <ZenLogo className="h-7 w-7" />
+                    <ZenLogo className="h-7 w-7 text-white" />
                     <span className="text-base font-semibold tracking-tight text-white">Zen CRM</span>
                 </Link>
 
@@ -154,7 +154,7 @@ export function Sidebar({ className }: React.HTMLAttributes<HTMLDivElement>) {
                 <div className="flex h-full flex-col">
                     <div className="flex items-center justify-between rounded-[1.1rem] border border-white/8 bg-white/6 px-3.5 py-3 shadow-[0_20px_40px_-30px_rgba(0,0,0,0.95)]">
                         <Link href="/dashboard" className="flex items-center gap-2.5 text-sidebar-foreground" onClick={() => setOpen(false)}>
-                            <ZenLogo className="h-8 w-8" />
+                            <ZenLogo className="h-8 w-8 text-white" />
                             <span className="text-lg font-semibold tracking-tight text-white">Zen CRM</span>
                         </Link>
                         <button
@@ -195,7 +195,7 @@ export function Sidebar({ className }: React.HTMLAttributes<HTMLDivElement>) {
             <aside className={cn("hidden w-[244px] shrink-0 border-r border-sidebar-border/85 bg-sidebar px-3 py-3 md:flex md:flex-col", className)}>
                 <div className="rounded-[1.1rem] border border-white/8 bg-white/6 px-4 py-4 shadow-[0_20px_40px_-30px_rgba(0,0,0,0.9)]">
                     <Link href="/dashboard" className="flex items-center gap-3 text-sidebar-foreground">
-                        <ZenLogo className="h-8 w-8" />
+                        <ZenLogo className="h-8 w-8 text-white" />
                         <div className="space-y-0.5">
                             <span className="block text-base font-semibold tracking-tight text-white">Zen CRM</span>
                             <span className="block text-xs text-sidebar-foreground/48">Workspace comercial</span>
