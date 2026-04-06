@@ -204,6 +204,15 @@ type ExtractedMessageDetails = {
     previewDataUrl?: string;
 };
 
+type ExtractedReactionEvent = {
+    targetProviderMessageId: string;
+    reaction: string | null;
+};
+
+type ExtractedDeleteEvent = {
+    targetProviderMessageId: string;
+};
+
 function isLidAddress(value: unknown) {
     if (!value) return false;
 
@@ -460,6 +469,207 @@ function extractMessageDetails(messageNode: unknown): ExtractedMessageDetails {
         type: "text",
         ignore: true,
     };
+}
+
+function extractReactionEvent(messageNode: unknown): ExtractedReactionEvent | null {
+    const message = asRecord(unwrapMessageNode(messageNode));
+    if (!message) return null;
+
+    const reactionMessage = getNestedRecord(message, "reactionMessage");
+    if (!reactionMessage) return null;
+
+    const reactionKey = getNestedRecord(reactionMessage, "key") || getNestedRecord(reactionMessage, "Key");
+    const targetProviderMessageId = (
+        getString(reactionKey, "id") ||
+        getString(reactionKey, "ID") ||
+        getString(reactionMessage, "id") ||
+        getString(reactionMessage, "ID") ||
+        getString(reactionMessage, "stanzaId") ||
+        ""
+    ).trim();
+
+    if (!targetProviderMessageId) return null;
+
+    const reactionValue = (getString(reactionMessage, "text") || getString(reactionMessage, "Text") || "").trim();
+    return {
+        targetProviderMessageId,
+        reaction: reactionValue || null,
+    };
+}
+
+function isDeleteProtocolType(value: unknown) {
+    if (typeof value === "number") {
+        return value === 0;
+    }
+
+    if (typeof value === "string") {
+        const normalized = value.trim().toUpperCase();
+        return (
+            normalized === "0" ||
+            normalized === "REVOKE" ||
+            normalized.includes("REVOKE") ||
+            normalized.includes("DELETE")
+        );
+    }
+
+    return false;
+}
+
+function extractDeleteEvent(messageNode: unknown): ExtractedDeleteEvent | null {
+    const message = asRecord(unwrapMessageNode(messageNode));
+    if (!message) return null;
+
+    const protocolMessage = getNestedRecord(message, "protocolMessage");
+    if (!protocolMessage) return null;
+
+    const protocolType = protocolMessage.type ?? protocolMessage.Type;
+    if (protocolType !== undefined && !isDeleteProtocolType(protocolType)) {
+        return null;
+    }
+
+    const protocolKey = getNestedRecord(protocolMessage, "key") || getNestedRecord(protocolMessage, "Key");
+    const targetProviderMessageId = (
+        getString(protocolKey, "id") ||
+        getString(protocolKey, "ID") ||
+        getString(protocolMessage, "id") ||
+        getString(protocolMessage, "ID") ||
+        getString(protocolMessage, "stanzaId") ||
+        getString(protocolMessage, "stanzaID") ||
+        ""
+    ).trim();
+
+    if (!targetProviderMessageId) return null;
+
+    return { targetProviderMessageId };
+}
+
+async function applyReactionEvent(event: ExtractedReactionEvent, phoneCandidates: string[]) {
+    const normalizedCandidates = uniquePhoneCandidates(phoneCandidates);
+    const phoneClauses = buildPhoneMatchClauses(normalizedCandidates);
+
+    const scopedWhere = {
+        providerMessageId: event.targetProviderMessageId,
+        ...(phoneClauses.length > 0
+            ? {
+                conversation: {
+                    contact: {
+                        OR: phoneClauses,
+                    },
+                },
+            }
+            : {}),
+    };
+
+    let targetMessage = await prisma.message.findFirst({
+        where: scopedWhere,
+        select: {
+            id: true,
+            conversationId: true,
+            reaction: true,
+        },
+        orderBy: {
+            createdAt: "desc",
+        },
+    });
+
+    if (!targetMessage && phoneClauses.length > 0) {
+        targetMessage = await prisma.message.findFirst({
+            where: { providerMessageId: event.targetProviderMessageId },
+            select: {
+                id: true,
+                conversationId: true,
+                reaction: true,
+            },
+            orderBy: {
+                createdAt: "desc",
+            },
+        });
+    }
+
+    if (!targetMessage) {
+        console.warn("[Webhook] Reaction ignored because target message was not found", {
+            targetProviderMessageId: event.targetProviderMessageId,
+            phoneCandidates: normalizedCandidates,
+        });
+        return;
+    }
+
+    if (targetMessage.reaction === event.reaction) {
+        return;
+    }
+
+    await prisma.message.update({
+        where: { id: targetMessage.id },
+        data: { reaction: event.reaction },
+    });
+
+    await prisma.conversation.update({
+        where: { id: targetMessage.conversationId },
+        data: { updatedAt: new Date() },
+    });
+
+    revalidatePath("/dashboard/inbox");
+}
+
+async function applyDeleteEvent(event: ExtractedDeleteEvent, phoneCandidates: string[]) {
+    const normalizedCandidates = uniquePhoneCandidates(phoneCandidates);
+    const phoneClauses = buildPhoneMatchClauses(normalizedCandidates);
+
+    const scopedWhere = {
+        providerMessageId: event.targetProviderMessageId,
+        ...(phoneClauses.length > 0
+            ? {
+                conversation: {
+                    contact: {
+                        OR: phoneClauses,
+                    },
+                },
+            }
+            : {}),
+    };
+
+    let targetMessage = await prisma.message.findFirst({
+        where: scopedWhere,
+        select: {
+            id: true,
+            conversationId: true,
+        },
+        orderBy: {
+            createdAt: "desc",
+        },
+    });
+
+    if (!targetMessage) {
+        targetMessage = await prisma.message.findFirst({
+            where: { providerMessageId: event.targetProviderMessageId },
+            select: {
+                id: true,
+                conversationId: true,
+            },
+            orderBy: {
+                createdAt: "desc",
+            },
+        });
+    }
+
+    if (!targetMessage) {
+        console.warn("[Webhook] Delete event ignored because target message was not found", {
+            targetProviderMessageId: event.targetProviderMessageId,
+            phoneCandidates: normalizedCandidates,
+        });
+        return;
+    }
+
+    await prisma.message.delete({
+        where: { id: targetMessage.id },
+    });
+
+    await prisma.conversation.update({
+        where: { id: targetMessage.conversationId },
+        data: { updatedAt: new Date() },
+    });
+
+    revalidatePath("/dashboard/inbox");
 }
 
 function resolvePhoneFromInfo(info: JsonObject, isFromMe: boolean) {
@@ -835,6 +1045,20 @@ export async function POST(req: NextRequest) {
             return new NextResponse("EVENT_RECEIVED", { status: 200 });
         }
 
+        const isFromMe = getBoolean(info, "IsFromMe") ?? getBoolean(info, "isFromMe") ?? false;
+        const phoneCandidates = resolvePhoneCandidatesFromInfo(info, isFromMe);
+        const deleteEvent = extractDeleteEvent(payload.event.Message);
+        if (deleteEvent) {
+            await applyDeleteEvent(deleteEvent, phoneCandidates);
+            return new NextResponse("EVENT_RECEIVED", { status: 200 });
+        }
+
+        const reactionEvent = extractReactionEvent(payload.event.Message);
+        if (reactionEvent) {
+            await applyReactionEvent(reactionEvent, phoneCandidates);
+            return new NextResponse("EVENT_RECEIVED", { status: 200 });
+        }
+
         const messageDetails = extractMessageDetails(payload.event.Message);
         if (messageDetails.ignore) {
             return new NextResponse("EVENT_RECEIVED", { status: 200 });
@@ -844,8 +1068,6 @@ export async function POST(req: NextRequest) {
             ? await saveIncomingMedia(payload, messageDetails)
             : undefined;
 
-        const isFromMe = getBoolean(info, "IsFromMe") ?? getBoolean(info, "isFromMe") ?? false;
-        const phoneCandidates = resolvePhoneCandidatesFromInfo(info, isFromMe);
         const phone = phoneCandidates[0] || "";
         const providerMessageId = resolveProviderMessageId(info);
 

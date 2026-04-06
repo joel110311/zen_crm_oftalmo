@@ -464,6 +464,57 @@ export async function sendWuzapiReaction(params: {
     );
 }
 
+export async function sendWuzapiDeleteMessage(params: {
+    phone: string;
+    providerMessageId: string;
+    ownMessage?: boolean;
+}) {
+    const phone = normalizeWuzapiRecipient(params.phone);
+    const messageId = params.providerMessageId.trim();
+    if (!messageId) {
+        throw new Error("No se pudo eliminar en WhatsApp porque falta el ID del mensaje.");
+    }
+
+    const idCandidates = params.ownMessage
+        ? [`me:${messageId}`, messageId]
+        : [messageId];
+
+    let lastError: unknown = null;
+
+    for (const idCandidate of idCandidates) {
+        try {
+            return await retryWuzapiSend(() =>
+                requestWuzapi<{ Details?: string }>("user", "/chat/delete", {
+                    method: "POST",
+                    body: JSON.stringify({
+                        Phone: phone,
+                        Id: idCandidate,
+                    }),
+                }),
+            );
+        } catch (error) {
+            lastError = error;
+            if (idCandidates.length === 1) {
+                break;
+            }
+
+            const normalizedMessage = error instanceof Error ? error.message.toLowerCase() : "";
+            const shouldTryNextCandidate =
+                normalizedMessage.includes("not found") ||
+                normalizedMessage.includes("invalid") ||
+                normalizedMessage.includes("bad request");
+
+            if (!shouldTryNextCandidate) {
+                break;
+            }
+        }
+    }
+
+    throw lastError instanceof Error
+        ? lastError
+        : new Error("No se pudo eliminar el mensaje en WhatsApp.");
+}
+
 export async function sendWuzapiMediaMessage(params: SendMediaParams) {
     const phone = normalizeWuzapiRecipient(params.phone);
 

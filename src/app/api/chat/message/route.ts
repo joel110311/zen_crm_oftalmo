@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { sendWuzapiDeleteMessage } from "@/lib/wuzapi";
 
 export async function DELETE(request: NextRequest) {
     try {
@@ -23,11 +24,45 @@ export async function DELETE(request: NextRequest) {
             select: {
                 id: true,
                 conversationId: true,
+                providerMessageId: true,
+                direction: true,
+                conversation: {
+                    select: {
+                        contact: {
+                            select: {
+                                phone: true,
+                            },
+                        },
+                    },
+                },
             },
         });
 
         if (!message || message.conversationId !== conversationId) {
             return NextResponse.json({ error: "Mensaje no encontrado." }, { status: 404 });
+        }
+
+        let whatsappSynced = false;
+        let whatsappWarning: string | null = null;
+
+        if (message.providerMessageId && message.conversation?.contact?.phone) {
+            try {
+                await sendWuzapiDeleteMessage({
+                    phone: message.conversation.contact.phone,
+                    providerMessageId: message.providerMessageId,
+                    ownMessage: message.direction === "outbound",
+                });
+                whatsappSynced = true;
+            } catch (syncError) {
+                console.error("[API] WhatsApp delete sync error:", syncError);
+                whatsappWarning = syncError instanceof Error
+                    ? syncError.message
+                    : "No se pudo sincronizar borrado con WhatsApp.";
+            }
+        } else if (message.providerMessageId && !message.conversation?.contact?.phone) {
+            whatsappWarning = "No hay teléfono del contacto para sincronizar borrado con WhatsApp.";
+        } else if (!message.providerMessageId) {
+            whatsappWarning = "Este mensaje no tiene identificador nativo para borrarlo en WhatsApp.";
         }
 
         await prisma.message.delete({
@@ -37,6 +72,8 @@ export async function DELETE(request: NextRequest) {
         return NextResponse.json({
             success: true,
             deletedMessageId: messageId,
+            whatsappSynced,
+            whatsappWarning,
         });
     } catch (error) {
         console.error("[API] Delete message error:", error);
