@@ -1157,9 +1157,12 @@ export default function InboxPage() {
 
     // Ref to keep the selected chat ID accessible inside polling closures
     const selectedChatIdRef = useRef<string | null>(null);
+    const selectedChatUpdatedAtRef = useRef<string | null>(null);
+    const forceFullMessagesSyncRef = useRef(false);
     useEffect(() => {
         selectedChatIdRef.current = selectedChat?.id ?? null;
-    }, [selectedChat?.id]);
+        selectedChatUpdatedAtRef.current = selectedChat ? toIsoTimestamp(selectedChat.updatedAt) : null;
+    }, [selectedChat?.id, selectedChat?.updatedAt]);
 
     const restoreMobileInboxViewport = useCallback(() => {
         if (typeof window === "undefined" || window.innerWidth >= 768) {
@@ -1340,7 +1343,15 @@ export default function InboxPage() {
                 // Update selected chat data (keep same chat, just refresh its data)
                 if (currentId) {
                     const updated = transformed.find(c => c.id === currentId);
-                    if (updated) setSelectedChat(updated);
+                    if (updated) {
+                        const previousUpdatedAt = selectedChatUpdatedAtRef.current;
+                        const nextUpdatedAt = toIsoTimestamp(updated.updatedAt);
+                        if (previousUpdatedAt && nextUpdatedAt && previousUpdatedAt !== nextUpdatedAt) {
+                            forceFullMessagesSyncRef.current = true;
+                        }
+                        selectedChatUpdatedAtRef.current = nextUpdatedAt;
+                        setSelectedChat(updated);
+                    }
                 }
             } catch (error) {
                 console.error("Failed to fetch conversations:", error);
@@ -1358,6 +1369,8 @@ export default function InboxPage() {
 
         // Reset messages state when chat changes to avoid showing old data
         setMessages([]);
+        selectedChatUpdatedAtRef.current = toIsoTimestamp(selectedChat.updatedAt);
+        forceFullMessagesSyncRef.current = false;
         let lastMessageDate: string | null = null;
         let isFetching = false;
 
@@ -1365,9 +1378,14 @@ export default function InboxPage() {
             if (isFetching) return;
             isFetching = true;
             try {
+                const shouldFullSync = isInitial || forceFullMessagesSyncRef.current;
+                if (shouldFullSync) {
+                    forceFullMessagesSyncRef.current = false;
+                }
+
                 const url = new URL("/api/chat", window.location.origin);
                 url.searchParams.append("conversationId", selectedChat.id);
-                if (!isInitial && lastMessageDate) {
+                if (!shouldFullSync && lastMessageDate) {
                     url.searchParams.append("since", lastMessageDate);
                 }
 
@@ -1377,39 +1395,51 @@ export default function InboxPage() {
                     ? rawMessages.map(normalizeMessageRecord)
                     : [];
 
+                if (shouldFullSync) {
+                    lastMessageDate = newMessages.length > 0
+                        ? newMessages[newMessages.length - 1].createdAt.toISOString()
+                        : null;
+
+                    setMessages((prev) => {
+                        const optimisticMessages = prev.filter(isTemporaryMessage);
+                        if (newMessages.length === 0) {
+                            return optimisticMessages;
+                        }
+
+                        return collapseMessageDuplicates([...newMessages, ...optimisticMessages]);
+                    });
+                    return;
+                }
+
                 if (newMessages.length > 0) {
                     lastMessageDate = newMessages[newMessages.length - 1].createdAt.toISOString();
 
-                    if (isInitial) {
-                        setMessages(newMessages);
-                    } else {
-                        setMessages((prev) => {
-                            const mergedMessages = mergeFetchedMessages(prev, newMessages);
-                            const existingIds = new Set(prev.map((m) => m.id));
-                            const uniqueNew = mergedMessages.filter((m) => !existingIds.has(m.id));
+                    setMessages((prev) => {
+                        const mergedMessages = mergeFetchedMessages(prev, newMessages);
+                        const existingIds = new Set(prev.map((m) => m.id));
+                        const uniqueNew = mergedMessages.filter((m) => !existingIds.has(m.id));
 
-                            if (uniqueNew.length === 0) return prev;
+                        if (uniqueNew.length === 0) return prev;
 
-                            // If there are genuinely new messages, show notifications or auto-scroll
-                            if (prev.length > 0 && uniqueNew.some((m) => m.direction === "inbound")) {
-                                // Play sound for incoming message in the active chat
-                                maybePlayNotification(selectedChat.isMuted);
+                        // If there are genuinely new messages, show notifications or auto-scroll
+                        if (prev.length > 0 && uniqueNew.some((m) => m.direction === "inbound")) {
+                            // Play sound for incoming message in the active chat
+                            maybePlayNotification(selectedChat.isMuted);
 
-                                const el = messagesContainerRef.current;
-                                if (el) {
-                                    const threshold = 150;
-                                    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < threshold;
-                                    if (!atBottom) {
-                                        setNewMessageCount((c) => c + uniqueNew.filter((m) => m.direction === "inbound").length);
-                                    } else {
-                                        setTimeout(() => scrollToBottom("smooth"), 100);
-                                    }
+                            const el = messagesContainerRef.current;
+                            if (el) {
+                                const threshold = 150;
+                                const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < threshold;
+                                if (!atBottom) {
+                                    setNewMessageCount((c) => c + uniqueNew.filter((m) => m.direction === "inbound").length);
+                                } else {
+                                    setTimeout(() => scrollToBottom("smooth"), 100);
                                 }
                             }
+                        }
 
-                            return mergedMessages;
-                        });
-                    }
+                        return mergedMessages;
+                    });
                 }
             } catch (error) {
                 console.error("Failed to fetch messages:", error);
