@@ -109,6 +109,73 @@ function resolveCustomerName(payload: WuzapiWebhookPayload, info: JsonObject) {
         .find(Boolean);
 }
 
+function normalizeComparableName(value: string | undefined) {
+    return value
+        ?.normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .replace(/\s+/g, " ")
+        .trim();
+}
+
+function resolveOutboundContactName(payload: WuzapiWebhookPayload, info: JsonObject) {
+    const eventRecord = asRecord(payload.event);
+
+    const senderIdentityNames = [
+        getString(info, "PushName"),
+        getString(info, "pushName"),
+        getString(info, "SenderName"),
+        getString(info, "senderName"),
+        getString(eventRecord, "PushName"),
+        getString(eventRecord, "pushName"),
+        getString(eventRecord, "SenderName"),
+        getString(eventRecord, "senderName"),
+    ]
+        .map((value) => normalizeCustomerNameValue(value))
+        .filter((value): value is string => Boolean(value))
+        .map((value) => normalizeComparableName(value))
+        .filter((value): value is string => Boolean(value));
+
+    const senderIdentitySet = new Set(senderIdentityNames);
+
+    const recipientCandidates = [
+        getString(info, "RecipientName"),
+        getString(info, "recipientName"),
+        getString(info, "RecipientPushName"),
+        getString(info, "recipientPushName"),
+        getString(info, "ChatName"),
+        getString(info, "chatName"),
+        getString(info, "RemoteName"),
+        getString(info, "remoteName"),
+        getString(info, "Notify"),
+        getString(info, "notify"),
+        getString(eventRecord, "RecipientName"),
+        getString(eventRecord, "recipientName"),
+        getString(eventRecord, "RecipientPushName"),
+        getString(eventRecord, "recipientPushName"),
+        getString(eventRecord, "ChatName"),
+        getString(eventRecord, "chatName"),
+        getString(eventRecord, "RemoteName"),
+        getString(eventRecord, "remoteName"),
+        getString(eventRecord, "Notify"),
+        getString(eventRecord, "notify"),
+    ];
+
+    for (const candidate of recipientCandidates) {
+        const normalized = normalizeCustomerNameValue(candidate);
+        if (!normalized) continue;
+
+        const comparable = normalizeComparableName(normalized);
+        if (comparable && senderIdentitySet.has(comparable)) {
+            continue;
+        }
+
+        return normalized;
+    }
+
+    return undefined;
+}
+
 type MediaPayload = {
     type?: string;
     mediaUrl?: string;
@@ -793,8 +860,14 @@ export async function POST(req: NextRequest) {
         }
 
         if (isFromMe) {
-            const customerName = resolveCustomerName(payload, info);
-            await storeOutboundEcho(phoneCandidates, messageDetails.text, media || {}, customerName, providerMessageId);
+            const outboundContactName = resolveOutboundContactName(payload, info);
+            await storeOutboundEcho(
+                phoneCandidates,
+                messageDetails.text,
+                media || {},
+                outboundContactName,
+                providerMessageId,
+            );
             return new NextResponse("EVENT_RECEIVED", { status: 200 });
         }
 
