@@ -86,16 +86,8 @@ const STOP_KEYWORDS = [
     "deten",
     "stop",
     "basta",
-    "cancelar",
-    "cancela",
-    "parar",
-    "salir",
-    "quitar",
     "quitame",
-    "remover",
     "removeme",
-    "borrar",
-    "borra",
     "desuscribir",
     "bajame",
 ];
@@ -139,6 +131,18 @@ const INTEREST_KEYWORDS = [
 ];
 
 export type BulkCampaignReplyIntent = "stop" | "interest" | "neutral";
+
+export function isExplicitBulkStopCommand(rawText: string) {
+    const normalized = normalizeReplyText(rawText);
+    if (!normalized) return false;
+
+    if (STOP_PHRASES.some((phrase) => normalized.includes(phrase))) {
+        return true;
+    }
+
+    const tokens = normalized.split(" ").filter(Boolean);
+    return tokens.some((token) => STOP_KEYWORDS.includes(token));
+}
 
 export function classifyBulkCampaignReplyIntent(rawText: string): BulkCampaignReplyIntent {
     const normalized = normalizeReplyText(rawText);

@@ -27,6 +27,7 @@ import {
 } from "@/lib/bulk-campaign-audience";
 import {
     classifyBulkCampaignReplyIntent,
+    isExplicitBulkStopCommand,
     type BulkCampaignReplyIntent,
 } from "@/lib/bulk-campaign-replies";
 import { buildPhoneMatchClauses, normalizePhoneDigits } from "@/lib/phone";
@@ -1449,7 +1450,12 @@ export async function markBulkCampaignReplyForContact(
     rawText: string,
     repliedAt = new Date(),
 ) {
-    const intent = classifyBulkCampaignReplyIntent(rawText);
+    const classifiedIntent = classifyBulkCampaignReplyIntent(rawText);
+    const explicitStop = isExplicitBulkStopCommand(rawText);
+    const intent: BulkCampaignReplyIntent =
+        classifiedIntent === "stop" && !explicitStop
+            ? "neutral"
+            : classifiedIntent;
     const shouldStopAllQueued = intent === "stop" || intent === "interest";
 
     const sentRecipients = await prisma.bulkCampaignRecipient.findMany({
@@ -1489,13 +1495,10 @@ export async function markBulkCampaignReplyForContact(
         },
     });
 
-    if (
-        sentRecipients.length === 0 &&
-        queuedRecipients.length === 0 &&
-        intent !== "stop"
-    ) {
+    const hasCampaignContext = sentRecipients.length > 0 || queuedRecipients.length > 0;
+    if (!hasCampaignContext) {
         return {
-            intent,
+            intent: "neutral",
             stoppedCampaignIds: [],
             activatedBot: false,
             optedOut: false,
@@ -1551,6 +1554,12 @@ export async function markBulkCampaignReplyForContact(
 
     if (intent === "stop") {
         await moveContactDealsToClosedLostStage(contactId);
+        console.warn("[BulkCampaigns] Contact moved to closed-lost by explicit STOP", {
+            contactId,
+            reason: rawText.trim().slice(0, 160),
+            sentRecipients: sentRecipients.length,
+            queuedRecipients: queuedRecipients.length,
+        });
     }
 
     const campaignIds = [...sentRecipients, ...queuedRecipients]
