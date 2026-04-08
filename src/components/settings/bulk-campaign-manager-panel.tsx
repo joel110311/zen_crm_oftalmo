@@ -13,7 +13,6 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/components/ui/use-toast";
 import {
     appendCommaSeparatedValue,
@@ -151,7 +150,8 @@ export function BulkCampaignManagerPanel() {
         );
     }, [campaigns, search]);
 
-    const activeVariant = form.variants[Math.min(activeVariantIndex, Math.max(form.variants.length - 1, 0))] || DEFAULT_VARIANTS[0];
+    const resolvedActiveVariantIndex = Math.min(activeVariantIndex, Math.max(form.variants.length - 1, 0));
+    const activeVariant = form.variants[resolvedActiveVariantIndex] || DEFAULT_VARIANTS[0];
     const previewContent = useMemo(
         () =>
             renderTemplateContent(activeVariant?.content || "", {
@@ -223,6 +223,12 @@ export function BulkCampaignManagerPanel() {
             clearTimeout(timer);
         };
     }, [audiencePayload]);
+
+    useEffect(() => {
+        setActiveVariantIndex((current) =>
+            Math.max(0, Math.min(current, Math.max(form.variants.length - 1, 0))),
+        );
+    }, [form.variants.length]);
 
     const updateVariant = useCallback((index: number, updater: (variant: CampaignVariantFormState) => CampaignVariantFormState) => {
         setForm((current) => ({
@@ -594,17 +600,15 @@ export function BulkCampaignManagerPanel() {
                         </div>
                     </div>
 
-                    <Tabs defaultValue="message" className="mt-5 min-w-0 space-y-4">
-                        <TabsList className="grid h-auto w-full grid-cols-3 gap-2 rounded-2xl border bg-muted/15 p-1.5">
-                            <TabsTrigger value="message" className="min-w-0 h-10 rounded-xl border border-transparent bg-background px-2.5 text-[13px] font-semibold text-foreground/75 hover:text-foreground data-[state=active]:border-primary/30 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-[0_14px_28px_-18px_rgba(37,99,235,0.72)] sm:h-11 sm:px-4 sm:text-sm">Mensaje</TabsTrigger>
-                            <TabsTrigger value="audience" className="min-w-0 h-10 rounded-xl border border-transparent bg-background px-2.5 text-[13px] font-semibold text-foreground/75 hover:text-foreground data-[state=active]:border-primary/30 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-[0_14px_28px_-18px_rgba(37,99,235,0.72)] sm:h-11 sm:px-4 sm:text-sm">Audiencia</TabsTrigger>
-                            <TabsTrigger value="schedule" className="min-w-0 h-10 rounded-xl border border-transparent bg-background px-2.5 text-[13px] font-semibold text-foreground/75 hover:text-foreground data-[state=active]:border-primary/30 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-[0_14px_28px_-18px_rgba(37,99,235,0.72)] sm:h-11 sm:px-4 sm:text-sm">Programacion</TabsTrigger>
-                        </TabsList>
-
-                        <TabsContent value="message" className="mt-0 min-w-0">
+                    <div className="mt-5 space-y-6 min-w-0">
+                        <section className="space-y-3 min-w-0">
+                            <div className="flex items-center justify-between gap-2 rounded-xl border bg-muted/15 px-4 py-2.5">
+                                <p className="text-sm font-semibold">1) Mensaje</p>
+                                <span className="text-xs text-muted-foreground">Variantes y vista previa</span>
+                            </div>
                             <BulkCampaignMessageTab
                                 form={form}
-                                activeVariantIndex={activeVariantIndex}
+                                activeVariantIndex={resolvedActiveVariantIndex}
                                 onActiveVariantIndexChange={setActiveVariantIndex}
                                 activeVariant={activeVariant}
                                 previewContent={previewContent}
@@ -616,9 +620,13 @@ export function BulkCampaignManagerPanel() {
                                 onAddVariant={addVariant}
                                 onRemoveVariant={removeVariant}
                             />
-                        </TabsContent>
+                        </section>
 
-                        <TabsContent value="audience" className="mt-0 min-w-0">
+                        <section className="space-y-3 min-w-0">
+                            <div className="flex items-center justify-between gap-2 rounded-xl border bg-muted/15 px-4 py-2.5">
+                                <p className="text-sm font-semibold">2) Audiencia</p>
+                                <span className="text-xs text-muted-foreground">Filtros, selección y CSV</span>
+                            </div>
                             <BulkCampaignAudienceTab
                                 form={form}
                                 audiencePreview={audiencePreview}
@@ -657,9 +665,13 @@ export function BulkCampaignManagerPanel() {
                                 onCsvImportTagChange={setCsvImportTag}
                                 onCsvImport={handleCsvImport}
                             />
-                        </TabsContent>
+                        </section>
 
-                        <TabsContent value="schedule" className="mt-0 min-w-0">
+                        <section className="space-y-3 min-w-0">
+                            <div className="flex items-center justify-between gap-2 rounded-xl border bg-muted/15 px-4 py-2.5">
+                                <p className="text-sm font-semibold">3) Programación</p>
+                                <span className="text-xs text-muted-foreground">Cadencia, horarios y guardarrailes</span>
+                            </div>
                             <BulkCampaignScheduleTab
                                 form={form}
                                 totalPreviewRecipients={totalPreviewRecipients}
@@ -668,8 +680,8 @@ export function BulkCampaignManagerPanel() {
                                 followUpWindowDays={followUpWindowDays}
                                 onFormChange={(updater) => setForm(updater)}
                             />
-                        </TabsContent>
-                    </Tabs>
+                        </section>
+                    </div>
                 </div>
             </div>
         </div>

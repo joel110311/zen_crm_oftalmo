@@ -144,10 +144,13 @@ export function BulkCampaignMessageTab({
                     </div>
 
                     <div className="space-y-3.5 rounded-xl border bg-background/90 p-4">
-                        <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_120px] xl:grid-cols-[minmax(0,1fr)_120px_190px]">
+                        <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(120px,140px)] 2xl:grid-cols-[minmax(0,1fr)_minmax(120px,140px)_200px]">
                             <div className="space-y-2">
-                                <Label>Etiqueta</Label>
+                                <Label htmlFor={`bulk-campaign-variant-label-${activeVariantIndex}`} className="block">
+                                    Etiqueta
+                                </Label>
                                 <Input
+                                    id={`bulk-campaign-variant-label-${activeVariantIndex}`}
                                     value={activeVariant.label}
                                     onChange={(event) =>
                                         onVariantChange(activeVariantIndex, (variant) => ({
@@ -155,11 +158,16 @@ export function BulkCampaignMessageTab({
                                             label: event.target.value,
                                         }))
                                     }
+                                    placeholder="A"
+                                    className="w-full"
                                 />
                             </div>
                             <div className="space-y-2">
-                                <Label>Peso</Label>
+                                <Label htmlFor={`bulk-campaign-variant-weight-${activeVariantIndex}`} className="block">
+                                    Peso
+                                </Label>
                                 <Input
+                                    id={`bulk-campaign-variant-weight-${activeVariantIndex}`}
                                     type="number"
                                     min={1}
                                     value={String(activeVariant.weight)}
@@ -169,10 +177,11 @@ export function BulkCampaignMessageTab({
                                             weight: Number.parseInt(event.target.value || "1", 10) || 1,
                                         }))
                                     }
+                                    className="w-full"
                                 />
                             </div>
-                            <div className="space-y-2 md:col-span-2 xl:col-span-1">
-                                <Label>Activa</Label>
+                            <div className="space-y-2 lg:col-span-2 2xl:col-span-1">
+                                <Label className="block">Activa</Label>
                                 <div className="flex min-h-10 flex-wrap items-center justify-between gap-2 rounded-lg border bg-muted/15 px-3 py-2">
                                     <Switch
                                         checked={activeVariant.isActive}
