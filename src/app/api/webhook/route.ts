@@ -4,7 +4,7 @@ import { mkdir, writeFile } from "fs/promises";
 import { revalidatePath } from "next/cache";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { processInboundMessage } from "@/app/actions/chat";
+import { processInboundMessage, type InboundAttribution } from "@/app/actions/chat";
 import { buildPhoneMatchClauses, normalizePhoneDigits, uniquePhoneCandidates } from "@/lib/phone";
 import { getSystemSettingsOrDefaults } from "@/lib/system-settings";
 import { downloadWuzapiMedia } from "@/lib/wuzapi";
@@ -81,6 +81,112 @@ function normalizeCustomerNameValue(value: string | null | undefined): string | 
 
 function getNestedRecord(record: JsonObject | null, key: string): JsonObject | null {
     return asRecord(record?.[key]);
+}
+
+function pickFirstString(...values: Array<string | undefined>) {
+    return values.find((value) => typeof value === "string" && value.trim().length > 0)?.trim();
+}
+
+function decodeBase64ToText(value: string | undefined) {
+    if (!value) return undefined;
+
+    try {
+        const decoded = Buffer.from(value, "base64").toString("utf8").trim();
+        if (!decoded) return undefined;
+        if (/[\u0000-\u0008\u000B-\u001F]/.test(decoded)) return undefined;
+        return decoded;
+    } catch {
+        return undefined;
+    }
+}
+
+function extractExternalAdReply(messageNode: unknown): JsonObject | null {
+    const message = asRecord(unwrapMessageNode(messageNode));
+    if (!message) return null;
+
+    const contextCandidates = [
+        getNestedRecord(getNestedRecord(message, "extendedTextMessage"), "contextInfo"),
+        getNestedRecord(getNestedRecord(message, "imageMessage"), "contextInfo"),
+        getNestedRecord(getNestedRecord(message, "videoMessage"), "contextInfo"),
+        getNestedRecord(getNestedRecord(message, "documentMessage"), "contextInfo"),
+    ];
+
+    for (const contextInfo of contextCandidates) {
+        const externalAdReply =
+            getNestedRecord(contextInfo, "externalAdReply") ||
+            getNestedRecord(contextInfo, "ExternalAdReply");
+        if (externalAdReply) {
+            return externalAdReply;
+        }
+    }
+
+    return null;
+}
+
+function extractInboundAttribution(info: JsonObject, messageNode: unknown): InboundAttribution | undefined {
+    const msgMetaInfo = getNestedRecord(info, "MsgMetaInfo") || getNestedRecord(info, "msgMetaInfo");
+    const directContextInfo = getNestedRecord(info, "contextInfo");
+    const nestedContextInfo = getNestedRecord(msgMetaInfo, "contextInfo");
+    const contextInfo = nestedContextInfo || directContextInfo;
+    const externalAdReply = extractExternalAdReply(messageNode);
+
+    const conversionSource = pickFirstString(
+        getString(contextInfo, "conversionSource"),
+        getString(info, "conversionSource"),
+    );
+    const entryPointConversionSource = pickFirstString(
+        getString(contextInfo, "entryPointConversionSource"),
+        getString(info, "entryPointConversionSource"),
+    );
+    const entryPointConversionExternalSource = pickFirstString(
+        getString(contextInfo, "entryPointConversionExternalSource"),
+        getString(info, "entryPointConversionExternalSource"),
+    );
+    const entryPointConversionExternalMedium = pickFirstString(
+        getString(contextInfo, "entryPointConversionExternalMedium"),
+        getString(info, "entryPointConversionExternalMedium"),
+    );
+    const entryPointConversionApp = pickFirstString(
+        getString(contextInfo, "entryPointConversionApp"),
+        getString(info, "entryPointConversionApp"),
+    );
+    const ctwaSignals = pickFirstString(
+        getString(contextInfo, "ctwaSignals"),
+        getString(info, "ctwaSignals"),
+    );
+    const conversionData = pickFirstString(getString(contextInfo, "conversionData"));
+    const ctwaPayload = pickFirstString(getString(contextInfo, "ctwaPayload"));
+    const adTitle = pickFirstString(
+        getString(externalAdReply, "title"),
+        getString(externalAdReply, "Title"),
+    );
+    const adBody = pickFirstString(
+        getString(externalAdReply, "body"),
+        getString(externalAdReply, "Body"),
+        getString(contextInfo, "text"),
+    );
+
+    const attribution: InboundAttribution = {
+        conversionSource,
+        entryPointConversionSource,
+        entryPointConversionExternalSource,
+        entryPointConversionExternalMedium,
+        entryPointConversionApp,
+        ctwaSignals,
+        adTitle,
+        adBody,
+        conversionData,
+        ctwaPayload,
+        decodedConversionData: decodeBase64ToText(conversionData),
+        decodedCtwaPayload: decodeBase64ToText(ctwaPayload),
+    };
+
+    const hasAnyValue = Object.values(attribution).some((value) => {
+        if (typeof value === "string") return value.trim().length > 0;
+        return false;
+    });
+
+    return hasAnyValue ? attribution : undefined;
 }
 
 function resolveCustomerName(payload: WuzapiWebhookPayload, info: JsonObject) {
@@ -1094,8 +1200,16 @@ export async function POST(req: NextRequest) {
         }
 
         const customerName = resolveCustomerName(payload, info);
+        const inboundAttribution = extractInboundAttribution(info, payload.event.Message);
 
-        await processInboundMessage(phone, messageDetails.text, customerName, media, providerMessageId);
+        await processInboundMessage(
+            phone,
+            messageDetails.text,
+            customerName,
+            media,
+            providerMessageId,
+            inboundAttribution,
+        );
         return new NextResponse("EVENT_RECEIVED", { status: 200 });
     } catch (error) {
         console.error("Webhook Error:", error);

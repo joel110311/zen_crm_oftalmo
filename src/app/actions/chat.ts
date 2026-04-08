@@ -73,6 +73,28 @@ type KnowledgeImageEntry = {
     normalizedLabel: string;
 };
 
+export type InboundAttribution = {
+    conversionSource?: string;
+    entryPointConversionSource?: string;
+    entryPointConversionExternalSource?: string;
+    entryPointConversionExternalMedium?: string;
+    entryPointConversionApp?: string;
+    ctwaSignals?: string;
+    adTitle?: string;
+    adBody?: string;
+    conversionData?: string;
+    ctwaPayload?: string;
+    decodedConversionData?: string;
+    decodedCtwaPayload?: string;
+};
+
+type InboundMediaPayload = {
+    type?: string;
+    mediaUrl?: string;
+    mediaType?: string;
+    mediaFileName?: string;
+};
+
 const FALLBACK_EXTENSION_BY_MIME: Record<string, string> = {
     "image/jpeg": ".jpg",
     "image/png": ".png",
@@ -169,6 +191,75 @@ function normalizeCatalogComparableText(value: string | null | undefined) {
         .replace(/[^a-z0-9]+/g, " ")
         .replace(/\s+/g, " ")
         .trim();
+}
+
+function normalizeAttributionToken(value: string | null | undefined) {
+    return normalizeCatalogComparableText(value).replace(/\s+/g, "_").slice(0, 48);
+}
+
+function hasFacebookAdsAttribution(attribution?: InboundAttribution) {
+    if (!attribution) return false;
+
+    const values = [
+        attribution.conversionSource,
+        attribution.entryPointConversionSource,
+        attribution.entryPointConversionExternalSource,
+        attribution.entryPointConversionExternalMedium,
+        attribution.entryPointConversionApp,
+        attribution.ctwaSignals,
+        attribution.adTitle,
+        attribution.adBody,
+    ]
+        .map((value) => normalizeCatalogComparableText(value))
+        .filter(Boolean);
+
+    return values.some((value) =>
+        value.includes("facebook") ||
+        value.includes("fb ads") ||
+        value.includes("fb") ||
+        value.includes("ctwa"),
+    );
+}
+
+function resolveInboundDealSource(attribution?: InboundAttribution) {
+    return hasFacebookAdsAttribution(attribution) ? "facebook_ads" : "whatsapp";
+}
+
+function buildInboundAttributionTags(attribution?: InboundAttribution) {
+    if (!attribution) return [] as string[];
+
+    const tags = new Set<string>();
+
+    if (hasFacebookAdsAttribution(attribution)) {
+        tags.add("src_facebook_ads");
+    }
+
+    const entryToken = normalizeAttributionToken(attribution.entryPointConversionSource);
+    if (entryToken) {
+        tags.add(`entry_${entryToken}`);
+    }
+
+    const externalSourceToken = normalizeAttributionToken(attribution.entryPointConversionExternalSource);
+    if (externalSourceToken) {
+        tags.add(`extsrc_${externalSourceToken}`);
+    }
+
+    const externalMediumToken = normalizeAttributionToken(attribution.entryPointConversionExternalMedium);
+    if (externalMediumToken && externalMediumToken !== "unavailable") {
+        tags.add(`extmedium_${externalMediumToken}`);
+    }
+
+    const appToken = normalizeAttributionToken(attribution.entryPointConversionApp);
+    if (appToken) {
+        tags.add(`entryapp_${appToken}`);
+    }
+
+    const conversionToken = normalizeAttributionToken(attribution.conversionSource);
+    if (conversionToken) {
+        tags.add(`convsrc_${conversionToken}`);
+    }
+
+    return [...tags];
 }
 
 function stripInternalDisclosureLines(content: string) {
@@ -1877,13 +1968,9 @@ export async function processInboundMessage(
     from: string,
     text: string,
     customerName?: string,
-    media?: {
-        type?: string;
-        mediaUrl?: string;
-        mediaType?: string;
-        mediaFileName?: string;
-    },
+    media?: InboundMediaPayload,
     providerMessageId?: string,
+    attribution?: InboundAttribution,
 ) {
     try {
         const normalizedFrom = normalizePhoneDigits(from);
@@ -1914,6 +2001,20 @@ export async function processInboundMessage(
                 data: { name: normalizedCustomerName },
             });
         }
+
+        const attributionTags = buildInboundAttributionTags(attribution);
+        if (attributionTags.length > 0) {
+            const currentTags = Array.isArray(contact.tags) ? contact.tags : [];
+            const mergedTags = Array.from(new Set([...currentTags, ...attributionTags]));
+            if (mergedTags.length !== currentTags.length) {
+                contact = await prisma.contact.update({
+                    where: { id: contact.id },
+                    data: { tags: mergedTags },
+                });
+            }
+        }
+
+        const inboundDealSource = resolveInboundDealSource(attribution);
 
         void refreshWhatsAppAvatarForContact(contact.id).catch((avatarError) => {
             console.warn("[Inbound] Failed to refresh WhatsApp avatar", avatarError);
@@ -1962,7 +2063,14 @@ export async function processInboundMessage(
                 where: { contactId: contact.id },
             });
 
-            if (!existingDeal) {
+            if (existingDeal) {
+                if (inboundDealSource !== "whatsapp" && existingDeal.source !== inboundDealSource) {
+                    await prisma.deal.update({
+                        where: { id: existingDeal.id },
+                        data: { source: inboundDealSource },
+                    });
+                }
+            } else {
                 const incomingStage = await prisma.pipelineStage.findFirst({
                     where: { isIncoming: true },
                 });
@@ -1979,7 +2087,7 @@ export async function processInboundMessage(
                             value: 0,
                             stageId: incomingStage.id,
                             contactId: contact.id,
-                            source: "whatsapp",
+                            source: inboundDealSource,
                             priority: "medium",
                         },
                     });
@@ -2037,7 +2145,14 @@ export async function processInboundMessage(
                 where: { contactId: contact.id },
             });
 
-            if (!existingDeal) {
+            if (existingDeal) {
+                if (inboundDealSource !== "whatsapp" && existingDeal.source !== inboundDealSource) {
+                    await prisma.deal.update({
+                        where: { id: existingDeal.id },
+                        data: { source: inboundDealSource },
+                    });
+                }
+            } else {
                 const incomingStage = await prisma.pipelineStage.findFirst({
                     where: { isIncoming: true },
                 });
@@ -2054,7 +2169,7 @@ export async function processInboundMessage(
                             value: 0,
                             stageId: incomingStage.id,
                             contactId: contact.id,
-                            source: "whatsapp",
+                            source: inboundDealSource,
                             priority: "medium",
                         },
                     });
