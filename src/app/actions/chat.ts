@@ -285,24 +285,7 @@ async function sendPreferredImageUrlsFromReply(params: {
     let sentSomething = false;
 
     for (const imageUrl of normalizedUrls) {
-        const sourceHash = buildSourceMediaHash(imageUrl);
-        const alreadySent = await prisma.message.findFirst({
-            where: {
-                conversationId: params.conversationId,
-                direction: "outbound",
-                senderType: "bot",
-                type: "image",
-                OR: [
-                    { mediaUrl: imageUrl },
-                    { mediaUrl: { contains: sourceHash } },
-                ],
-                status: {
-                    not: "failed",
-                },
-            },
-            select: { id: true },
-        });
-
+        const alreadySent = await hasBotImageAlreadySentInConversation(params.conversationId, imageUrl);
         if (alreadySent) {
             continue;
         }
@@ -323,6 +306,33 @@ async function sendPreferredImageUrlsFromReply(params: {
     }
 
     return sentSomething;
+}
+
+async function hasBotImageAlreadySentInConversation(conversationId: string, imageUrl: string) {
+    const normalizedUrl = normalizeKnowledgeImageUrl(imageUrl);
+    if (!normalizedUrl) {
+        return false;
+    }
+
+    const sourceHash = buildSourceMediaHash(normalizedUrl);
+    const alreadySent = await prisma.message.findFirst({
+        where: {
+            conversationId,
+            direction: "outbound",
+            senderType: "bot",
+            type: "image",
+            OR: [
+                { mediaUrl: normalizedUrl },
+                { mediaUrl: { contains: sourceHash } },
+            ],
+            status: {
+                not: "failed",
+            },
+        },
+        select: { id: true },
+    });
+
+    return Boolean(alreadySent);
 }
 
 function sanitizeComparablePhone(value: string | null | undefined) {
@@ -1078,20 +1088,7 @@ async function maybeSendKnowledgeImageFromTextSources(params: {
             .filter((entry): entry is KnowledgeImageEntry => Boolean(entry));
 
         for (const entry of preferredEntries) {
-            const alreadySent = await prisma.message.findFirst({
-                where: {
-                    conversationId: params.conversationId,
-                    direction: "outbound",
-                    senderType: "bot",
-                    type: "image",
-                    mediaUrl: entry.imageUrl,
-                    status: {
-                        not: "failed",
-                    },
-                },
-                select: { id: true },
-            });
-
+            const alreadySent = await hasBotImageAlreadySentInConversation(params.conversationId, entry.imageUrl);
             if (alreadySent) {
                 continue;
             }
@@ -1135,20 +1132,7 @@ async function maybeSendKnowledgeImageFromTextSources(params: {
             return false;
         }
 
-        const alreadySent = await prisma.message.findFirst({
-            where: {
-                conversationId: params.conversationId,
-                direction: "outbound",
-                senderType: "bot",
-                type: "image",
-                mediaUrl: bestEntry.imageUrl,
-                status: {
-                    not: "failed",
-                },
-            },
-            select: { id: true },
-        });
-
+        const alreadySent = await hasBotImageAlreadySentInConversation(params.conversationId, bestEntry.imageUrl);
         if (alreadySent) {
             return false;
         }
@@ -1656,7 +1640,7 @@ async function maybeSendAutomatedReply(
                 });
             }
 
-            if (!preferredReplyImageSent) {
+            if (preferredKnowledgeImageUrls.length > 0 && !preferredReplyImageSent) {
                 knowledgeImageSent = await maybeSendKnowledgeImageFromTextSources({
                     conversationId,
                     phone: latestConversation.contact.phone,
@@ -1671,7 +1655,7 @@ async function maybeSendAutomatedReply(
                 replyToSend = strippedReply || "Te comparto la imagen por aqui.";
             } else if (preferredKnowledgeImageUrls.length > 0) {
                 const strippedReply = stripKnowledgeImageUrlsFromReply(reply, preferredKnowledgeImageUrls);
-                replyToSend = strippedReply || "No pude adjuntar la imagen en este momento, pero te ayudo con la informacion por aqui.";
+                replyToSend = strippedReply || "Perfecto, seguimos por aqui con los detalles.";
             }
         }
 
