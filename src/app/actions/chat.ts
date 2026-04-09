@@ -262,6 +262,26 @@ function buildInboundAttributionTags(attribution?: InboundAttribution) {
     return [...tags];
 }
 
+function buildInboundAttributionInstruction(attribution?: InboundAttribution) {
+    if (!attribution || !hasFacebookAdsAttribution(attribution)) {
+        return null;
+    }
+
+    const lines = [
+        "CONTEXTO DE ORIGEN: Este lead llega desde Facebook Ads (Click to WhatsApp).",
+        attribution.adTitle ? `Anuncio detectado (titulo): ${attribution.adTitle}` : null,
+        attribution.adBody ? `Anuncio detectado (texto): ${attribution.adBody}` : null,
+        attribution.entryPointConversionSource
+            ? `entryPointConversionSource: ${attribution.entryPointConversionSource}`
+            : null,
+        attribution.conversionSource ? `conversionSource: ${attribution.conversionSource}` : null,
+        "Usa este contexto para responder con continuidad comercial y evita bienvenida generica.",
+        "No menciones al cliente que usaste metadatos internos de anuncios.",
+    ];
+
+    return lines.filter(Boolean).join(" ");
+}
+
 function stripInternalDisclosureLines(content: string) {
     const lines = content.replace(/\r\n?/g, "\n").split("\n");
     const keptLines = lines.filter((line) => {
@@ -897,7 +917,12 @@ function normalizeWelcomeIntentText(value: string) {
         .trim();
 }
 
-function shouldSendWelcomeForLatestMessage(latestUserMessage: string) {
+function shouldSendWelcomeForLatestMessage(
+    latestUserMessage: string,
+    options?: { forceSkipWelcome?: boolean },
+) {
+    if (options?.forceSkipWelcome) return false;
+
     const normalized = normalizeWelcomeIntentText(latestUserMessage || "");
     if (!normalized) return true;
 
@@ -1369,6 +1394,7 @@ async function maybeSendAutomatedReply(
     conversationId: string,
     inboundMessageId: string,
     latestUserMessage: string,
+    inboundAttribution?: InboundAttribution,
 ) {
     try {
         const settings = await getSystemSettingsOrDefaults();
@@ -1448,7 +1474,9 @@ async function maybeSendAutomatedReply(
                 previousInboundMessage?.createdAt,
                 settings.welcomeRepeatHours || 24,
             ) &&
-            shouldSendWelcomeForLatestMessage(latestUserMessage)
+            shouldSendWelcomeForLatestMessage(latestUserMessage, {
+                forceSkipWelcome: hasFacebookAdsAttribution(inboundAttribution),
+            })
         ) {
             const welcomeMessage = await getAutomatedWelcomeMessage({
                 welcomeMessage: settings.welcomeMessage,
@@ -1658,7 +1686,8 @@ async function maybeSendAutomatedReply(
                 const catalogInstruction = catalogItem
                     ? buildCatalogInstruction(catalogItem, catalogDevelopmentContext)
                     : null;
-                const automationInstruction = [leadAutomation.instruction, appointmentInstruction]
+                const attributionInstruction = buildInboundAttributionInstruction(inboundAttribution);
+                const automationInstruction = [leadAutomation.instruction, appointmentInstruction, attributionInstruction]
                     .concat(catalogInstruction ? [catalogInstruction] : [])
                     .filter(Boolean)
                     .join(" ")
@@ -2185,7 +2214,7 @@ export async function processInboundMessage(
         // ── CHATBOT / N8N FORWARDING ──
         try {
             if (bulkReplyResult.intent !== "stop" && shouldScheduleAutomatedReply) {
-                void maybeSendAutomatedReply(conversation.id, message.id, botInputText);
+                void maybeSendAutomatedReply(conversation.id, message.id, botInputText, attribution);
             }
         } catch (botError) {
             console.error("[Chatbot] Error scheduling automated reply:", botError);

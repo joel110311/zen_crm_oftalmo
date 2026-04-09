@@ -83,6 +83,14 @@ function getNestedRecord(record: JsonObject | null, key: string): JsonObject | n
     return asRecord(record?.[key]);
 }
 
+function getNestedRecordAny(record: JsonObject | null, keys: string[]): JsonObject | null {
+    for (const key of keys) {
+        const nested = getNestedRecord(record, key);
+        if (nested) return nested;
+    }
+    return null;
+}
+
 function pickFirstString(...values: Array<string | undefined>) {
     return values.find((value) => typeof value === "string" && value.trim().length > 0)?.trim();
 }
@@ -123,39 +131,90 @@ function extractExternalAdReply(messageNode: unknown): JsonObject | null {
     return null;
 }
 
-function extractInboundAttribution(info: JsonObject, messageNode: unknown): InboundAttribution | undefined {
-    const msgMetaInfo = getNestedRecord(info, "MsgMetaInfo") || getNestedRecord(info, "msgMetaInfo");
-    const directContextInfo = getNestedRecord(info, "contextInfo");
-    const nestedContextInfo = getNestedRecord(msgMetaInfo, "contextInfo");
-    const contextInfo = nestedContextInfo || directContextInfo;
+function extractMessageContextCandidates(messageNode: unknown): JsonObject[] {
+    const message = asRecord(unwrapMessageNode(messageNode));
+    if (!message) return [];
+
+    return [
+        getNestedRecordAny(message, ["messageContextInfo", "MessageContextInfo", "contextInfo", "ContextInfo"]),
+        getNestedRecordAny(getNestedRecordAny(message, ["extendedTextMessage", "ExtendedTextMessage"]), ["contextInfo", "ContextInfo"]),
+        getNestedRecordAny(getNestedRecordAny(message, ["imageMessage", "ImageMessage"]), ["contextInfo", "ContextInfo"]),
+        getNestedRecordAny(getNestedRecordAny(message, ["videoMessage", "VideoMessage"]), ["contextInfo", "ContextInfo"]),
+        getNestedRecordAny(getNestedRecordAny(message, ["documentMessage", "DocumentMessage"]), ["contextInfo", "ContextInfo"]),
+    ].filter((entry): entry is JsonObject => Boolean(entry));
+}
+
+function extractInboundAttribution(
+    info: JsonObject,
+    messageNode: unknown,
+    rawPayload?: unknown,
+): InboundAttribution | undefined {
+    const payloadRecord = asRecord(rawPayload);
+    const payloadEventRecord = asRecord(payloadRecord?.event);
+    const msgMetaInfo = getNestedRecordAny(info, ["MsgMetaInfo", "msgMetaInfo"]);
+    const directContextInfo = getNestedRecordAny(info, ["contextInfo", "ContextInfo"]);
+    const nestedContextInfo = getNestedRecordAny(msgMetaInfo, ["contextInfo", "ContextInfo"]);
+    const payloadContextInfo = getNestedRecordAny(payloadRecord, ["contextInfo", "ContextInfo"]);
+    const payloadEventContextInfo = getNestedRecordAny(payloadEventRecord, ["contextInfo", "ContextInfo"]);
+    const messageContextCandidates = extractMessageContextCandidates(messageNode);
+    const contextCandidates = [
+        nestedContextInfo,
+        directContextInfo,
+        payloadContextInfo,
+        payloadEventContextInfo,
+        ...messageContextCandidates,
+    ].filter(
+        (entry): entry is JsonObject => Boolean(entry),
+    );
     const externalAdReply = extractExternalAdReply(messageNode);
 
+    const contextValues = (key: string) => contextCandidates.map((context) => getString(context, key));
     const conversionSource = pickFirstString(
-        getString(contextInfo, "conversionSource"),
+        ...contextValues("conversionSource"),
         getString(info, "conversionSource"),
+        getString(payloadEventRecord, "conversionSource"),
+        getString(payloadRecord, "conversionSource"),
     );
     const entryPointConversionSource = pickFirstString(
-        getString(contextInfo, "entryPointConversionSource"),
+        ...contextValues("entryPointConversionSource"),
         getString(info, "entryPointConversionSource"),
+        getString(payloadEventRecord, "entryPointConversionSource"),
+        getString(payloadRecord, "entryPointConversionSource"),
     );
     const entryPointConversionExternalSource = pickFirstString(
-        getString(contextInfo, "entryPointConversionExternalSource"),
+        ...contextValues("entryPointConversionExternalSource"),
         getString(info, "entryPointConversionExternalSource"),
+        getString(payloadEventRecord, "entryPointConversionExternalSource"),
+        getString(payloadRecord, "entryPointConversionExternalSource"),
     );
     const entryPointConversionExternalMedium = pickFirstString(
-        getString(contextInfo, "entryPointConversionExternalMedium"),
+        ...contextValues("entryPointConversionExternalMedium"),
         getString(info, "entryPointConversionExternalMedium"),
+        getString(payloadEventRecord, "entryPointConversionExternalMedium"),
+        getString(payloadRecord, "entryPointConversionExternalMedium"),
     );
     const entryPointConversionApp = pickFirstString(
-        getString(contextInfo, "entryPointConversionApp"),
+        ...contextValues("entryPointConversionApp"),
         getString(info, "entryPointConversionApp"),
+        getString(payloadEventRecord, "entryPointConversionApp"),
+        getString(payloadRecord, "entryPointConversionApp"),
     );
     const ctwaSignals = pickFirstString(
-        getString(contextInfo, "ctwaSignals"),
+        ...contextValues("ctwaSignals"),
         getString(info, "ctwaSignals"),
+        getString(payloadEventRecord, "ctwaSignals"),
+        getString(payloadRecord, "ctwaSignals"),
     );
-    const conversionData = pickFirstString(getString(contextInfo, "conversionData"));
-    const ctwaPayload = pickFirstString(getString(contextInfo, "ctwaPayload"));
+    const conversionData = pickFirstString(
+        ...contextValues("conversionData"),
+        getString(payloadEventRecord, "conversionData"),
+        getString(payloadRecord, "conversionData"),
+    );
+    const ctwaPayload = pickFirstString(
+        ...contextValues("ctwaPayload"),
+        getString(payloadEventRecord, "ctwaPayload"),
+        getString(payloadRecord, "ctwaPayload"),
+    );
     const adTitle = pickFirstString(
         getString(externalAdReply, "title"),
         getString(externalAdReply, "Title"),
@@ -163,7 +222,7 @@ function extractInboundAttribution(info: JsonObject, messageNode: unknown): Inbo
     const adBody = pickFirstString(
         getString(externalAdReply, "body"),
         getString(externalAdReply, "Body"),
-        getString(contextInfo, "text"),
+        ...contextValues("text"),
     );
 
     const attribution: InboundAttribution = {
@@ -1200,7 +1259,7 @@ export async function POST(req: NextRequest) {
         }
 
         const customerName = resolveCustomerName(payload, info);
-        const inboundAttribution = extractInboundAttribution(info, payload.event.Message);
+        const inboundAttribution = extractInboundAttribution(info, payload.event.Message, payload);
 
         await processInboundMessage(
             phone,
