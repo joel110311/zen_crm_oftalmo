@@ -24,25 +24,56 @@ const MIME_TYPES: Record<string, string> = {
     ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 };
 
+const IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".gif", ".webp"]);
+
+function buildMissingMediaPlaceholderSvg(label: string) {
+    const safeLabel = label.replace(/[<>&"']/g, "");
+
+    return `
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360" viewBox="0 0 640 360" role="img" aria-label="Archivo no disponible">
+  <rect width="640" height="360" fill="#f3f4f6" />
+  <rect x="56" y="56" width="528" height="248" rx="22" fill="#ffffff" stroke="#d1d5db" stroke-width="2" />
+  <circle cx="176" cy="138" r="26" fill="#dbeafe" />
+  <rect x="224" y="120" width="240" height="16" rx="8" fill="#111827" opacity="0.78" />
+  <rect x="224" y="150" width="176" height="12" rx="6" fill="#6b7280" opacity="0.75" />
+  <rect x="96" y="210" width="448" height="54" rx="12" fill="#f9fafb" stroke="#e5e7eb" />
+  <text x="320" y="242" text-anchor="middle" fill="#374151" font-size="18" font-family="Arial, sans-serif">${safeLabel}</text>
+</svg>
+`.trim();
+}
+
 export async function GET(
-    request: NextRequest,
+    _request: NextRequest,
     { params }: { params: Promise<{ filename: string }> }
 ) {
     const { filename } = await params;
 
     // Security: only allow alphanumeric, dash, underscore, dot
     if (!/^[\w\-\.]+$/.test(filename)) {
-        return NextResponse.json({ error: "Invalid filename" }, { status: 400 });
+        return new NextResponse(null, { status: 204 });
     }
 
     const filePath = path.join(process.cwd(), "public", "uploads", filename);
+    const ext = path.extname(filename).toLowerCase();
 
     if (!fs.existsSync(filePath)) {
-        return NextResponse.json({ error: "File not found" }, { status: 404 });
+        if (IMAGE_EXTENSIONS.has(ext)) {
+            const svg = buildMissingMediaPlaceholderSvg("Archivo no disponible");
+
+            return new NextResponse(svg, {
+                status: 200,
+                headers: {
+                    "Content-Type": "image/svg+xml; charset=utf-8",
+                    "Cache-Control": "public, max-age=300",
+                    "Access-Control-Allow-Origin": "*",
+                },
+            });
+        }
+
+        return new NextResponse(null, { status: 204 });
     }
 
     const fileBuffer = fs.readFileSync(filePath);
-    const ext = path.extname(filename).toLowerCase();
     const contentType = MIME_TYPES[ext] || "application/octet-stream";
 
     console.log(`[MEDIA] Serving ${filename} as ${contentType} (${fileBuffer.length} bytes)`);

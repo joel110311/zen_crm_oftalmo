@@ -19,30 +19,39 @@ export async function POST(request: NextRequest) {
     try {
         const body = await request.json();
         const { to, text, type = "text", mediaUrl, mediaType, mediaFileName } = body;
+        const textContent = typeof text === "string" ? text.trim() : "";
 
-        if (!to || !text) {
+        if (!to || (!textContent && !mediaUrl)) {
             return NextResponse.json(
-                { error: "Missing required fields: 'to' and 'text'" },
+                { error: "Missing required fields: 'to' and ('text' or 'mediaUrl')" },
                 { status: 400 }
             );
         }
 
         // Normalize phone (remove +, spaces, dashes)
         const phone = to.replace(/\D/g, "");
+        const suffix10 = phone.slice(-10);
 
-        console.log(`[Bot Message] Storing bot response to ${phone}: ${text.substring(0, 50)}...`);
+        console.log(`[Bot Message] Storing bot response to ${phone}: ${(textContent || type).substring(0, 50)}...`);
 
-        // Find contact by phone number (match last 10 digits)
-        const contact = await prisma.contact.findFirst({
-            where: { phone: { contains: phone.slice(-10) } },
+        // Find contact by phone number
+        let contact = await prisma.contact.findFirst({
+            where: {
+                OR: [
+                    { phone },
+                    { phone: { endsWith: suffix10 } },
+                ],
+            },
         });
 
         if (!contact) {
-            console.log(`[Bot Message] Contact not found for phone ${phone}`);
-            return NextResponse.json(
-                { error: "Contact not found for phone: " + phone },
-                { status: 404 }
-            );
+            contact = await prisma.contact.create({
+                data: {
+                    phone,
+                    status: "lead",
+                },
+            });
+            console.log(`[Bot Message] Created contact ${contact.id} for phone ${phone}`);
         }
 
         // Find existing conversation
@@ -60,7 +69,7 @@ export async function POST(request: NextRequest) {
         const recentDuplicate = await prisma.message.findFirst({
             where: {
                 conversationId: conversation.id,
-                content: text,
+                content: textContent || `[${type}]`,
                 direction: "outbound",
                 createdAt: { gte: new Date(Date.now() - 15000) }, // Within last 15 seconds
             },
@@ -75,7 +84,7 @@ export async function POST(request: NextRequest) {
         const message = await prisma.message.create({
             data: {
                 conversationId: conversation.id,
-                content: text,
+                content: textContent || `[${type}]`,
                 direction: "outbound",
                 status: "sent",
                 type,
@@ -100,10 +109,11 @@ export async function POST(request: NextRequest) {
             contactName: contact.name,
         });
 
-    } catch (error: any) {
+    } catch (error: unknown) {
+        const details = error instanceof Error ? error.message : "Unknown error";
         console.error("[Bot Message] Error:", error);
         return NextResponse.json(
-            { error: "Failed to store bot message", details: error.message },
+            { error: "Failed to store bot message", details },
             { status: 500 }
         );
     }

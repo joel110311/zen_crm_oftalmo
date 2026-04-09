@@ -21,7 +21,14 @@ export async function POST(request: NextRequest) {
         });
 
         if (!existing) {
-            return NextResponse.json({ error: "Message not found" }, { status: 404 });
+            return NextResponse.json({
+                success: true,
+                messageId,
+                reaction: reaction || null,
+                whatsappSynced: false,
+                whatsappWarning: null,
+                notFound: true,
+            });
         }
 
         const updated = await prisma.message.update({

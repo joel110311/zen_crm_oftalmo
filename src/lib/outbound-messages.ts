@@ -47,10 +47,27 @@ export async function sendOutboundConversationMessage(
         throw new Error("conversationId and content or mediaUrl are required");
     }
 
-    const conversation = await prisma.conversation.findUnique({
+    let conversation = await prisma.conversation.findUnique({
         where: { id: params.conversationId },
         include: { contact: true },
     });
+
+    if (!conversation) {
+        const contactById = await prisma.contact.findUnique({
+            where: { id: params.conversationId },
+            select: { id: true },
+        });
+
+        if (!contactById) {
+            throw new Error("Conversation not found");
+        }
+
+        const ensuredConversation = await findOrCreateActiveConversationForContact(contactById.id);
+        conversation = await prisma.conversation.findUnique({
+            where: { id: ensuredConversation.id },
+            include: { contact: true },
+        });
+    }
 
     if (!conversation) {
         throw new Error("Conversation not found");
@@ -58,7 +75,7 @@ export async function sendOutboundConversationMessage(
 
     const message = await prisma.message.create({
         data: {
-            conversationId: params.conversationId,
+            conversationId: conversation.id,
             content: content || `[${type}]`,
             direction: "outbound",
             status: "sending",
@@ -71,7 +88,7 @@ export async function sendOutboundConversationMessage(
     });
 
     await prisma.conversation.update({
-        where: { id: params.conversationId },
+        where: { id: conversation.id },
         data: {
             updatedAt: new Date(),
             botActive: typeof params.botActiveOverride === "boolean"

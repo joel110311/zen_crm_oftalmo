@@ -39,7 +39,13 @@ export async function DELETE(request: NextRequest) {
         });
 
         if (!message || message.conversationId !== conversationId) {
-            return NextResponse.json({ error: "Mensaje no encontrado." }, { status: 404 });
+            return NextResponse.json({
+                success: true,
+                deletedMessageId: messageId,
+                alreadyDeleted: true,
+                whatsappSynced: false,
+                whatsappWarning: null,
+            });
         }
 
         let whatsappSynced = false;

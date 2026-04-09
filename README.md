@@ -136,15 +136,16 @@ Luego:
 
 ## Healthcheck
 
-El stack expone un endpoint de salud en `/api/health`, usado por Docker para verificar que:
+El stack expone endpoints de salud:
 
-- la app responde
-- Prisma puede consultar la base
+- `/api/health` (liveness): siempre responde `200` mientras la app este viva, incluyendo estado de base en el payload
+- `/api/health?scope=ready` (readiness): responde `200` si Prisma logra consultar la base, o `503` si no hay conexion
 
 Ejemplo:
 
 ```bash
 curl https://crm.cliente.com/api/health
+curl https://crm.cliente.com/api/health?scope=ready
 ```
 
 ## Nota sobre el primer arranque en Swarm
