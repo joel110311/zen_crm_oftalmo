@@ -625,18 +625,30 @@ export async function processLeadAutomationTurn(params: {
         nextPendingField: thresholdReached ? nextPendingField : null,
     });
 
-    const stageToMove =
-        thresholdReached && !deal.stage?.name?.toLowerCase().includes("calificado")
-            ? await prisma.pipelineStage.findFirst({
+    const stageToMove = thresholdReached
+        ? await (async () => {
+            const orderedActiveStages = await prisma.pipelineStage.findMany({
                 where: {
-                    name: {
-                        equals: "Calificado",
-                        mode: "insensitive",
-                    },
+                    isClosedWon: false,
+                    isClosedLost: false,
                 },
-                select: { id: true },
-            })
-            : null;
+                orderBy: { order: "asc" },
+                select: { id: true, isIncoming: true },
+            });
+
+            if (orderedActiveStages.length === 0) return null;
+
+            const secondStageByPosition = orderedActiveStages.length > 1 ? orderedActiveStages[1] : null;
+            const fallbackFirstNonIncoming = orderedActiveStages.find((stage) => !stage.isIncoming) || null;
+            const targetQualifiedStage = secondStageByPosition || fallbackFirstNonIncoming;
+
+            if (!targetQualifiedStage) return null;
+            if (deal.stageId === targetQualifiedStage.id) return null;
+
+            const isIncomingDeal = Boolean(deal.stage?.isIncoming);
+            return isIncomingDeal ? targetQualifiedStage : null;
+        })()
+        : null;
 
     const nameParts = capturedName ? splitFullName(capturedName) : { name: null, lastName: null };
     const noteText = savedNameThisTurn || savedEmailThisTurn ? buildSavedDataNote(capturedName, capturedEmail) : null;
