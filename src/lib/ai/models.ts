@@ -53,6 +53,13 @@ export const SUPPORTED_CHAT_MODELS: SupportedChatModelOption[] = [
         label: "Gemini 2.5 Pro",
         description: "Mas capaz para razonamiento y respuestas exigentes.",
     },
+    {
+        id: "gemini:models/gemini-3.1-flash-lite-preview",
+        provider: "gemini",
+        model: "models/gemini-3.1-flash-lite-preview",
+        label: "Gemini 3.1 Flash Lite (Preview)",
+        description: "Preview ultrarrapido para atencion de alto volumen.",
+    },
 ];
 
 export function normalizeChatModelSelection(value?: string | null) {
@@ -99,4 +106,17 @@ export function resolveChatModelSelection(value?: string | null) {
         label: model,
         description: "",
     } satisfies SupportedChatModelOption;
+}
+
+export function resolveGeminiRestModelPath(value?: string | null) {
+    const trimmed = (value || "").trim();
+    if (!trimmed) {
+        return "models/gemini-2.5-flash";
+    }
+
+    if (trimmed.startsWith("models/")) {
+        return trimmed;
+    }
+
+    return `models/${trimmed.replace(/^\/+/, "")}`;
 }

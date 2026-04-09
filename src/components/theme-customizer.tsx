@@ -17,19 +17,19 @@ const COLOR_THEME_OPTIONS: Array<{
     description: string;
     gradient: string;
 }> = [
-        {
-            id: "green",
-            name: "Green",
-            description: "Tema verde actual del CRM",
-            gradient: "from-[#2f8f53] to-[#0f2c1e]",
-        },
-        {
-            id: "black",
-            name: "Black",
-            description: "Sidebar negra con acentos azules",
-            gradient: "from-[#1F93FF] to-[#05070d]",
-        },
-    ];
+    {
+        id: "black",
+        name: "Black",
+        description: "Tema principal con sidebar negra y acentos azules",
+        gradient: "from-[#1F93FF] to-[#05070d]",
+    },
+    {
+        id: "green",
+        name: "Green",
+        description: "Tema secundario en tonos verdes",
+        gradient: "from-[#2f8f53] to-[#0f2c1e]",
+    },
+];
 
 export function ThemeCustomizer() {
     const [mounted, setMounted] = React.useState(false);

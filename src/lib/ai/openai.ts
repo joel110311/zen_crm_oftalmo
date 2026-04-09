@@ -1,7 +1,7 @@
 import OpenAI, { toFile } from "openai";
 import { prisma } from "@/lib/db";
 import { SYSTEM_SETTINGS_DEFAULTS } from "@/lib/system-settings";
-import { resolveChatModelSelection } from "@/lib/ai/models";
+import { resolveChatModelSelection, resolveGeminiRestModelPath } from "@/lib/ai/models";
 import { resolveAiProviderKey } from "@/lib/ai/provider-keys";
 
 const DEFAULT_IMAGE_OCR_PROMPT =
@@ -99,9 +99,10 @@ async function runGeminiInlineMediaPrompt(
         selectedModel.provider === "gemini"
             ? selectedModel.model
             : "gemini-2.5-flash";
+    const modelPath = resolveGeminiRestModelPath(model);
 
     const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+        `https://generativelanguage.googleapis.com/v1beta/${modelPath}:generateContent?key=${apiKey}`,
         {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -217,7 +218,7 @@ export async function generateCompletion(
                 .join("\n\n");
 
             const response = await fetch(
-                `https://generativelanguage.googleapis.com/v1beta/models/${selectedModel.model}:generateContent?key=${apiKey}`,
+                `https://generativelanguage.googleapis.com/v1beta/${resolveGeminiRestModelPath(selectedModel.model)}:generateContent?key=${apiKey}`,
                 {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },

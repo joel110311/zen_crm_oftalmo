@@ -3,7 +3,7 @@ import { readFile } from "fs/promises";
 import { extractTextFromFileBuffer } from "@/lib/brain/knowledge";
 import { getOpenAIClient, transcribeAudioBuffer } from "@/lib/ai/openai";
 import { prisma } from "@/lib/db";
-import { resolveChatModelSelection } from "@/lib/ai/models";
+import { resolveChatModelSelection, resolveGeminiRestModelPath } from "@/lib/ai/models";
 import { resolveAiProviderKey } from "@/lib/ai/provider-keys";
 
 type InboundMediaContextInput = {
@@ -86,9 +86,10 @@ async function runGeminiInlinePrompt(
         selectedModel.provider === "gemini"
             ? selectedModel.model
             : "gemini-2.5-flash";
+    const modelPath = resolveGeminiRestModelPath(model);
 
     const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+        `https://generativelanguage.googleapis.com/v1beta/${modelPath}:generateContent?key=${apiKey}`,
         {
             method: "POST",
             headers: {

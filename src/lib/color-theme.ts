@@ -1,9 +1,9 @@
 export const COLOR_THEME_STORAGE_KEY = "zen-color-theme";
 
-export const COLOR_THEMES = ["green", "black"] as const;
+export const COLOR_THEMES = ["black", "green"] as const;
 export type ColorTheme = (typeof COLOR_THEMES)[number];
 
-export const DEFAULT_COLOR_THEME: ColorTheme = "green";
+export const DEFAULT_COLOR_THEME: ColorTheme = "black";
 
 export function isColorTheme(value: unknown): value is ColorTheme {
     return typeof value === "string" && COLOR_THEMES.includes(value as ColorTheme);
@@ -24,4 +24,3 @@ export function readStoredColorTheme(): ColorTheme {
     const stored = window.localStorage.getItem(COLOR_THEME_STORAGE_KEY);
     return isColorTheme(stored) ? stored : DEFAULT_COLOR_THEME;
 }
-
