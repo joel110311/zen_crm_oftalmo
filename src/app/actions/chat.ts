@@ -82,6 +82,7 @@ export type InboundAttribution = {
     ctwaSignals?: string;
     adTitle?: string;
     adBody?: string;
+    adContextText?: string;
     conversionData?: string;
     ctwaPayload?: string;
     decodedConversionData?: string;
@@ -203,6 +204,7 @@ function detectFacebookAdsProductHint(attribution?: InboundAttribution) {
     const combined = [
         attribution.adTitle,
         attribution.adBody,
+        attribution.adContextText,
         attribution.decodedConversionData,
         attribution.decodedCtwaPayload,
     ]
@@ -281,6 +283,7 @@ function hasFacebookAdsAttribution(attribution?: InboundAttribution) {
         attribution.ctwaSignals,
         attribution.adTitle,
         attribution.adBody,
+        attribution.adContextText,
         attribution.decodedConversionData,
         attribution.decodedCtwaPayload,
     ]
@@ -347,6 +350,7 @@ function buildInboundAttributionInstruction(attribution?: InboundAttribution) {
         "CONTEXTO DE ORIGEN: Este lead llega desde Facebook Ads (Click to WhatsApp).",
         attribution.adTitle ? `Anuncio detectado (titulo): ${attribution.adTitle}` : null,
         attribution.adBody ? `Anuncio detectado (texto): ${attribution.adBody}` : null,
+        attribution.adContextText ? `Contexto detectado del anuncio: ${attribution.adContextText}` : null,
         attribution.entryPointConversionSource
             ? `entryPointConversionSource: ${attribution.entryPointConversionSource}`
             : null,

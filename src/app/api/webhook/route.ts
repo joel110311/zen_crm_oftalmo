@@ -113,6 +113,131 @@ function pickFirstString(...values: Array<string | undefined>) {
 function decodeBase64ToText(value: string | undefined) {
     if (!value) return undefined;
 
+    const candidates = [
+        value,
+        value.replace(/-/g, "+").replace(/_/g, "/"),
+    ];
+
+    const seen = new Set<string>();
+
+    for (const candidate of candidates) {
+        if (!candidate || seen.has(candidate)) continue;
+        seen.add(candidate);
+
+        const missingPadding = candidate.length % 4;
+        const padded = missingPadding === 0 ? candidate : candidate.padEnd(candidate.length + (4 - missingPadding), "=");
+
+        try {
+            const decoded = Buffer.from(padded, "base64").toString("utf8").trim();
+            if (!decoded) continue;
+            if (/[\u0000-\u0008\u000B-\u001F]/.test(decoded)) continue;
+
+            const printableChars = [...decoded].filter((char) => {
+                const code = char.charCodeAt(0);
+                return code === 10 || code === 13 || code === 9 || (code >= 32 && code <= 126) || code >= 160;
+            }).length;
+            const printableRatio = printableChars / decoded.length;
+
+            if (printableRatio < 0.72) continue;
+            return decoded;
+        } catch {
+            // continue trying with the next variant
+        }
+    }
+
+    return undefined;
+}
+
+function collectStringValuesDeep(value: unknown, depth = 0, limit = 80): string[] {
+    if (depth > 6 || limit <= 0) return [];
+
+    if (typeof value === "string") {
+        const trimmed = value.trim();
+        return trimmed ? [trimmed] : [];
+    }
+
+    if (Array.isArray(value)) {
+        const result: string[] = [];
+        for (const item of value) {
+            if (result.length >= limit) break;
+            result.push(...collectStringValuesDeep(item, depth + 1, limit - result.length));
+        }
+        return result;
+    }
+
+    if (typeof value === "object" && value !== null) {
+        const result: string[] = [];
+        for (const item of Object.values(value as Record<string, unknown>)) {
+            if (result.length >= limit) break;
+            result.push(...collectStringValuesDeep(item, depth + 1, limit - result.length));
+        }
+        return result;
+    }
+
+    return [];
+}
+
+function pickStringWithKeywords(candidates: string[], keywords: string[]) {
+    const normalizedKeywords = keywords.map((keyword) => keyword.toLowerCase());
+    return candidates.find((candidate) => {
+        const normalized = candidate.toLowerCase();
+        return normalizedKeywords.some((keyword) => normalized.includes(keyword));
+    });
+}
+
+function sanitizeAttributionContextText(value: string | undefined) {
+    if (!value) return undefined;
+    const normalized = value.replace(/\s+/g, " ").trim();
+    if (!normalized) return undefined;
+    return normalized.slice(0, 320);
+}
+
+function buildAdsContextText(values: Array<string | undefined>) {
+    const keywords = [
+        "pulsera",
+        "glowsync",
+        "audioritm",
+        "beatband",
+        "concierto",
+        "control",
+        "led",
+        "alcancia",
+        "ventilador",
+        "tatuaje",
+    ];
+
+    const selected = values
+        .filter((value): value is string => Boolean(value && value.trim()))
+        .map((value) => value.replace(/\s+/g, " ").trim())
+        .filter((value) => value.length >= 4)
+        .filter((value) => !/^https?:\/\//i.test(value))
+        .filter((value) => keywords.some((keyword) => value.toLowerCase().includes(keyword)))
+        .slice(0, 6);
+
+    if (selected.length === 0) return undefined;
+    return sanitizeAttributionContextText(selected.join(" | "));
+}
+
+function logInboundAttributionSummary(attribution?: InboundAttribution) {
+    if (!attribution) return;
+
+    console.info("[Webhook][Attribution]", {
+        conversionSource: attribution.conversionSource || null,
+        entryPointConversionSource: attribution.entryPointConversionSource || null,
+        entryPointConversionExternalSource: attribution.entryPointConversionExternalSource || null,
+        entryPointConversionExternalMedium: attribution.entryPointConversionExternalMedium || null,
+        entryPointConversionApp: attribution.entryPointConversionApp || null,
+        hasAdTitle: Boolean(attribution.adTitle),
+        hasAdBody: Boolean(attribution.adBody),
+        hasAdContextText: Boolean(attribution.adContextText),
+        hasDecodedConversionData: Boolean(attribution.decodedConversionData),
+        hasDecodedCtwaPayload: Boolean(attribution.decodedCtwaPayload),
+    });
+}
+
+function decodeBase64ToTextLegacy(value: string | undefined) {
+    if (!value) return undefined;
+
     try {
         const decoded = Buffer.from(value, "base64").toString("utf8").trim();
         if (!decoded) return undefined;
@@ -189,6 +314,8 @@ function extractInboundAttribution(
         (entry): entry is JsonObject => Boolean(entry),
     );
     const externalAdReply = extractExternalAdReply(messageNode);
+    const externalAdReplyStrings = collectStringValuesDeep(externalAdReply);
+    const contextStrings = contextCandidates.flatMap((context) => collectStringValuesDeep(context));
 
     const contextValues = (...keys: string[]) =>
         contextCandidates.flatMap((context) =>
@@ -244,12 +371,25 @@ function extractInboundAttribution(
     const adTitle = pickFirstString(
         getStringCaseInsensitive(externalAdReply, "title"),
         getStringCaseInsensitive(externalAdReply, "headline"),
+        pickStringWithKeywords(externalAdReplyStrings, ["pulsera", "led", "glow", "audio", "beatband", "concierto"]),
     );
     const adBody = pickFirstString(
         getStringCaseInsensitive(externalAdReply, "body"),
         getStringCaseInsensitive(externalAdReply, "description"),
+        pickStringWithKeywords(externalAdReplyStrings, ["pulsera", "led", "glow", "audio", "beatband", "concierto"]),
+        pickStringWithKeywords(contextStrings, ["pulsera", "led", "glow", "audio", "beatband", "concierto"]),
         ...contextValues("text", "caption"),
     );
+    const decodedConversionData = decodeBase64ToText(conversionData) || decodeBase64ToTextLegacy(conversionData);
+    const decodedCtwaPayload = decodeBase64ToText(ctwaPayload) || decodeBase64ToTextLegacy(ctwaPayload);
+    const adContextText = buildAdsContextText([
+        adTitle,
+        adBody,
+        decodedConversionData,
+        decodedCtwaPayload,
+        ...externalAdReplyStrings,
+        ...contextStrings,
+    ]);
 
     const attribution: InboundAttribution = {
         conversionSource,
@@ -260,10 +400,11 @@ function extractInboundAttribution(
         ctwaSignals,
         adTitle,
         adBody,
+        adContextText,
         conversionData,
         ctwaPayload,
-        decodedConversionData: decodeBase64ToText(conversionData),
-        decodedCtwaPayload: decodeBase64ToText(ctwaPayload),
+        decodedConversionData,
+        decodedCtwaPayload,
     };
 
     const hasAnyValue = Object.values(attribution).some((value) => {
@@ -271,7 +412,11 @@ function extractInboundAttribution(
         return false;
     });
 
-    return hasAnyValue ? attribution : undefined;
+    if (hasAnyValue) {
+        return attribution;
+    }
+
+    return undefined;
 }
 
 function resolveCustomerName(payload: WuzapiWebhookPayload, info: JsonObject) {
@@ -1286,6 +1431,7 @@ export async function POST(req: NextRequest) {
 
         const customerName = resolveCustomerName(payload, info);
         const inboundAttribution = extractInboundAttribution(info, payload.event.Message, payload);
+        logInboundAttributionSummary(inboundAttribution);
 
         await processInboundMessage(
             phone,
