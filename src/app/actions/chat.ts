@@ -197,6 +197,78 @@ function normalizeAttributionToken(value: string | null | undefined) {
     return normalizeCatalogComparableText(value).replace(/\s+/g, "_").slice(0, 48);
 }
 
+function detectFacebookAdsProductHint(attribution?: InboundAttribution) {
+    if (!attribution) return null;
+
+    const combined = [
+        attribution.adTitle,
+        attribution.adBody,
+        attribution.decodedConversionData,
+        attribution.decodedCtwaPayload,
+    ]
+        .filter((value): value is string => Boolean(value && value.trim()))
+        .join(" ");
+
+    const normalized = normalizeCatalogComparableText(combined);
+    if (!normalized) return null;
+
+    const glowRegex = /\b(glow ?sync|concierto|control remoto|control a distancia|tipo concierto)\b/;
+    const audioRegex = /\b(audiorit|audioritm|beatbands?|sin control|ritmo de la musica)\b/;
+
+    const glowMatch = normalized.match(glowRegex);
+    const audioMatch = normalized.match(audioRegex);
+
+    if (glowMatch && !audioMatch) {
+        return "Pulseras GlowSync tipo concierto";
+    }
+
+    if (audioMatch && !glowMatch) {
+        return "Pulseras BeatBands Audioritmicas";
+    }
+
+    if (audioMatch && glowMatch) {
+        const audioIndex = normalized.indexOf(audioMatch[0]);
+        const glowIndex = normalized.indexOf(glowMatch[0]);
+        return glowIndex >= 0 && glowIndex < audioIndex
+            ? "Pulseras GlowSync tipo concierto"
+            : "Pulseras BeatBands Audioritmicas";
+    }
+
+    if (/\bpulseras? led\b/.test(normalized)) {
+        return "Pulseras LED";
+    }
+
+    return null;
+}
+
+function isLikelyGenericInquiryMessage(message: string) {
+    const normalized = normalizeCatalogComparableText(message);
+    if (!normalized) return true;
+
+    const productTokens = [
+        "glowsync",
+        "audiorit",
+        "beatband",
+        "pulsera",
+        "alcancia",
+        "ventilador",
+        "termo",
+        "tatuaje",
+        "pantunfla",
+        "peluche",
+    ];
+
+    if (productTokens.some((token) => normalized.includes(token))) {
+        return false;
+    }
+
+    return (
+        /^(hola|hello|hi|buenos dias|buenas tardes|buenas noches|quiero mas informacion|mas informacion|informacion|info|precio)$/.test(
+            normalized,
+        ) || normalized.split(" ").length <= 4
+    );
+}
+
 function hasFacebookAdsAttribution(attribution?: InboundAttribution) {
     if (!attribution) return false;
 
@@ -209,6 +281,8 @@ function hasFacebookAdsAttribution(attribution?: InboundAttribution) {
         attribution.ctwaSignals,
         attribution.adTitle,
         attribution.adBody,
+        attribution.decodedConversionData,
+        attribution.decodedCtwaPayload,
     ]
         .map((value) => normalizeCatalogComparableText(value))
         .filter(Boolean);
@@ -267,6 +341,8 @@ function buildInboundAttributionInstruction(attribution?: InboundAttribution) {
         return null;
     }
 
+    const productHint = detectFacebookAdsProductHint(attribution);
+
     const lines = [
         "CONTEXTO DE ORIGEN: Este lead llega desde Facebook Ads (Click to WhatsApp).",
         attribution.adTitle ? `Anuncio detectado (titulo): ${attribution.adTitle}` : null,
@@ -275,6 +351,10 @@ function buildInboundAttributionInstruction(attribution?: InboundAttribution) {
             ? `entryPointConversionSource: ${attribution.entryPointConversionSource}`
             : null,
         attribution.conversionSource ? `conversionSource: ${attribution.conversionSource}` : null,
+        productHint ? `Producto detectado por anuncio: ${productHint}.` : null,
+        productHint
+            ? "No preguntes cual de las dos pulseras busca. Asume ese producto y pide solo los datos faltantes para cotizar."
+            : "Si el cliente llega con texto generico, usa el contexto del anuncio antes de preguntar por tipo de producto.",
         "Usa este contexto para responder con continuidad comercial y evita bienvenida generica.",
         "No menciones al cliente que usaste metadatos internos de anuncios.",
     ];
@@ -1468,6 +1548,17 @@ async function maybeSendAutomatedReply(
             return;
         }
 
+        const adProductHint = detectFacebookAdsProductHint(inboundAttribution);
+        const shouldInjectAdProductContext = Boolean(adProductHint) && (
+            !previousInboundMessage || isLikelyGenericInquiryMessage(latestUserMessage)
+        );
+        const modelUserMessage = shouldInjectAdProductContext
+            ? appendSection(
+                latestUserMessage,
+                `CONTEXTO INTERNO: Este lead llega por anuncio y su interes principal es ${adProductHint}.`,
+            )
+            : latestUserMessage;
+
         if (
             shouldSendAutomatedWelcome(
                 latestMessage.createdAt,
@@ -1509,12 +1600,12 @@ async function maybeSendAutomatedReply(
 
         const leadAutomation = await processLeadAutomationTurn({
             conversationId,
-            latestUserMessage,
+            latestUserMessage: modelUserMessage,
             settings,
         });
         const appointmentResult = await maybeHandleAppointmentBooking(
             conversationId,
-            latestUserMessage,
+            modelUserMessage,
             {
                 mode: leadAutomation.pendingCaptureField ? "validate" : "create",
             },
@@ -1559,24 +1650,24 @@ async function maybeSendAutomatedReply(
                     )
                     : false;
                 const catalogLookupQuery = shouldStickToCurrentDevelopment
-                    ? latestUserMessage
+                    ? modelUserMessage
                     : buildCatalogLookupQuery(
                         latestConversation.messages.map((message) => ({
                             content: message.content,
                             direction: message.direction,
                         })),
-                        latestUserMessage,
+                        modelUserMessage,
                     );
                 const developmentScopedCatalogItem =
                     shouldStickToCurrentDevelopment && activeCatalogItem
                         ? await findBestCatalogItemInDevelopment(
                             activeCatalogItem.development,
-                            latestUserMessage,
+                            modelUserMessage,
                         )
                         : null;
                 const latestCatalogAvailabilitySummary = shouldStickToCurrentDevelopment
                     ? null
-                    : await findCatalogAvailabilitySummary(latestUserMessage);
+                    : await findCatalogAvailabilitySummary(modelUserMessage);
                 const latestRequestedLocation = latestCatalogAvailabilitySummary?.requestedLocation || null;
                 const catalogAvailabilitySummary = latestCatalogAvailabilitySummary ||
                     (
@@ -1591,11 +1682,11 @@ async function maybeSendAutomatedReply(
                     shouldSuppressCatalogItemLookup
                         ? null
                         : developmentScopedCatalogItem ||
-                    await findBestCatalogItem(latestUserMessage) ||
+                    await findBestCatalogItem(modelUserMessage) ||
                     (
                         !shouldStickToCurrentDevelopment &&
                         !shouldSuppressCatalogItemLookup &&
-                        catalogLookupQuery !== latestUserMessage
+                        catalogLookupQuery !== modelUserMessage
                             ? await findBestCatalogItem(catalogLookupQuery)
                             : null
                     ) ||
@@ -1695,7 +1786,7 @@ async function maybeSendAutomatedReply(
 
                 reply = await generateConversationReply(
                     conversationId,
-                    latestUserMessage,
+                    modelUserMessage,
                     automationInstruction,
                 );
                 replyFromModel = true;

@@ -41,6 +41,21 @@ function getString(record: JsonObject | null, key: string): string | undefined {
     return typeof value === "string" ? value : undefined;
 }
 
+function getStringCaseInsensitive(record: JsonObject | null, key: string): string | undefined {
+    if (!record) return undefined;
+
+    const direct = getString(record, key);
+    if (direct !== undefined) return direct;
+
+    const normalizedKey = key.toLowerCase();
+    for (const [entryKey, entryValue] of Object.entries(record)) {
+        if (entryKey.toLowerCase() !== normalizedKey) continue;
+        if (typeof entryValue === "string") return entryValue;
+    }
+
+    return undefined;
+}
+
 function getNumber(record: JsonObject | null, key: string): number | undefined {
     const value = record?.[key];
     if (typeof value === "number" && Number.isFinite(value)) {
@@ -120,9 +135,16 @@ function extractExternalAdReply(messageNode: unknown): JsonObject | null {
     ];
 
     for (const contextInfo of contextCandidates) {
-        const externalAdReply =
-            getNestedRecord(contextInfo, "externalAdReply") ||
-            getNestedRecord(contextInfo, "ExternalAdReply");
+        const externalAdReply = getNestedRecordAny(contextInfo, [
+            "externalAdReply",
+            "ExternalAdReply",
+            "externalAdReplyInfo",
+            "ExternalAdReplyInfo",
+            "externalAdReplyContext",
+            "ExternalAdReplyContext",
+            "quotedAd",
+            "QuotedAd",
+        ]);
         if (externalAdReply) {
             return externalAdReply;
         }
@@ -168,61 +190,65 @@ function extractInboundAttribution(
     );
     const externalAdReply = extractExternalAdReply(messageNode);
 
-    const contextValues = (key: string) => contextCandidates.map((context) => getString(context, key));
+    const contextValues = (...keys: string[]) =>
+        contextCandidates.flatMap((context) =>
+            keys.map((key) => getStringCaseInsensitive(context, key)),
+        );
+
     const conversionSource = pickFirstString(
-        ...contextValues("conversionSource"),
-        getString(info, "conversionSource"),
-        getString(payloadEventRecord, "conversionSource"),
-        getString(payloadRecord, "conversionSource"),
+        ...contextValues("conversionSource", "conversion_source"),
+        getStringCaseInsensitive(info, "conversionSource"),
+        getStringCaseInsensitive(payloadEventRecord, "conversionSource"),
+        getStringCaseInsensitive(payloadRecord, "conversionSource"),
     );
     const entryPointConversionSource = pickFirstString(
-        ...contextValues("entryPointConversionSource"),
-        getString(info, "entryPointConversionSource"),
-        getString(payloadEventRecord, "entryPointConversionSource"),
-        getString(payloadRecord, "entryPointConversionSource"),
+        ...contextValues("entryPointConversionSource", "entry_point_conversion_source"),
+        getStringCaseInsensitive(info, "entryPointConversionSource"),
+        getStringCaseInsensitive(payloadEventRecord, "entryPointConversionSource"),
+        getStringCaseInsensitive(payloadRecord, "entryPointConversionSource"),
     );
     const entryPointConversionExternalSource = pickFirstString(
-        ...contextValues("entryPointConversionExternalSource"),
-        getString(info, "entryPointConversionExternalSource"),
-        getString(payloadEventRecord, "entryPointConversionExternalSource"),
-        getString(payloadRecord, "entryPointConversionExternalSource"),
+        ...contextValues("entryPointConversionExternalSource", "entry_point_conversion_external_source"),
+        getStringCaseInsensitive(info, "entryPointConversionExternalSource"),
+        getStringCaseInsensitive(payloadEventRecord, "entryPointConversionExternalSource"),
+        getStringCaseInsensitive(payloadRecord, "entryPointConversionExternalSource"),
     );
     const entryPointConversionExternalMedium = pickFirstString(
-        ...contextValues("entryPointConversionExternalMedium"),
-        getString(info, "entryPointConversionExternalMedium"),
-        getString(payloadEventRecord, "entryPointConversionExternalMedium"),
-        getString(payloadRecord, "entryPointConversionExternalMedium"),
+        ...contextValues("entryPointConversionExternalMedium", "entry_point_conversion_external_medium"),
+        getStringCaseInsensitive(info, "entryPointConversionExternalMedium"),
+        getStringCaseInsensitive(payloadEventRecord, "entryPointConversionExternalMedium"),
+        getStringCaseInsensitive(payloadRecord, "entryPointConversionExternalMedium"),
     );
     const entryPointConversionApp = pickFirstString(
-        ...contextValues("entryPointConversionApp"),
-        getString(info, "entryPointConversionApp"),
-        getString(payloadEventRecord, "entryPointConversionApp"),
-        getString(payloadRecord, "entryPointConversionApp"),
+        ...contextValues("entryPointConversionApp", "entry_point_conversion_app"),
+        getStringCaseInsensitive(info, "entryPointConversionApp"),
+        getStringCaseInsensitive(payloadEventRecord, "entryPointConversionApp"),
+        getStringCaseInsensitive(payloadRecord, "entryPointConversionApp"),
     );
     const ctwaSignals = pickFirstString(
-        ...contextValues("ctwaSignals"),
-        getString(info, "ctwaSignals"),
-        getString(payloadEventRecord, "ctwaSignals"),
-        getString(payloadRecord, "ctwaSignals"),
+        ...contextValues("ctwaSignals", "ctwa_signals"),
+        getStringCaseInsensitive(info, "ctwaSignals"),
+        getStringCaseInsensitive(payloadEventRecord, "ctwaSignals"),
+        getStringCaseInsensitive(payloadRecord, "ctwaSignals"),
     );
     const conversionData = pickFirstString(
-        ...contextValues("conversionData"),
-        getString(payloadEventRecord, "conversionData"),
-        getString(payloadRecord, "conversionData"),
+        ...contextValues("conversionData", "conversion_data"),
+        getStringCaseInsensitive(payloadEventRecord, "conversionData"),
+        getStringCaseInsensitive(payloadRecord, "conversionData"),
     );
     const ctwaPayload = pickFirstString(
-        ...contextValues("ctwaPayload"),
-        getString(payloadEventRecord, "ctwaPayload"),
-        getString(payloadRecord, "ctwaPayload"),
+        ...contextValues("ctwaPayload", "ctwa_payload"),
+        getStringCaseInsensitive(payloadEventRecord, "ctwaPayload"),
+        getStringCaseInsensitive(payloadRecord, "ctwaPayload"),
     );
     const adTitle = pickFirstString(
-        getString(externalAdReply, "title"),
-        getString(externalAdReply, "Title"),
+        getStringCaseInsensitive(externalAdReply, "title"),
+        getStringCaseInsensitive(externalAdReply, "headline"),
     );
     const adBody = pickFirstString(
-        getString(externalAdReply, "body"),
-        getString(externalAdReply, "Body"),
-        ...contextValues("text"),
+        getStringCaseInsensitive(externalAdReply, "body"),
+        getStringCaseInsensitive(externalAdReply, "description"),
+        ...contextValues("text", "caption"),
     );
 
     const attribution: InboundAttribution = {
