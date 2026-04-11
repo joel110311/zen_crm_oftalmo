@@ -38,6 +38,10 @@ export function DealCard({ deal, onDealClick, isOverlay }: DealCardProps) {
     const tags = deal.dealTags?.map((item) => item.tag) || [];
     const visibleTags = tags.slice(0, 2);
     const remainingTagCount = Math.max(0, tags.length - visibleTags.length);
+    const hasTags = visibleTags.length > 0 || remainingTagCount > 0;
+    const cardHeightClass = hasTags
+        ? "h-[96px] min-h-[96px] max-h-[96px] py-1.5"
+        : "h-[82px] min-h-[82px] max-h-[82px] py-1";
 
     // When this card is being dragged, show a dashed placeholder in its original spot
     if (isDragging) {
@@ -61,7 +65,7 @@ export function DealCard({ deal, onDealClick, isOverlay }: DealCardProps) {
             onClick={() => onDealClick(deal)}
         >
             <div
-                className={`h-[96px] min-h-[96px] max-h-[96px] overflow-hidden rounded-lg border border-border/75 bg-card px-2 py-1.5 transition-all duration-150 ${isOverlay ? "scale-105 rotate-[2deg] shadow-soft-hover" : "shadow-soft group-hover:border-primary/35 group-hover:shadow-soft-hover"
+                className={`${cardHeightClass} overflow-hidden rounded-lg border border-border/75 bg-card px-2 transition-all duration-150 ${isOverlay ? "scale-105 rotate-[2deg] shadow-soft-hover" : "shadow-soft group-hover:border-primary/35 group-hover:shadow-soft-hover"
                     }`}
             >
                 {/* Contact row: avatar + name/phone + value */}
@@ -91,37 +95,39 @@ export function DealCard({ deal, onDealClick, isOverlay }: DealCardProps) {
 
                 {/* Message preview */}
                 <p
-                    className="mt-0.5 truncate whitespace-nowrap text-[12px] leading-5 text-muted-foreground"
+                    className={`truncate whitespace-nowrap text-[12px] text-muted-foreground ${hasTags ? "mt-0.5 leading-5" : "mt-0 leading-[18px]"}`}
                     title={messagePreview || undefined}
                 >
                     {messagePreview || "\u00A0"}
                 </p>
 
                 {/* Tags row */}
-                <div className="mt-0.5 flex items-center gap-1 overflow-hidden">
-                    {visibleTags.map((tag) => (
-                        <span
-                            key={tag.id}
-                            className="max-w-[94px] truncate rounded-md px-2 py-[1px] text-[11px] font-medium leading-4"
-                            style={{
-                                backgroundColor: `${tag.color}16`,
-                                color: tag.color,
-                                border: `1px solid ${tag.color}38`,
-                            }}
-                            title={tag.name}
-                        >
-                            {tag.name}
-                        </span>
-                    ))}
-                    {remainingTagCount > 0 ? (
-                        <span
-                            className="shrink-0 rounded-md border border-border/70 px-1.5 py-[1px] text-[10px] font-medium text-muted-foreground"
-                            title={`${remainingTagCount} etiqueta${remainingTagCount === 1 ? "" : "s"} adicional${remainingTagCount === 1 ? "" : "es"}`}
-                        >
-                            +{remainingTagCount}
-                        </span>
-                    ) : null}
-                </div>
+                {hasTags ? (
+                    <div className="mt-0.5 flex items-center gap-1 overflow-hidden">
+                        {visibleTags.map((tag) => (
+                            <span
+                                key={tag.id}
+                                className="max-w-[94px] truncate rounded-md px-2 py-[1px] text-[11px] font-medium leading-4"
+                                style={{
+                                    backgroundColor: `${tag.color}16`,
+                                    color: tag.color,
+                                    border: `1px solid ${tag.color}38`,
+                                }}
+                                title={tag.name}
+                            >
+                                {tag.name}
+                            </span>
+                        ))}
+                        {remainingTagCount > 0 ? (
+                            <span
+                                className="shrink-0 rounded-md border border-border/70 px-1.5 py-[1px] text-[10px] font-medium text-muted-foreground"
+                                title={`${remainingTagCount} etiqueta${remainingTagCount === 1 ? "" : "s"} adicional${remainingTagCount === 1 ? "" : "es"}`}
+                            >
+                                +{remainingTagCount}
+                            </span>
+                        ) : null}
+                    </div>
+                ) : null}
             </div>
         </div>
     );
