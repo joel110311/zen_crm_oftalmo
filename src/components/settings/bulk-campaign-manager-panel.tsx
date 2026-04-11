@@ -101,7 +101,7 @@ export function BulkCampaignManagerPanel() {
         setAudiencePreview(null);
     }, []);
 
-    const loadCampaigns = useCallback(async (preserveSelection = true) => {
+    const loadCampaigns = useCallback(async (preserveSelection = false) => {
         setIsLoading(true);
         try {
             const response = await fetch("/api/bulk-campaigns", { cache: "no-store" });
@@ -129,12 +129,12 @@ export function BulkCampaignManagerPanel() {
     }, [form.id, toast]);
 
     useEffect(() => {
-        void loadCampaigns();
+        void loadCampaigns(false);
     }, [loadCampaigns]);
 
     useEffect(() => {
         const interval = setInterval(() => {
-            void loadCampaigns();
+            void loadCampaigns(false);
         }, 15_000);
         return () => clearInterval(interval);
     }, [loadCampaigns]);

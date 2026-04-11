@@ -54,9 +54,12 @@ export function TemplatePicker({ templates, onApply, disabled = false }: Templat
             <PopoverContent
                 align="start"
                 side="top"
-                className="w-[min(92vw,760px)] max-h-[calc(100vh-2rem)] overflow-y-auto rounded-[1.5rem] border border-border/60 bg-card/95 p-0 shadow-[0_36px_90px_-48px_rgba(15,23,42,0.58)] backdrop-blur-xl lg:overflow-hidden"
+                className="w-[min(92vw,760px)] overflow-y-auto rounded-[1.5rem] border border-border/60 bg-card/95 p-0 shadow-[0_36px_90px_-48px_rgba(15,23,42,0.58)] backdrop-blur-xl"
+                style={{
+                    maxHeight: "min(calc(100vh - 2rem), var(--radix-popover-content-available-height))",
+                }}
             >
-                <div className="grid min-h-0 lg:h-[min(82vh,680px)] lg:grid-cols-[320px_minmax(0,1fr)]">
+                <div className="grid h-full min-h-0 lg:grid-cols-[320px_minmax(0,1fr)]">
                     <div className="flex min-h-0 flex-col border-b border-border/50 p-4 lg:border-b-0 lg:border-r">
                         <div className="mb-4">
                             <p className="font-semibold">Plantillas</p>
@@ -140,7 +143,7 @@ export function TemplatePicker({ templates, onApply, disabled = false }: Templat
                                     />
                                 </div>
 
-                                <div className="mt-4 flex shrink-0 justify-end border-t border-border/50 pt-3">
+                                <div className="sticky bottom-0 mt-4 flex shrink-0 justify-end border-t border-border/50 bg-card/95 pt-3">
                                     <Button
                                         onClick={() => {
                                             onApply(previewTemplate);
