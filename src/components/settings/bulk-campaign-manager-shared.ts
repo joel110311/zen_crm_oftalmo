@@ -158,7 +158,7 @@ export const EMPTY_FORM: CampaignFormState = {
     stopOnReply: true,
     followUpCount: 0,
     followUpDelayDays: 2,
-    audienceMode: "filters",
+    audienceMode: "selected",
     audienceStatuses: ["lead"],
     audienceTags: "",
     audienceQuery: "",
@@ -275,7 +275,7 @@ export function getStatusBadgeVariant(status: string) {
 }
 
 export function getAudienceModeLabel(value: BulkCampaignAudienceMode) {
-    return AUDIENCE_MODE_OPTIONS.find((option) => option.value === value)?.label || "Todo lo filtrado";
+    return AUDIENCE_MODE_OPTIONS.find((option) => option.value === value)?.label || "Solo seleccion manual";
 }
 
 export function getPreviewMatchLabel(value: AudiencePreviewRecipient["matchedBy"]) {

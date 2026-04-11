@@ -56,7 +56,7 @@ function mapCampaignToForm(campaign: CampaignRecord): CampaignFormState {
         stopOnReply: campaign.stopOnReply,
         followUpCount: campaign.followUpCount,
         followUpDelayDays: campaign.followUpDelayDays,
-        audienceMode: campaign.audienceFilters?.mode || "filters",
+        audienceMode: "selected",
         audienceStatuses: campaign.audienceFilters?.statuses || [],
         audienceTags: (campaign.audienceFilters?.tags || []).join(", "),
         audienceQuery: campaign.audienceFilters?.query || "",
@@ -176,7 +176,7 @@ export function BulkCampaignManagerPanel() {
     );
 
     const audiencePayload = useMemo(() => ({
-        mode: form.audienceMode,
+        mode: "selected" as const,
         statuses: form.audienceStatuses,
         tags: splitCommaSeparatedValues(form.audienceTags),
         query: form.audienceQuery,
@@ -185,7 +185,6 @@ export function BulkCampaignManagerPanel() {
         manualEntries,
     }), [
         form.audienceLimit,
-        form.audienceMode,
         form.audienceQuery,
         form.audienceSelectedContactIds,
         form.audienceStatuses,
@@ -639,7 +638,6 @@ export function BulkCampaignManagerPanel() {
                                 onContactToggle={(contactId, checked) =>
                                     setForm((current) => ({
                                         ...current,
-                                        audienceMode: checked && current.audienceMode === "filters" ? "mixed" : current.audienceMode,
                                         audienceSelectedContactIds: checked
                                             ? Array.from(new Set([...current.audienceSelectedContactIds, contactId]))
                                             : current.audienceSelectedContactIds.filter((id) => id !== contactId),
@@ -648,7 +646,6 @@ export function BulkCampaignManagerPanel() {
                                 onSelectVisibleCandidates={() =>
                                     setForm((current) => ({
                                         ...current,
-                                        audienceMode: current.audienceMode === "filters" ? "mixed" : current.audienceMode,
                                         audienceSelectedContactIds: Array.from(new Set([
                                             ...current.audienceSelectedContactIds,
                                             ...(audiencePreview?.candidates.map((contact) => contact.id) || []),

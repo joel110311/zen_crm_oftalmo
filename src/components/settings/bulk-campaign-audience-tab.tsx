@@ -110,7 +110,7 @@ export function BulkCampaignAudienceTab({
 }: BulkCampaignAudienceTabProps) {
     return (
         <div className="space-y-4">
-            <div className="rounded-xl border bg-muted/15 p-4">
+            <div className="hidden rounded-xl border bg-muted/15 p-4">
                 <div className="flex items-center gap-2">
                     <Users className="h-4 w-4 text-primary" />
                     <p className="font-medium">Cómo se arma la audiencia</p>
@@ -146,7 +146,7 @@ export function BulkCampaignAudienceTab({
                             <div>
                                 <p className="font-medium">Filtros del CRM</p>
                                 <p className="text-sm text-muted-foreground">
-                                    Esta tabla te muestra los contactos visibles para agregar o para incluir por filtro.
+                                    Usa estos filtros para encontrar y marcar mas rapido tu seleccion manual.
                                 </p>
                             </div>
                             <div className="flex items-center gap-2 text-xs text-muted-foreground">
