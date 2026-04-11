@@ -41,7 +41,7 @@ export function DealCard({ deal, onDealClick, isOverlay }: DealCardProps) {
     const hasTags = visibleTags.length > 0 || remainingTagCount > 0;
     const cardHeightClass = hasTags
         ? "h-[96px] min-h-[96px] max-h-[96px] py-1.5"
-        : "h-[82px] min-h-[82px] max-h-[82px] py-1";
+        : "h-[70px] min-h-[70px] max-h-[70px] py-1";
 
     // When this card is being dragged, show a dashed placeholder in its original spot
     if (isDragging) {
@@ -95,7 +95,7 @@ export function DealCard({ deal, onDealClick, isOverlay }: DealCardProps) {
 
                 {/* Message preview */}
                 <p
-                    className={`truncate whitespace-nowrap text-[12px] text-muted-foreground ${hasTags ? "mt-0.5 leading-5" : "mt-0 leading-[18px]"}`}
+                    className={`truncate whitespace-nowrap text-[12px] text-muted-foreground ${hasTags ? "mt-0.5 leading-5" : "mt-0 leading-4"}`}
                     title={messagePreview || undefined}
                 >
                     {messagePreview || "\u00A0"}
