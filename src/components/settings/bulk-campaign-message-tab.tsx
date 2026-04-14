@@ -144,7 +144,7 @@ export function BulkCampaignMessageTab({
                     </div>
 
                     <div className="space-y-3.5 rounded-xl border bg-background/90 p-4">
-                        <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(120px,140px)] 2xl:grid-cols-[minmax(0,1fr)_minmax(120px,140px)_200px]">
+                        <div className="grid gap-3 md:grid-cols-2">
                             <div className="space-y-2">
                                 <Label htmlFor={`bulk-campaign-variant-label-${activeVariantIndex}`} className="block">
                                     Etiqueta
@@ -180,9 +180,12 @@ export function BulkCampaignMessageTab({
                                     className="w-full"
                                 />
                             </div>
-                            <div className="space-y-2 lg:col-span-2 2xl:col-span-1">
-                                <Label className="block">Activa</Label>
-                                <div className="flex min-h-10 flex-wrap items-center justify-between gap-2 rounded-lg border bg-muted/15 px-3 py-2">
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label className="block">Activa</Label>
+                            <div className="flex flex-col gap-2 rounded-lg border bg-muted/15 px-3 py-2 sm:min-h-10 sm:flex-row sm:items-center sm:justify-between">
+                                <div className="flex items-center gap-2">
                                     <Switch
                                         checked={activeVariant.isActive}
                                         onCheckedChange={(checked) =>
@@ -192,17 +195,18 @@ export function BulkCampaignMessageTab({
                                             }))
                                         }
                                     />
-                                    <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        className="h-8 rounded-md px-2 text-destructive hover:text-destructive"
-                                        onClick={() => onRemoveVariant(activeVariantIndex)}
-                                        disabled={form.variants.length === 1}
-                                    >
-                                        <Trash2 className="mr-1 h-3.5 w-3.5" />
-                                        Quitar
-                                    </Button>
+                                    <span className="text-sm text-muted-foreground">Habilitada</span>
                                 </div>
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-8 self-start rounded-md px-2 text-destructive hover:text-destructive sm:self-auto"
+                                    onClick={() => onRemoveVariant(activeVariantIndex)}
+                                    disabled={form.variants.length === 1}
+                                >
+                                    <Trash2 className="mr-1 h-3.5 w-3.5" />
+                                    Quitar
+                                </Button>
                             </div>
                         </div>
 

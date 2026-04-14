@@ -456,14 +456,24 @@ async function materializeManualAudienceContacts(entries: BulkCampaignManualEntr
             continue;
         }
 
-        contacts.push(await prisma.contact.create({
+        const createdContact = await prisma.contact.create({
             data: {
                 phone: normalizedPhone,
                 name: entry.name || null,
                 company: entry.company || null,
                 status: "lead",
             },
-        }));
+        });
+
+        await prisma.conversation.create({
+            data: {
+                contactId: createdContact.id,
+                status: "active",
+                botActive: true,
+            },
+        });
+
+        contacts.push(createdContact);
     }
 
     return contacts;

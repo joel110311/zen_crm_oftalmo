@@ -61,6 +61,10 @@ export async function GET(request: NextRequest) {
     const conversationId = searchParams.get("conversationId");
 
     const since = searchParams.get("since");
+    const limitParam = Number.parseInt(searchParams.get("limit") || "1000", 10);
+    const conversationLimit = Number.isFinite(limitParam)
+        ? Math.min(Math.max(limitParam, 1), 5000)
+        : 1000;
 
     try {
         if (conversationId) {
@@ -115,7 +119,7 @@ export async function GET(request: NextRequest) {
                     },
                 },
                 orderBy: { updatedAt: "desc" },
-                take: 100, // Limit to 100 most recent conversations
+                take: conversationLimit,
             });
 
             // Transform for frontend

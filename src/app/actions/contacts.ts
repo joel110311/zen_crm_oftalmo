@@ -248,15 +248,27 @@ export async function createContact(formData: FormData) {
     }
 
     try {
-        const contact = await prisma.contact.create({
-            data: {
-                name,
-                email,
-                phone,
-                company,
-                status,
-                tags: ["Nuevo"],
-            },
+        const contact = await prisma.$transaction(async (tx) => {
+            const createdContact = await tx.contact.create({
+                data: {
+                    name,
+                    email,
+                    phone,
+                    company,
+                    status,
+                    tags: ["Nuevo"],
+                },
+            });
+
+            await tx.conversation.create({
+                data: {
+                    contactId: createdContact.id,
+                    status: "active",
+                    botActive: true,
+                },
+            });
+
+            return createdContact;
         });
 
         revalidatePath("/dashboard/contacts");

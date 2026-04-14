@@ -1276,7 +1276,7 @@ export default function InboxPage() {
     useEffect(() => {
         const fetchConversations = async () => {
             try {
-                const response = await fetch("/api/chat");
+                const response = await fetch("/api/chat?limit=5000");
                 const data = await response.json();
                 if (!Array.isArray(data)) return;
 
@@ -1557,7 +1557,7 @@ export default function InboxPage() {
             }
 
             // Refresh conversations
-            const convRes = await fetch("/api/chat");
+            const convRes = await fetch("/api/chat?limit=5000");
             const convData = await convRes.json();
             if (Array.isArray(convData)) {
                 const transformed: Conversation[] = convData.map(transformConversation);
