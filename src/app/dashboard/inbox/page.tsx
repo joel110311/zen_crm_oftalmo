@@ -31,6 +31,7 @@ import { WhatsAppFormattedText } from "@/components/shared/whatsapp-formatted-te
 import { getSafeMediaUrl } from "@/lib/media-url";
 import { TemplateRecord, extractTemplateSlashQuery, renderTemplateContent } from "@/lib/templates";
 import { writeUnreadCounts } from "@/lib/inbox-browser-badge";
+import { parseInboundAdPreviewMessageContent } from "@/lib/inbound-ad-preview";
 
 const REACTION_EMOJIS = [
     "👍", "👎", "❤️", "🩵", "🔥", "✨", "🎉", "👏",
@@ -75,6 +76,16 @@ function toIsoTimestamp(value: string | Date | undefined) {
     const parsed = new Date(value);
     if (Number.isNaN(parsed.getTime())) return null;
     return parsed.toISOString();
+}
+
+function toDisplayHost(url: string | undefined) {
+    if (!url) return null;
+    try {
+        const parsed = new URL(url);
+        return parsed.hostname.replace(/^www\./i, "");
+    } catch {
+        return null;
+    }
 }
 
 function isTemporaryMessage(message: Message) {
@@ -2390,6 +2401,22 @@ export default function InboxPage() {
                                             }
 
                                             if (msg.type === "system") {
+                                                const adPreview = parseInboundAdPreviewMessageContent(msg.content);
+                                                const previewTargetUrl =
+                                                    adPreview?.sourceUrl ||
+                                                    adPreview?.mediaUrl ||
+                                                    adPreview?.thumbnailUrl ||
+                                                    null;
+                                                const previewImageUrl = getSafeMediaUrl(
+                                                    adPreview?.thumbnailUrl || adPreview?.mediaUrl || null,
+                                                );
+                                                const previewTitle =
+                                                    adPreview?.title ||
+                                                    adPreview?.productHint ||
+                                                    "Anuncio detectado de Facebook Ads";
+                                                const previewBody = adPreview?.body || adPreview?.context || null;
+                                                const previewHost = toDisplayHost(previewTargetUrl || undefined);
+
                                                 return (
                                                     <React.Fragment key={msg.id}>
                                                         {showDateSep && (
@@ -2399,11 +2426,54 @@ export default function InboxPage() {
                                                                 </Badge>
                                                             </div>
                                                         )}
-                                                        <div className="flex justify-center">
-                                                            <div className="max-w-[90%] rounded-full border border-emerald-200/70 bg-emerald-50/90 px-4 py-2 text-center text-[12px] font-medium text-emerald-700 shadow-[0_16px_34px_-28px_rgba(16,185,129,0.5)] dark:border-emerald-400/20 dark:bg-emerald-500/10 dark:text-emerald-300">
-                                                                {msg.content}
+                                                        {adPreview ? (
+                                                            <div className="flex justify-start">
+                                                                <div className="w-full max-w-[min(92%,26rem)] overflow-hidden rounded-2xl border border-border/60 bg-card/95 shadow-[0_20px_45px_-32px_rgba(15,23,42,0.45)]">
+                                                                    {previewImageUrl ? (
+                                                                        previewTargetUrl ? (
+                                                                            <a href={previewTargetUrl} target="_blank" rel="noreferrer">
+                                                                                <img
+                                                                                    src={previewImageUrl}
+                                                                                    alt={previewTitle}
+                                                                                    className="h-40 w-full object-cover"
+                                                                                />
+                                                                            </a>
+                                                                        ) : (
+                                                                            <img
+                                                                                src={previewImageUrl}
+                                                                                alt={previewTitle}
+                                                                                className="h-40 w-full object-cover"
+                                                                            />
+                                                                        )
+                                                                    ) : (
+                                                                        <div className="flex h-24 w-full items-center justify-center bg-muted/70 px-4 text-sm font-medium text-muted-foreground">
+                                                                            Vista previa del anuncio
+                                                                        </div>
+                                                                    )}
+                                                                    <div className="space-y-1.5 p-3">
+                                                                        <p className="text-sm font-semibold leading-tight text-foreground">
+                                                                            {previewTitle}
+                                                                        </p>
+                                                                        {previewBody && (
+                                                                            <p className="text-xs leading-relaxed text-muted-foreground">
+                                                                                {previewBody}
+                                                                            </p>
+                                                                        )}
+                                                                        {previewHost && (
+                                                                            <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground/80">
+                                                                                {previewHost}
+                                                                            </p>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
                                                             </div>
-                                                        </div>
+                                                        ) : (
+                                                            <div className="flex justify-center">
+                                                                <div className="max-w-[90%] rounded-full border border-emerald-200/70 bg-emerald-50/90 px-4 py-2 text-center text-[12px] font-medium text-emerald-700 shadow-[0_16px_34px_-28px_rgba(16,185,129,0.5)] dark:border-emerald-400/20 dark:bg-emerald-500/10 dark:text-emerald-300">
+                                                                    {msg.content}
+                                                                </div>
+                                                            </div>
+                                                        )}
                                                     </React.Fragment>
                                                 );
                                             }

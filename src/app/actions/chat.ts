@@ -24,6 +24,14 @@ import { processLeadAutomationTurn } from "@/lib/ai/lead-intelligence";
 import { buildPhoneMatchClauses, normalizePhoneDigits } from "@/lib/phone";
 import { markBulkCampaignReplyForContact } from "@/lib/bulk-campaigns";
 import { refreshWhatsAppAvatarForContact } from "@/lib/whatsapp-avatar";
+import {
+    buildInboundAdPreviewFingerprint,
+    buildInboundAdPreviewMessageContent,
+    normalizeInboundAdPreviewPayload,
+    parseInboundAdPreviewMessageContent,
+    type InboundAdPreviewPayload,
+    INBOUND_AD_PREVIEW_PREFIX,
+} from "@/lib/inbound-ad-preview";
 
 const CATALOG_OFFER_EXPIRY_MS = 1000 * 60 * 90;
 const KNOWLEDGE_IMAGE_URL_REGEX = /https?:\/\/[^\s<>"']+/gi;
@@ -83,6 +91,10 @@ export type InboundAttribution = {
     adTitle?: string;
     adBody?: string;
     adContextText?: string;
+    adSourceUrl?: string;
+    adMediaUrl?: string;
+    adThumbnailUrl?: string;
+    adMediaType?: string;
     conversionData?: string;
     ctwaPayload?: string;
     decodedConversionData?: string;
@@ -337,6 +349,71 @@ function buildInboundAttributionInstruction(attribution?: InboundAttribution) {
     ];
 
     return lines.filter(Boolean).join(" ");
+}
+
+function buildInboundAdPreviewPayloadFromAttribution(attribution?: InboundAttribution) {
+    if (!attribution || !hasFacebookAdsAttribution(attribution)) {
+        return null;
+    }
+
+    const productHint = detectFacebookAdsProductHint(attribution) || undefined;
+
+    return normalizeInboundAdPreviewPayload({
+        source: "facebook_ads",
+        title: attribution.adTitle,
+        body: attribution.adBody,
+        context: attribution.adContextText,
+        sourceUrl: attribution.adSourceUrl,
+        mediaUrl: attribution.adMediaUrl,
+        thumbnailUrl: attribution.adThumbnailUrl,
+        productHint,
+        entryPointConversionSource: attribution.entryPointConversionSource,
+        conversionSource: attribution.conversionSource,
+    });
+}
+
+async function maybeCreateInboundAdPreviewSystemMessage(
+    conversationId: string,
+    payload: InboundAdPreviewPayload,
+) {
+    const serializedContent = buildInboundAdPreviewMessageContent(payload);
+    if (!serializedContent) return;
+
+    const fingerprint = buildInboundAdPreviewFingerprint(payload);
+    if (!fingerprint) return;
+
+    const latestAdPreviewMessage = await prisma.message.findFirst({
+        where: {
+            conversationId,
+            type: "system",
+            content: {
+                startsWith: INBOUND_AD_PREVIEW_PREFIX,
+            },
+        },
+        orderBy: { createdAt: "desc" },
+        select: { content: true },
+    });
+
+    if (latestAdPreviewMessage?.content) {
+        const latestPayload = parseInboundAdPreviewMessageContent(latestAdPreviewMessage.content);
+        if (latestPayload) {
+            const latestFingerprint = buildInboundAdPreviewFingerprint(latestPayload);
+            if (latestFingerprint && latestFingerprint === fingerprint) {
+                return;
+            }
+        }
+    }
+
+    await prisma.message.create({
+        data: {
+            conversationId,
+            content: serializedContent,
+            direction: "outbound",
+            status: "sent",
+            type: "system",
+            senderType: "system",
+        },
+    });
 }
 
 function stripInternalDisclosureLines(content: string) {
@@ -2162,6 +2239,11 @@ export async function processInboundMessage(
                     contactId: contact.id,
                 });
             }
+        }
+
+        const inboundAdPreviewPayload = buildInboundAdPreviewPayloadFromAttribution(attribution);
+        if (inboundAdPreviewPayload) {
+            await maybeCreateInboundAdPreviewSystemMessage(conversation.id, inboundAdPreviewPayload);
         }
 
         // Create inbound message with optional media

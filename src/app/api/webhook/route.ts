@@ -192,6 +192,25 @@ function sanitizeAttributionContextText(value: string | undefined) {
     return normalized.slice(0, 320);
 }
 
+function extractFirstUrlFromText(value: string | undefined) {
+    if (!value) return undefined;
+    const match = value.match(/https?:\/\/[^\s<>"')]+/i);
+    return match?.[0];
+}
+
+function pickUrlWithKeywords(candidates: string[], keywords: string[]) {
+    const normalizedKeywords = keywords.map((keyword) => keyword.toLowerCase());
+    for (const candidate of candidates) {
+        const extractedUrl = /^https?:\/\//i.test(candidate) ? candidate : extractFirstUrlFromText(candidate);
+        if (!extractedUrl) continue;
+        const normalized = candidate.toLowerCase();
+        if (normalizedKeywords.some((keyword) => normalized.includes(keyword))) {
+            return extractedUrl;
+        }
+    }
+    return undefined;
+}
+
 function buildAdsContextText(values: Array<string | undefined>) {
     const keywords = [
         "pulsera",
@@ -230,6 +249,10 @@ function logInboundAttributionSummary(attribution?: InboundAttribution) {
         hasAdTitle: Boolean(attribution.adTitle),
         hasAdBody: Boolean(attribution.adBody),
         hasAdContextText: Boolean(attribution.adContextText),
+        hasAdSourceUrl: Boolean(attribution.adSourceUrl),
+        hasAdMediaUrl: Boolean(attribution.adMediaUrl),
+        hasAdThumbnailUrl: Boolean(attribution.adThumbnailUrl),
+        adMediaType: attribution.adMediaType || null,
         hasDecodedConversionData: Boolean(attribution.decodedConversionData),
         hasDecodedCtwaPayload: Boolean(attribution.decodedCtwaPayload),
     });
@@ -380,11 +403,39 @@ function extractInboundAttribution(
         pickStringWithKeywords(contextStrings, ["pulsera", "led", "glow", "audio", "beatband", "concierto"]),
         ...contextValues("text", "caption"),
     );
+    const adSourceUrl = pickFirstString(
+        getStringCaseInsensitive(externalAdReply, "sourceUrl"),
+        getStringCaseInsensitive(externalAdReply, "sourceURL"),
+        getStringCaseInsensitive(externalAdReply, "matchedText"),
+        getStringCaseInsensitive(externalAdReply, "canonicalUrl"),
+        pickUrlWithKeywords(externalAdReplyStrings, ["fb.me", "facebook", "instagram", "ads", "anuncio", "referral"]),
+        pickUrlWithKeywords(contextStrings, ["fb.me", "facebook", "instagram", "ads", "anuncio", "referral"]),
+    );
+    const adThumbnailUrl = pickFirstString(
+        getStringCaseInsensitive(externalAdReply, "thumbnailUrl"),
+        getStringCaseInsensitive(externalAdReply, "thumbnailURL"),
+        getStringCaseInsensitive(externalAdReply, "jpegThumbnailUrl"),
+        getStringCaseInsensitive(externalAdReply, "previewUrl"),
+    );
+    const adMediaUrl = pickFirstString(
+        getStringCaseInsensitive(externalAdReply, "mediaUrl"),
+        getStringCaseInsensitive(externalAdReply, "mediaURL"),
+        getStringCaseInsensitive(externalAdReply, "videoUrl"),
+        getStringCaseInsensitive(externalAdReply, "imageUrl"),
+        adThumbnailUrl,
+    );
+    const adMediaType = pickFirstString(
+        getStringCaseInsensitive(externalAdReply, "mediaType"),
+        getStringCaseInsensitive(externalAdReply, "previewType"),
+    );
     const decodedConversionData = decodeBase64ToText(conversionData) || decodeBase64ToTextLegacy(conversionData);
     const decodedCtwaPayload = decodeBase64ToText(ctwaPayload) || decodeBase64ToTextLegacy(ctwaPayload);
     const adContextText = buildAdsContextText([
         adTitle,
         adBody,
+        adSourceUrl,
+        adMediaUrl,
+        adThumbnailUrl,
         decodedConversionData,
         decodedCtwaPayload,
         ...externalAdReplyStrings,
@@ -400,6 +451,10 @@ function extractInboundAttribution(
         ctwaSignals,
         adTitle,
         adBody,
+        adSourceUrl,
+        adMediaUrl,
+        adThumbnailUrl,
+        adMediaType,
         adContextText,
         conversionData,
         ctwaPayload,
