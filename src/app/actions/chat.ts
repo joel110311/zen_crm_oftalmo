@@ -243,34 +243,6 @@ function detectFacebookAdsProductHint(attribution?: InboundAttribution) {
     return null;
 }
 
-function isLikelyGenericInquiryMessage(message: string) {
-    const normalized = normalizeCatalogComparableText(message);
-    if (!normalized) return true;
-
-    const productTokens = [
-        "glowsync",
-        "audiorit",
-        "beatband",
-        "pulsera",
-        "alcancia",
-        "ventilador",
-        "termo",
-        "tatuaje",
-        "pantunfla",
-        "peluche",
-    ];
-
-    if (productTokens.some((token) => normalized.includes(token))) {
-        return false;
-    }
-
-    return (
-        /^(hola|hello|hi|buenos dias|buenas tardes|buenas noches|quiero mas informacion|mas informacion|informacion|info|precio)$/.test(
-            normalized,
-        ) || normalized.split(" ").length <= 4
-    );
-}
-
 function hasFacebookAdsAttribution(attribution?: InboundAttribution) {
     if (!attribution) return false;
 
@@ -357,8 +329,9 @@ function buildInboundAttributionInstruction(attribution?: InboundAttribution) {
         attribution.conversionSource ? `conversionSource: ${attribution.conversionSource}` : null,
         productHint ? `Producto detectado por anuncio: ${productHint}.` : null,
         productHint
-            ? "No preguntes cual de las dos pulseras busca. Asume ese producto y pide solo los datos faltantes para cotizar."
-            : "Si el cliente llega con texto generico, usa el contexto del anuncio antes de preguntar por tipo de producto.",
+            ? "Usa el producto detectado como pista comercial inicial, pero sigue siempre las instrucciones del prompt del agente."
+            : "Si el cliente llega con texto generico, usa el contexto del anuncio como pista inicial y sigue el prompt del agente.",
+        "No fuerces una sola opcion de producto si el prompt indica presentar alternativas.",
         "Usa este contexto para responder con continuidad comercial y evita bienvenida generica.",
         "No menciones al cliente que usaste metadatos internos de anuncios.",
     ];
@@ -1552,16 +1525,7 @@ async function maybeSendAutomatedReply(
             return;
         }
 
-        const adProductHint = detectFacebookAdsProductHint(inboundAttribution);
-        const shouldInjectAdProductContext = Boolean(adProductHint) && (
-            !previousInboundMessage || isLikelyGenericInquiryMessage(latestUserMessage)
-        );
-        const modelUserMessage = shouldInjectAdProductContext
-            ? appendSection(
-                latestUserMessage,
-                `CONTEXTO INTERNO: Este lead llega por anuncio y su interes principal es ${adProductHint}.`,
-            )
-            : latestUserMessage;
+        const modelUserMessage = latestUserMessage;
 
         if (
             shouldSendAutomatedWelcome(
