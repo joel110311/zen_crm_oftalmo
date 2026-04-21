@@ -4,10 +4,11 @@ import { prisma } from "@/lib/db";
 import { refreshWhatsAppAvatarForContactsInBackground } from "@/lib/whatsapp-avatar";
 
 let lastAvatarRefreshKickAt = 0;
+const CHAT_AVATAR_REFRESH_KICK_INTERVAL_MS = 30 * 60 * 1000;
 
 function shouldKickAvatarRefresh() {
     const now = Date.now();
-    if (now - lastAvatarRefreshKickAt < 60_000) {
+    if (now - lastAvatarRefreshKickAt < CHAT_AVATAR_REFRESH_KICK_INTERVAL_MS) {
         return false;
     }
     lastAvatarRefreshKickAt = now;

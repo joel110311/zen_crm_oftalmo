@@ -2,8 +2,8 @@ import { prisma } from "@/lib/db";
 import { normalizePhoneDigits } from "@/lib/phone";
 import { getWuzapiAvatar, type WuzapiAvatarRecord } from "@/lib/wuzapi";
 
-const AVATAR_REFRESH_INTERVAL_MS = 12 * 60 * 60 * 1000;
-const AVATAR_RETRY_INTERVAL_MS = 3 * 60 * 60 * 1000;
+const AVATAR_REFRESH_INTERVAL_MS = 24 * 60 * 60 * 1000;
+const AVATAR_RETRY_INTERVAL_MS = 12 * 60 * 60 * 1000;
 const AVATAR_BATCH_LIMIT = 24;
 const AVATAR_BATCH_CONCURRENCY = 4;
 

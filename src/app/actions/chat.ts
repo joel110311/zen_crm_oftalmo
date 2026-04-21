@@ -2181,9 +2181,18 @@ export async function processInboundMessage(
 
         const inboundDealSource = resolveInboundDealSource(attribution);
 
-        void refreshWhatsAppAvatarForContact(contact.id).catch((avatarError) => {
-            console.warn("[Inbound] Failed to refresh WhatsApp avatar", avatarError);
-        });
+        const shouldAwaitInitialAvatarRefresh = !contact.whatsappAvatarCheckedAt;
+        if (shouldAwaitInitialAvatarRefresh) {
+            try {
+                await refreshWhatsAppAvatarForContact(contact.id, { force: true });
+            } catch (avatarError) {
+                console.warn("[Inbound] Failed to refresh WhatsApp avatar on first contact", avatarError);
+            }
+        } else {
+            void refreshWhatsAppAvatarForContact(contact.id).catch((avatarError) => {
+                console.warn("[Inbound] Failed to refresh WhatsApp avatar", avatarError);
+            });
+        }
 
         // Find or create conversation
         let conversation = await prisma.conversation.findFirst({

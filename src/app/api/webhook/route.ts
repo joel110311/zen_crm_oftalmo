@@ -1338,9 +1338,18 @@ async function storeOutboundEcho(
         return;
     }
 
-    void refreshWhatsAppAvatarForContact(contact.id).catch((avatarError) => {
-        console.warn("[Webhook] Failed to refresh WhatsApp avatar for outbound echo", avatarError);
-    });
+    const shouldAwaitInitialAvatarRefresh = !contact.whatsappAvatarCheckedAt;
+    if (shouldAwaitInitialAvatarRefresh) {
+        try {
+            await refreshWhatsAppAvatarForContact(contact.id, { force: true });
+        } catch (avatarError) {
+            console.warn("[Webhook] Failed to refresh WhatsApp avatar for first outbound echo", avatarError);
+        }
+    } else {
+        void refreshWhatsAppAvatarForContact(contact.id).catch((avatarError) => {
+            console.warn("[Webhook] Failed to refresh WhatsApp avatar for outbound echo", avatarError);
+        });
+    }
 
     let conversation = await prisma.conversation.findFirst({
         where: { contactId: contact.id, status: "active" },
