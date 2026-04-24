@@ -40,6 +40,10 @@ const REACTION_EMOJIS = [
     "👀", "🙌", "👌", "💪", "🥳", "😴", "🤯", "😡",
 ];
 
+const INBOX_CONVERSATION_LIMIT = 300;
+const INBOX_DELTA_POLL_INTERVAL_MS = 3000;
+const INBOX_FULL_RESYNC_INTERVAL_MS = 60000;
+
 // ──────────── Types ────────────
 export type Message = {
     id: string;
@@ -55,7 +59,21 @@ export type Message = {
     reaction?: string | null;
 };
 
-function normalizeMessageRecord(raw: any): Message {
+type RawMessageRecord = {
+    id: string;
+    content: string;
+    senderId?: string | null;
+    direction: string;
+    createdAt: string | Date;
+    type: string;
+    senderType?: string | null;
+    mediaUrl?: string | null;
+    mediaType?: string | null;
+    mediaFileName?: string | null;
+    reaction?: string | null;
+};
+
+function normalizeMessageRecord(raw: RawMessageRecord): Message {
     return {
         id: raw.id,
         content: raw.content,
@@ -130,7 +148,7 @@ function replaceOptimisticMessage(
 function mergeFetchedMessages(prev: Message[], incoming: Message[]) {
     if (incoming.length === 0) return prev;
 
-    let next = [...prev];
+    const next = [...prev];
 
     for (const incomingMessage of incoming) {
         const exactIndex = next.findIndex((message) => message.id === incomingMessage.id);
@@ -260,12 +278,38 @@ const LEAD_STEP_LABELS: Record<string, string> = {
     calificado: "Lead calificado",
 };
 
-function transformConversation(conv: any): Conversation {
+type ConversationRecord = {
+    id: string;
+    contactId?: string | null;
+    contactName?: string | null;
+    contactPhone?: string | null;
+    contactEmail?: string | null;
+    contactCompany?: string | null;
+    contactStatus?: string | null;
+    contactAvatarUrl?: string | null;
+    lastMessage?: string | null;
+    lastMessageTime?: string | Date | null;
+    lastMessageDirection?: string | null;
+    lastMessageType?: string | null;
+    lastMessageSenderType?: string | null;
+    status?: string | null;
+    isMuted?: boolean;
+    isFavorite?: boolean;
+    isGroup?: boolean;
+    botActive?: boolean | null;
+    assignedUserId?: string | null;
+    assignedUser?: TeamUser | null;
+    leadIntelligence?: LeadIntelligenceSnapshot | null;
+    currentDeal?: Conversation["currentDeal"];
+};
+
+function transformConversation(conv: ConversationRecord): Conversation {
+    const previewMessageTime = conv.lastMessageTime ? new Date(conv.lastMessageTime) : new Date();
     return {
         id: conv.id,
         contact: {
             id: conv.contactId || conv.id,
-            name: conv.contactName,
+            name: conv.contactName ?? null,
             phone: conv.contactPhone || null,
             email: conv.contactEmail || null,
             company: conv.contactCompany || null,
@@ -275,13 +319,13 @@ function transformConversation(conv: any): Conversation {
         messages: conv.lastMessage ? [{
             id: `preview-${conv.id}`,
             content: conv.lastMessage,
-            createdAt: conv.lastMessageTime,
+            createdAt: previewMessageTime,
             senderId: null,
             direction: conv.lastMessageDirection || "inbound",
             type: conv.lastMessageType || "text",
             senderType: conv.lastMessageSenderType || null,
         }] : [],
-        updatedAt: conv.lastMessageTime || new Date(),
+        updatedAt: previewMessageTime,
         status: conv.status || "active",
         isMuted: conv.isMuted || false,
         isFavorite: conv.isFavorite || false,
@@ -303,7 +347,7 @@ function formatWhatsAppText(text: string): React.ReactNode {
     return lines.map((line, lineIdx) => {
         // Parse inline formatting: *bold*, _italic_, ~strikethrough~
         const parts: React.ReactNode[] = [];
-        let remaining = line;
+        const remaining = line;
         let partKey = 0;
         const regex = /(\*([^*]+)\*)|(_([^_]+)_)|(~([^~]+)~)/g;
         let lastIndex = 0;
@@ -469,11 +513,6 @@ function AudioPlayer({ src, isOutbound }: { src: string; isOutbound: boolean }) 
     useEffect(() => {
         const audio = audioRef.current;
         if (!audio) return;
-
-        setIsPlaying(false);
-        setCurrentTime(0);
-        setReportedDuration(0);
-        setVisualDuration(0);
 
         const updateVisualDuration = (time: number, mediaDuration: number, ended = false) => {
             setVisualDuration((prev) => {
@@ -929,7 +968,6 @@ function WindowTimer({ expiresAt, onWindowChange }: { expiresAt: string | null |
 
     useEffect(() => {
         if (!expiresAt) {
-            setIsOpen(false);
             onWindowChange?.(false);
             return;
         }
@@ -1165,6 +1203,8 @@ export default function InboxPage() {
     const [hasLoadedUnreadCounts, setHasLoadedUnreadCounts] = useState(false);
     const isFirstFetchRef = useRef(true);
     const prevConvTimestampsRef = useRef<Record<string, string>>({});
+    const conversationsCursorRef = useRef<string | null>(null);
+    const conversationsPollInFlightRef = useRef(false);
 
     // Ref to keep the selected chat ID accessible inside polling closures
     const selectedChatIdRef = useRef<string | null>(null);
@@ -1285,31 +1325,73 @@ export default function InboxPage() {
 
     // ──── Fetch conversations ────
     useEffect(() => {
-        const fetchConversations = async () => {
+        let disposed = false;
+
+        const mergeConversationSnapshots = (
+            existing: Conversation[],
+            incoming: Conversation[],
+        ) => {
+            const mergedById = new Map(existing.map((conversation) => [conversation.id, conversation]));
+            for (const conversation of incoming) {
+                mergedById.set(conversation.id, conversation);
+            }
+
+            return Array.from(mergedById.values())
+                .sort((left, right) => right.updatedAt.getTime() - left.updatedAt.getTime())
+                .slice(0, INBOX_CONVERSATION_LIMIT);
+        };
+
+        const updateConversationCursor = (items: Conversation[]) => {
+            for (const conversation of items) {
+                const timestamp = toIsoTimestamp(conversation.updatedAt);
+                if (!timestamp) continue;
+                if (!conversationsCursorRef.current || timestamp > conversationsCursorRef.current) {
+                    conversationsCursorRef.current = timestamp;
+                }
+            }
+        };
+
+        const fetchConversations = async (mode: "full" | "delta") => {
+            if (disposed) return;
+            if (mode === "delta" && !conversationsCursorRef.current) return;
+            if (conversationsPollInFlightRef.current) return;
+
+            conversationsPollInFlightRef.current = true;
+
             try {
-                const response = await fetch("/api/chat?limit=5000");
+                const url = new URL("/api/chat", window.location.origin);
+                url.searchParams.set("limit", String(INBOX_CONVERSATION_LIMIT));
+                if (mode === "delta" && conversationsCursorRef.current) {
+                    url.searchParams.set("updatedSince", conversationsCursorRef.current);
+                }
+
+                const response = await fetch(url.toString(), { cache: "no-store" });
                 const data = await response.json();
-                if (!Array.isArray(data)) return;
+                if (!Array.isArray(data) || disposed) return;
 
                 const transformed: Conversation[] = data.map(transformConversation);
-                setConversations(transformed);
+                updateConversationCursor(transformed);
+
+                if (mode === "full") {
+                    setConversations(transformed);
+                } else if (transformed.length > 0) {
+                    setConversations((prev) => mergeConversationSnapshots(prev, transformed));
+                }
 
                 const currentId = selectedChatIdRef.current;
 
-                // Track unread counts: compare updatedAt timestamps
+                // Track unread counts: compare updatedAt timestamps.
                 if (!isFirstFetchRef.current) {
                     const prevTimestamps = prevConvTimestampsRef.current;
-                    setUnreadCounts(prev => {
+                    setUnreadCounts((prev) => {
                         const next = { ...prev };
                         let playedSound = false;
                         for (const conv of transformed) {
-                            // Skip the currently selected chat (user is viewing it)
                             if (conv.id === currentId) continue;
                             const prevTime = prevTimestamps[conv.id];
                             const newTime = toIsoTimestamp(conv.updatedAt);
                             const hasInboundActivity = conv.messages[0]?.direction === "inbound";
                             if (prevTime && newTime && newTime !== prevTime && hasInboundActivity) {
-                                // Conversation has a new inbound message
                                 next[conv.id] = (next[conv.id] || 0) + 1;
 
                                 if (!playedSound) {
@@ -1322,24 +1404,35 @@ export default function InboxPage() {
                     });
                 }
 
-                // Save current timestamps for next comparison
-                const timestamps: Record<string, string> = {};
-                for (const conv of transformed) {
-                    const timestamp = toIsoTimestamp(conv.updatedAt);
-                    if (timestamp) {
-                        timestamps[conv.id] = timestamp;
+                if (mode === "full") {
+                    const timestamps: Record<string, string> = {};
+                    for (const conv of transformed) {
+                        const timestamp = toIsoTimestamp(conv.updatedAt);
+                        if (timestamp) {
+                            timestamps[conv.id] = timestamp;
+                        }
                     }
+                    prevConvTimestampsRef.current = timestamps;
+                } else if (transformed.length > 0) {
+                    const nextTimestamps = { ...prevConvTimestampsRef.current };
+                    for (const conv of transformed) {
+                        const timestamp = toIsoTimestamp(conv.updatedAt);
+                        if (timestamp) {
+                            nextTimestamps[conv.id] = timestamp;
+                        }
+                    }
+                    prevConvTimestampsRef.current = nextTimestamps;
                 }
-                prevConvTimestampsRef.current = timestamps;
 
-                // Only auto-select a chat on the VERY FIRST load
-                if (isFirstFetchRef.current) {
+                // Only auto-select a chat on the very first full load.
+                if (isFirstFetchRef.current && mode === "full") {
                     isFirstFetchRef.current = false;
 
-                    // Check if we were navigated here with a ?phone= param (from Pipeline)
                     const phoneParam = searchParams.get("phone");
                     if (phoneParam && transformed.length > 0) {
-                        const match = transformed.find(c => c.contact?.phone?.includes(phoneParam.slice(-10)));
+                        const match = transformed.find((conversation) =>
+                            conversation.contact?.phone?.includes(phoneParam.slice(-10)),
+                        );
                         if (match) {
                             setSelectedChat(match);
                             return;
@@ -1351,9 +1444,8 @@ export default function InboxPage() {
                     }
                 }
 
-                // Update selected chat data (keep same chat, just refresh its data)
                 if (currentId) {
-                    const updated = transformed.find(c => c.id === currentId);
+                    const updated = transformed.find((conversation) => conversation.id === currentId);
                     if (updated) {
                         const previousUpdatedAt = selectedChatUpdatedAtRef.current;
                         const nextUpdatedAt = toIsoTimestamp(updated.updatedAt);
@@ -1366,12 +1458,26 @@ export default function InboxPage() {
                 }
             } catch (error) {
                 console.error("Failed to fetch conversations:", error);
+            } finally {
+                conversationsPollInFlightRef.current = false;
             }
         };
 
-        fetchConversations();
-        const interval = setInterval(fetchConversations, 3000);
-        return () => clearInterval(interval);
+        void fetchConversations("full");
+
+        const deltaInterval = setInterval(() => {
+            void fetchConversations("delta");
+        }, INBOX_DELTA_POLL_INTERVAL_MS);
+
+        const fullResyncInterval = setInterval(() => {
+            void fetchConversations("full");
+        }, INBOX_FULL_RESYNC_INTERVAL_MS);
+
+        return () => {
+            disposed = true;
+            clearInterval(deltaInterval);
+            clearInterval(fullResyncInterval);
+        };
     }, []);
 
     // ──── Fetch messages ────
@@ -1568,7 +1674,7 @@ export default function InboxPage() {
             }
 
             // Refresh conversations
-            const convRes = await fetch("/api/chat?limit=5000");
+            const convRes = await fetch(`/api/chat?limit=${INBOX_CONVERSATION_LIMIT}`, { cache: "no-store" });
             const convData = await convRes.json();
             if (Array.isArray(convData)) {
                 const transformed: Conversation[] = convData.map(transformConversation);
@@ -1970,9 +2076,10 @@ export default function InboxPage() {
                 setMessages((prev) => replaceOptimisticMessage(prev, optimisticId, persistedMessage));
             }
 
-        } catch (error: any) {
+        } catch (error: unknown) {
             console.error("sendMediaMessage error:", error);
-            alert(`Error al enviar mensaje multimedia: ${error.message}`);
+            const message = error instanceof Error ? error.message : "Error inesperado";
+            alert(`Error al enviar mensaje multimedia: ${message}`);
 
             // Remove optimistic message on failure
             setMessages(prev => prev.filter(m => m.id !== optimisticId));

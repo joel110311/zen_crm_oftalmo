@@ -2143,6 +2143,28 @@ export async function processInboundMessage(
             return;
         }
 
+        if (providerMessageId) {
+            const duplicatedMessage = await prisma.message.findFirst({
+                where: { providerMessageId },
+                include: {
+                    conversation: {
+                        include: {
+                            contact: true,
+                        },
+                    },
+                },
+            });
+
+            if (duplicatedMessage) {
+                return {
+                    contact: duplicatedMessage.conversation.contact,
+                    conversation: duplicatedMessage.conversation,
+                    message: duplicatedMessage,
+                    duplicate: true,
+                };
+            }
+        }
+
         const normalizedCustomerName = normalizeContactName(customerName);
         const phoneClauses = buildPhoneMatchClauses([normalizedFrom]);
 
@@ -2357,50 +2379,6 @@ export async function processInboundMessage(
             shouldScheduleAutomatedReply = true;
         } else if (bulkReplyResult.activatedBot && !conversationWasBotActive) {
             console.log("[Chatbot] Interest detected but the conversation stays in human mode:", conversation.id);
-        }
-
-        // ── Auto-create Deal for contacts without a deal ──
-        // Every contact should be mapped in the pipeline
-        try {
-            const existingDeal = await prisma.deal.findFirst({
-                where: { contactId: contact.id },
-            });
-
-            if (existingDeal) {
-                if (inboundDealSource !== "whatsapp" && existingDeal.source !== inboundDealSource) {
-                    await prisma.deal.update({
-                        where: { id: existingDeal.id },
-                        data: { source: inboundDealSource },
-                    });
-                }
-            } else {
-                const incomingStage = await prisma.pipelineStage.findFirst({
-                    where: { isIncoming: true },
-                });
-
-                if (incomingStage) {
-                    const displayName = normalizeContactName(contact.name) || normalizedCustomerName;
-                    const dealTitle = displayName
-                        ? `Lead - ${displayName}`
-                        : `Lead WhatsApp - ${from}`;
-
-                    await prisma.deal.create({
-                        data: {
-                            title: dealTitle,
-                            value: 0,
-                            stageId: incomingStage.id,
-                            contactId: contact.id,
-                            source: inboundDealSource,
-                            priority: "medium",
-                        },
-                    });
-                    console.log(`[Pipeline] Auto-created deal for contact without deal: ${dealTitle}`);
-                    revalidatePath("/dashboard/pipeline");
-                }
-            }
-        } catch (dealError) {
-            console.error("[Pipeline] Failed to auto-create deal:", dealError);
-            // Don't fail the whole message processing
         }
 
         // ── CHATBOT / N8N FORWARDING ──

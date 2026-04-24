@@ -5,6 +5,10 @@ import { usePathname } from "next/navigation";
 import { maybePlayNotification } from "@/lib/notificationSounds";
 import { incrementUnreadCounts } from "@/lib/inbox-browser-badge";
 
+const NOTIFIER_CONVERSATION_LIMIT = 300;
+const NOTIFIER_DELTA_POLL_INTERVAL_MS = 4000;
+const NOTIFIER_FULL_RESYNC_INTERVAL_MS = 60000;
+
 type ConversationSnapshot = {
     id: string;
     lastMessageTime?: string | Date;
@@ -26,21 +30,53 @@ export function InboxNotifier() {
     const pathname = usePathname();
     const isFirstFetchRef = useRef(true);
     const previousTimestampsRef = useRef<Record<string, string>>({});
+    const cursorRef = useRef<string | null>(null);
+    const pollInFlightRef = useRef(false);
 
     useEffect(() => {
         if (pathname === "/dashboard/inbox") {
             return;
         }
 
-        const poll = async () => {
+        let disposed = false;
+
+        const updateCursor = (conversations: ConversationSnapshot[]) => {
+            for (const conversation of conversations) {
+                const timestamp =
+                    toIsoTimestamp(conversation.lastMessageTime) ||
+                    toIsoTimestamp(conversation.updatedAt);
+                if (!timestamp) continue;
+                if (!cursorRef.current || timestamp > cursorRef.current) {
+                    cursorRef.current = timestamp;
+                }
+            }
+        };
+
+        const poll = async (mode: "full" | "delta") => {
+            if (disposed) return;
+            if (mode === "delta" && !cursorRef.current) return;
+            if (pollInFlightRef.current) return;
+
+            pollInFlightRef.current = true;
             try {
-                const response = await fetch("/api/chat", { cache: "no-store" });
+                const url = new URL("/api/chat", window.location.origin);
+                url.searchParams.set("limit", String(NOTIFIER_CONVERSATION_LIMIT));
+                if (mode === "delta" && cursorRef.current) {
+                    url.searchParams.set("updatedSince", cursorRef.current);
+                }
+
+                const response = await fetch(url.toString(), { cache: "no-store" });
                 const conversations = (await response.json()) as ConversationSnapshot[];
-                if (!Array.isArray(conversations)) {
+                if (!Array.isArray(conversations) || disposed) {
                     return;
                 }
 
-                const nextTimestamps: Record<string, string> = {};
+                updateCursor(conversations);
+
+                const nextTimestamps =
+                    mode === "full"
+                        ? {} as Record<string, string>
+                        : { ...previousTimestampsRef.current };
                 let playedSound = false;
                 const changedInboundConversationIds: string[] = [];
 
@@ -77,15 +113,24 @@ export function InboxNotifier() {
                 isFirstFetchRef.current = false;
             } catch (error) {
                 console.error("Failed to poll inbox notifications:", error);
+            } finally {
+                pollInFlightRef.current = false;
             }
         };
 
-        void poll();
-        const interval = setInterval(() => {
-            void poll();
-        }, 4000);
+        void poll("full");
+        const deltaInterval = setInterval(() => {
+            void poll("delta");
+        }, NOTIFIER_DELTA_POLL_INTERVAL_MS);
+        const fullResyncInterval = setInterval(() => {
+            void poll("full");
+        }, NOTIFIER_FULL_RESYNC_INTERVAL_MS);
 
-        return () => clearInterval(interval);
+        return () => {
+            disposed = true;
+            clearInterval(deltaInterval);
+            clearInterval(fullResyncInterval);
+        };
     }, [pathname]);
 
     return null;

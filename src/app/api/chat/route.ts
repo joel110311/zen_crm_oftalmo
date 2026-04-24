@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { refreshWhatsAppAvatarForContactsInBackground } from "@/lib/whatsapp-avatar";
+import type { Prisma } from "@prisma/client";
 
 let lastAvatarRefreshKickAt = 0;
 const CHAT_AVATAR_REFRESH_KICK_INTERVAL_MS = 30 * 60 * 1000;
@@ -13,6 +14,15 @@ function shouldKickAvatarRefresh() {
     }
     lastAvatarRefreshKickAt = now;
     return true;
+}
+
+function parseIsoDate(value: string | null) {
+    if (!value) return null;
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) {
+        return null;
+    }
+    return parsed;
 }
 
 function formatPhone(phone: string | null | undefined) {
@@ -62,18 +72,19 @@ export async function GET(request: NextRequest) {
     const conversationId = searchParams.get("conversationId");
 
     const since = searchParams.get("since");
-    const limitParam = Number.parseInt(searchParams.get("limit") || "1000", 10);
+    const updatedSince = parseIsoDate(searchParams.get("updatedSince"));
+    const limitParam = Number.parseInt(searchParams.get("limit") || "300", 10);
     const conversationLimit = Number.isFinite(limitParam)
         ? Math.min(Math.max(limitParam, 1), 5000)
-        : 1000;
+        : 300;
 
     try {
         if (conversationId) {
             // Get messages for a specific conversation
-            const whereClause: any = { conversationId };
-            if (since) {
+            const whereClause: Prisma.MessageWhereInput = { conversationId };
+            const sinceDate = parseIsoDate(since);
+            if (sinceDate) {
                 // Subtract 1 second to handle Postgres millisecond truncation race conditions
-                const sinceDate = new Date(since);
                 sinceDate.setSeconds(sinceDate.getSeconds() - 1);
                 whereClause.createdAt = { gt: sinceDate };
             }
@@ -81,13 +92,20 @@ export async function GET(request: NextRequest) {
             const messages = await prisma.message.findMany({
                 where: whereClause,
                 orderBy: { createdAt: "desc" }, // Get newest first
-                take: since ? undefined : 75, // Limit initial load to 75
+                take: sinceDate ? undefined : 75, // Limit initial load to 75
             });
             // Reverse so they are chronological for UI
             return NextResponse.json(messages.reverse());
         } else {
+            const conversationWhere: Prisma.ConversationWhereInput = {};
+            if (updatedSince) {
+                // Apply a small overlap window to avoid missing updates due clock skew.
+                conversationWhere.updatedAt = { gt: new Date(updatedSince.getTime() - 1000) };
+            }
+
             // Get all conversations with last message
             const conversations = await prisma.conversation.findMany({
+                where: conversationWhere,
                 include: {
                     contact: {
                         include: {
