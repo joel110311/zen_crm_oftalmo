@@ -54,18 +54,21 @@ export const SUPPORTED_CHAT_MODELS: SupportedChatModelOption[] = [
         description: "Mas capaz para razonamiento y respuestas exigentes.",
     },
     {
-        id: "gemini:models/gemini-3.1-flash-lite-preview",
+        id: "gemini:models/gemini-3.1-flash-lite",
         provider: "gemini",
-        model: "models/gemini-3.1-flash-lite-preview",
-        label: "Gemini 3.1 Flash Lite (Preview)",
-        description: "Preview ultrarrapido. Si no esta disponible, el sistema usa fallback estable.",
+        model: "models/gemini-3.1-flash-lite",
+        label: "Gemini 3.1 Flash Lite",
+        description: "Ultrarrapido. Si no esta disponible, el sistema usa fallback estable.",
     },
 ];
 
 const DEPRECATED_CHAT_MODEL_MAP: Record<string, string> = {
-    "gemini:gemini-3.1-flash-lite-preview": "gemini:models/gemini-3.1-flash-lite-preview",
-    "models/gemini-3.1-flash-lite-preview": "gemini:models/gemini-3.1-flash-lite-preview",
-    "gemini-3.1-flash-lite-preview": "gemini:models/gemini-3.1-flash-lite-preview",
+    "gemini:models/gemini-3.1-flash-lite-preview": "gemini:models/gemini-3.1-flash-lite",
+    "gemini:gemini-3.1-flash-lite-preview": "gemini:models/gemini-3.1-flash-lite",
+    "models/gemini-3.1-flash-lite-preview": "gemini:models/gemini-3.1-flash-lite",
+    "gemini-3.1-flash-lite-preview": "gemini:models/gemini-3.1-flash-lite",
+    "models/gemini-3.1-flash-lite": "gemini:models/gemini-3.1-flash-lite",
+    "gemini-3.1-flash-lite": "gemini:models/gemini-3.1-flash-lite",
 };
 
 export function normalizeChatModelSelection(value?: string | null) {
