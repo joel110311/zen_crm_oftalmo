@@ -41,6 +41,8 @@ const REACTION_EMOJIS = [
 ];
 
 const INBOX_CONVERSATION_LIMIT = 300;
+const INBOX_MAX_LOADED_CONVERSATIONS = 5000;
+const INBOX_MESSAGE_PAGE_SIZE = 75;
 const INBOX_DELTA_POLL_INTERVAL_MS = 3000;
 const INBOX_FULL_RESYNC_INTERVAL_MS = 60000;
 
@@ -215,6 +217,7 @@ export type Conversation = {
     } | null;
     messages: Message[];
     updatedAt: Date;
+    serverUpdatedAt?: Date;
     status: string;
     isMuted: boolean;
     isFavorite: boolean;
@@ -289,6 +292,7 @@ type ConversationRecord = {
     contactAvatarUrl?: string | null;
     lastMessage?: string | null;
     lastMessageTime?: string | Date | null;
+    updatedAt?: string | Date | null;
     lastMessageDirection?: string | null;
     lastMessageType?: string | null;
     lastMessageSenderType?: string | null;
@@ -305,6 +309,7 @@ type ConversationRecord = {
 
 function transformConversation(conv: ConversationRecord): Conversation {
     const previewMessageTime = conv.lastMessageTime ? new Date(conv.lastMessageTime) : new Date();
+    const serverUpdatedAt = conv.updatedAt ? new Date(conv.updatedAt) : previewMessageTime;
     return {
         id: conv.id,
         contact: {
@@ -326,6 +331,7 @@ function transformConversation(conv: ConversationRecord): Conversation {
             senderType: conv.lastMessageSenderType || null,
         }] : [],
         updatedAt: previewMessageTime,
+        serverUpdatedAt,
         status: conv.status || "active",
         isMuted: conv.isMuted || false,
         isFavorite: conv.isFavorite || false,
@@ -337,6 +343,29 @@ function transformConversation(conv: ConversationRecord): Conversation {
         leadIntelligence: conv.leadIntelligence ?? null,
         currentDeal: conv.currentDeal ?? null,
     };
+}
+
+function getConversationSortTime(conversation: Conversation) {
+    return (conversation.serverUpdatedAt || conversation.updatedAt).getTime();
+}
+
+function mergeConversationSnapshots(
+    existing: Conversation[],
+    incoming: Conversation[],
+) {
+    const mergedById = new Map(existing.map((conversation) => [conversation.id, conversation]));
+    for (const conversation of incoming) {
+        mergedById.set(conversation.id, conversation);
+    }
+
+    return Array.from(mergedById.values())
+        .sort((left, right) => getConversationSortTime(right) - getConversationSortTime(left))
+        .slice(0, INBOX_MAX_LOADED_CONVERSATIONS);
+}
+
+function getOldestConversationCursor(items: Conversation[]) {
+    const oldest = items[items.length - 1];
+    return oldest ? toIsoTimestamp(oldest.serverUpdatedAt || oldest.updatedAt) : null;
 }
 
 // ──────────── WhatsApp Text Formatter ────────────
@@ -1231,12 +1260,21 @@ export default function InboxPage() {
     const composerTextareaRef = useRef<HTMLTextAreaElement>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const messagesContainerRef = useRef<HTMLDivElement>(null);
+    const conversationsViewportRef = useRef<HTMLDivElement>(null);
 
     // Scroll tracking state
     const [isAtBottom, setIsAtBottom] = useState(true);
     const [newMessageCount, setNewMessageCount] = useState(0);
+    const [hasMoreMessages, setHasMoreMessages] = useState(true);
+    const [isLoadingOlderMessages, setIsLoadingOlderMessages] = useState(false);
+    const [hasMoreConversations, setHasMoreConversations] = useState(true);
+    const [isLoadingMoreConversations, setIsLoadingMoreConversations] = useState(false);
     const prevMessagesLenRef = useRef(0);
     const isFirstLoadRef = useRef(true);
+    const oldestMessageCursorRef = useRef<string | null>(null);
+    const hasMoreMessagesRef = useRef(true);
+    const isLoadingOlderMessagesRef = useRef(false);
+    const isPrependingOlderMessagesRef = useRef(false);
 
     // Unread message count tracking (per conversation)
     const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
@@ -1244,12 +1282,26 @@ export default function InboxPage() {
     const isFirstFetchRef = useRef(true);
     const prevConvTimestampsRef = useRef<Record<string, string>>({});
     const conversationsCursorRef = useRef<string | null>(null);
+    const oldestConversationCursorRef = useRef<string | null>(null);
+    const hasMoreConversationsRef = useRef(true);
+    const isLoadingMoreConversationsRef = useRef(false);
     const conversationsPollInFlightRef = useRef(false);
 
     // Ref to keep the selected chat ID accessible inside polling closures
     const selectedChatIdRef = useRef<string | null>(null);
     const selectedChatUpdatedAtRef = useRef<string | null>(null);
     const forceFullMessagesSyncRef = useRef(false);
+
+    const setHasMoreMessagesState = useCallback((next: boolean) => {
+        hasMoreMessagesRef.current = next;
+        setHasMoreMessages(next);
+    }, []);
+
+    const setHasMoreConversationsState = useCallback((next: boolean) => {
+        hasMoreConversationsRef.current = next;
+        setHasMoreConversations(next);
+    }, []);
+
     useEffect(() => {
         selectedChatIdRef.current = selectedChat?.id ?? null;
         selectedChatUpdatedAtRef.current = selectedChat ? toIsoTimestamp(selectedChat.updatedAt) : null;
@@ -1367,23 +1419,9 @@ export default function InboxPage() {
     useEffect(() => {
         let disposed = false;
 
-        const mergeConversationSnapshots = (
-            existing: Conversation[],
-            incoming: Conversation[],
-        ) => {
-            const mergedById = new Map(existing.map((conversation) => [conversation.id, conversation]));
-            for (const conversation of incoming) {
-                mergedById.set(conversation.id, conversation);
-            }
-
-            return Array.from(mergedById.values())
-                .sort((left, right) => right.updatedAt.getTime() - left.updatedAt.getTime())
-                .slice(0, INBOX_CONVERSATION_LIMIT);
-        };
-
         const updateConversationCursor = (items: Conversation[]) => {
             for (const conversation of items) {
-                const timestamp = toIsoTimestamp(conversation.updatedAt);
+                const timestamp = toIsoTimestamp(conversation.serverUpdatedAt || conversation.updatedAt);
                 if (!timestamp) continue;
                 if (!conversationsCursorRef.current || timestamp > conversationsCursorRef.current) {
                     conversationsCursorRef.current = timestamp;
@@ -1411,9 +1449,17 @@ export default function InboxPage() {
 
                 const transformed: Conversation[] = data.map(transformConversation);
                 updateConversationCursor(transformed);
+                if (mode === "full" && !oldestConversationCursorRef.current) {
+                    oldestConversationCursorRef.current = getOldestConversationCursor(transformed);
+                    setHasMoreConversationsState(transformed.length >= INBOX_CONVERSATION_LIMIT);
+                }
 
                 if (mode === "full") {
-                    setConversations(transformed);
+                    setConversations((prev) =>
+                        isFirstFetchRef.current
+                            ? transformed
+                            : mergeConversationSnapshots(prev, transformed),
+                    );
                 } else if (transformed.length > 0) {
                     setConversations((prev) => mergeConversationSnapshots(prev, transformed));
                 }
@@ -1429,7 +1475,7 @@ export default function InboxPage() {
                         for (const conv of transformed) {
                             if (conv.id === currentId) continue;
                             const prevTime = prevTimestamps[conv.id];
-                            const newTime = toIsoTimestamp(conv.updatedAt);
+                            const newTime = toIsoTimestamp(conv.serverUpdatedAt || conv.updatedAt);
                             const hasInboundActivity = conv.messages[0]?.direction === "inbound";
                             if (prevTime && newTime && newTime !== prevTime && hasInboundActivity) {
                                 next[conv.id] = (next[conv.id] || 0) + 1;
@@ -1447,7 +1493,7 @@ export default function InboxPage() {
                 if (mode === "full") {
                     const timestamps: Record<string, string> = {};
                     for (const conv of transformed) {
-                        const timestamp = toIsoTimestamp(conv.updatedAt);
+                        const timestamp = toIsoTimestamp(conv.serverUpdatedAt || conv.updatedAt);
                         if (timestamp) {
                             timestamps[conv.id] = timestamp;
                         }
@@ -1456,7 +1502,7 @@ export default function InboxPage() {
                 } else if (transformed.length > 0) {
                     const nextTimestamps = { ...prevConvTimestampsRef.current };
                     for (const conv of transformed) {
-                        const timestamp = toIsoTimestamp(conv.updatedAt);
+                        const timestamp = toIsoTimestamp(conv.serverUpdatedAt || conv.updatedAt);
                         if (timestamp) {
                             nextTimestamps[conv.id] = timestamp;
                         }
@@ -1518,7 +1564,63 @@ export default function InboxPage() {
             clearInterval(deltaInterval);
             clearInterval(fullResyncInterval);
         };
-    }, []);
+    }, [searchParams, setHasMoreConversationsState]);
+
+    const loadOlderConversations = useCallback(async () => {
+        if (isLoadingMoreConversationsRef.current || !hasMoreConversationsRef.current) return;
+
+        const before = oldestConversationCursorRef.current;
+        if (!before) {
+            setHasMoreConversationsState(false);
+            return;
+        }
+
+        isLoadingMoreConversationsRef.current = true;
+        setIsLoadingMoreConversations(true);
+
+        try {
+            const url = new URL("/api/chat", window.location.origin);
+            url.searchParams.set("limit", String(INBOX_CONVERSATION_LIMIT));
+            url.searchParams.set("beforeUpdatedAt", before);
+
+            const response = await fetch(url.toString(), { cache: "no-store" });
+            const data = await response.json();
+            const transformed: Conversation[] = Array.isArray(data)
+                ? data.map(transformConversation)
+                : [];
+
+            if (transformed.length === 0) {
+                setHasMoreConversationsState(false);
+                return;
+            }
+
+            oldestConversationCursorRef.current = getOldestConversationCursor(transformed);
+            setHasMoreConversationsState(transformed.length >= INBOX_CONVERSATION_LIMIT);
+            setConversations((prev) => mergeConversationSnapshots(prev, transformed));
+
+            const nextTimestamps = { ...prevConvTimestampsRef.current };
+            for (const conv of transformed) {
+                const timestamp = toIsoTimestamp(conv.serverUpdatedAt || conv.updatedAt);
+                if (timestamp) {
+                    nextTimestamps[conv.id] = timestamp;
+                }
+            }
+            prevConvTimestampsRef.current = nextTimestamps;
+        } catch (error) {
+            console.error("Failed to fetch older conversations:", error);
+        } finally {
+            isLoadingMoreConversationsRef.current = false;
+            setIsLoadingMoreConversations(false);
+        }
+    }, [setHasMoreConversationsState]);
+
+    const handleConversationsScroll = useCallback((event: React.UIEvent<HTMLDivElement>) => {
+        const el = event.currentTarget;
+        const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+        if (distanceFromBottom < 220) {
+            void loadOlderConversations();
+        }
+    }, [loadOlderConversations]);
 
     // ──── Fetch messages ────
     useEffect(() => {
@@ -1528,6 +1630,10 @@ export default function InboxPage() {
         setMessages([]);
         selectedChatUpdatedAtRef.current = toIsoTimestamp(selectedChat.updatedAt);
         forceFullMessagesSyncRef.current = false;
+        oldestMessageCursorRef.current = null;
+        isLoadingOlderMessagesRef.current = false;
+        setIsLoadingOlderMessages(false);
+        setHasMoreMessagesState(true);
         let lastMessageDate: string | null = null;
         let isFetching = false;
 
@@ -1544,6 +1650,8 @@ export default function InboxPage() {
                 url.searchParams.append("conversationId", selectedChat.id);
                 if (!shouldFullSync && lastMessageDate) {
                     url.searchParams.append("since", lastMessageDate);
+                } else {
+                    url.searchParams.append("messageLimit", String(INBOX_MESSAGE_PAGE_SIZE));
                 }
 
                 const response = await fetch(url.toString());
@@ -1557,13 +1665,20 @@ export default function InboxPage() {
                         ? newMessages[newMessages.length - 1].createdAt.toISOString()
                         : null;
 
+                    if (isInitial) {
+                        oldestMessageCursorRef.current = newMessages[0]?.createdAt.toISOString() ?? null;
+                        setHasMoreMessagesState(newMessages.length >= INBOX_MESSAGE_PAGE_SIZE);
+                    }
+
                     setMessages((prev) => {
                         const optimisticMessages = prev.filter(isTemporaryMessage);
                         if (newMessages.length === 0) {
-                            return optimisticMessages;
+                            return isInitial ? optimisticMessages : prev;
                         }
 
-                        return collapseMessageDuplicates([...newMessages, ...optimisticMessages]);
+                        return isInitial
+                            ? collapseMessageDuplicates([...newMessages, ...optimisticMessages])
+                            : mergeFetchedMessages(prev, newMessages);
                     });
                     return;
                 }
@@ -1608,7 +1723,7 @@ export default function InboxPage() {
         fetchMessages(true);
         const interval = setInterval(() => fetchMessages(false), 2000);
         return () => clearInterval(interval);
-    }, [selectedChat?.id]);
+    }, [selectedChat?.id, setHasMoreMessagesState]);
 
     // ──── Smart scroll logic ────
     const scrollToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
@@ -1621,6 +1736,66 @@ export default function InboxPage() {
         setNewMessageCount(0);
     }, []);
 
+    const loadOlderMessages = useCallback(async () => {
+        if (!selectedChat?.id || isLoadingOlderMessagesRef.current || !hasMoreMessagesRef.current) return;
+
+        const before = oldestMessageCursorRef.current;
+        if (!before) {
+            setHasMoreMessagesState(false);
+            return;
+        }
+
+        const scroller = messagesContainerRef.current;
+        const previousScrollHeight = scroller?.scrollHeight ?? 0;
+        const previousScrollTop = scroller?.scrollTop ?? 0;
+
+        isLoadingOlderMessagesRef.current = true;
+        setIsLoadingOlderMessages(true);
+
+        try {
+            const url = new URL("/api/chat", window.location.origin);
+            url.searchParams.append("conversationId", selectedChat.id);
+            url.searchParams.append("before", before);
+            url.searchParams.append("messageLimit", String(INBOX_MESSAGE_PAGE_SIZE));
+
+            const response = await fetch(url.toString(), { cache: "no-store" });
+            const rawMessages = await response.json();
+            const olderMessages = Array.isArray(rawMessages)
+                ? rawMessages.map(normalizeMessageRecord)
+                : [];
+
+            if (olderMessages.length === 0) {
+                setHasMoreMessagesState(false);
+                return;
+            }
+
+            oldestMessageCursorRef.current = olderMessages[0]?.createdAt.toISOString() ?? before;
+            setHasMoreMessagesState(olderMessages.length >= INBOX_MESSAGE_PAGE_SIZE);
+            isPrependingOlderMessagesRef.current = true;
+
+            setMessages((prev) => {
+                const next = collapseMessageDuplicates([...olderMessages, ...prev]);
+                if (next.length === prev.length) {
+                    isPrependingOlderMessagesRef.current = false;
+                }
+                return next;
+            });
+
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    const currentScroller = messagesContainerRef.current;
+                    if (!currentScroller || selectedChatIdRef.current !== selectedChat.id) return;
+                    currentScroller.scrollTop = currentScroller.scrollHeight - previousScrollHeight + previousScrollTop;
+                });
+            });
+        } catch (error) {
+            console.error("Failed to fetch older messages:", error);
+        } finally {
+            isLoadingOlderMessagesRef.current = false;
+            setIsLoadingOlderMessages(false);
+        }
+    }, [selectedChat?.id, setHasMoreMessagesState]);
+
     // Check if user is near the bottom of the messages
     const handleMessagesScroll = useCallback(() => {
         const el = messagesContainerRef.current;
@@ -1629,7 +1804,11 @@ export default function InboxPage() {
         const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < threshold;
         setIsAtBottom(atBottom);
         if (atBottom) setNewMessageCount(0);
-    }, []);
+
+        if (el.scrollTop < 140) {
+            void loadOlderMessages();
+        }
+    }, [loadOlderMessages]);
 
     // Auto-scroll only when at bottom or on first load / chat switch
     useEffect(() => {
@@ -1648,6 +1827,12 @@ export default function InboxPage() {
 
         const newCount = messages.length - prevMessagesLenRef.current;
         if (newCount > 0) {
+            if (isPrependingOlderMessagesRef.current) {
+                isPrependingOlderMessagesRef.current = false;
+                prevMessagesLenRef.current = messages.length;
+                return;
+            }
+
             // Check if any new message is inbound → play notification
             const newMessages = messages.slice(-newCount);
             const hasInbound = newMessages.some(m => m.direction === "inbound");
@@ -1672,6 +1857,7 @@ export default function InboxPage() {
         setNewMessageCount(0);
         isFirstLoadRef.current = true;
         prevMessagesLenRef.current = 0;
+        isPrependingOlderMessagesRef.current = false;
     }, [selectedChat?.id]);
 
     // Cleanup
@@ -1718,7 +1904,7 @@ export default function InboxPage() {
             const convData = await convRes.json();
             if (Array.isArray(convData)) {
                 const transformed: Conversation[] = convData.map(transformConversation);
-                setConversations(transformed);
+                setConversations((prev) => mergeConversationSnapshots(prev, transformed));
                 if (selectedChat && action !== "delete") {
                     const updated = transformed.find(c => c.id === selectedChat.id);
                     if (updated) setSelectedChat(updated);
@@ -2310,6 +2496,8 @@ export default function InboxPage() {
                     <ScrollArea
                         type="always"
                         className="min-h-0 flex-1 px-2 py-2.5"
+                        viewportRef={conversationsViewportRef}
+                        onViewportScroll={handleConversationsScroll}
                     >
                         <div className="flex flex-col gap-1.5">
                             {filteredConversations.length === 0 && (
@@ -2389,6 +2577,25 @@ export default function InboxPage() {
                                 </button>
                                 );
                             })}
+                            {hasMoreConversations && (
+                                <button
+                                    type="button"
+                                    onClick={() => void loadOlderConversations()}
+                                    disabled={isLoadingMoreConversations}
+                                    className="mt-2 rounded-[1rem] border border-dashed border-border/60 bg-background/60 px-3 py-2 text-xs font-medium text-muted-foreground transition hover:border-border hover:bg-background disabled:cursor-wait disabled:opacity-70"
+                                >
+                                    {isLoadingMoreConversations
+                                        ? "Cargando mas chats..."
+                                        : searchQuery.trim()
+                                            ? "Cargar mas chats para buscar"
+                                            : "Cargar mas chats"}
+                                </button>
+                            )}
+                            {!hasMoreConversations && conversations.length > 0 && !searchQuery.trim() && (
+                                <div className="px-3 py-2 text-center text-[11px] text-muted-foreground/70">
+                                    Fin del historial de chats
+                                </div>
+                            )}
                         </div>
                     </ScrollArea>
                 </div>
@@ -2526,6 +2733,20 @@ export default function InboxPage() {
                                 >
                                     {/* Padding at bottom for scroll space */}
                                     <div className="mx-auto flex max-w-[54rem] flex-col gap-5 pb-4">
+                                        {isLoadingOlderMessages && (
+                                            <div className="flex justify-center">
+                                                <Badge variant="outline" className="rounded-full border-border/60 bg-card/80 px-3.5 py-1 text-[11px] font-medium text-muted-foreground shadow-sm">
+                                                    Cargando mensajes anteriores...
+                                                </Badge>
+                                            </div>
+                                        )}
+                                        {!hasMoreMessages && messages.length > 0 && (
+                                            <div className="flex justify-center">
+                                                <Badge variant="outline" className="rounded-full border-border/50 bg-card/70 px-3.5 py-1 text-[11px] font-medium text-muted-foreground/80 shadow-sm">
+                                                    Inicio del historial
+                                                </Badge>
+                                            </div>
+                                        )}
                                         {messages.map((msg, idx) => {
                                             // Dynamic date separators
                                             const msgDate = new Date(msg.createdAt);
