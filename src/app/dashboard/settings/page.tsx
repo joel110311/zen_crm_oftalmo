@@ -71,6 +71,8 @@ export default function SettingsPage() {
     const [whatsappAdminToken, setWhatsappAdminToken] = useState("");
     const [whatsappUserToken, setWhatsappUserToken] = useState("");
     const [whatsappInstanceName, setWhatsappInstanceName] = useState("zen-crm");
+    const [whatsappProxyEnabled, setWhatsappProxyEnabled] = useState(false);
+    const [whatsappProxyUrl, setWhatsappProxyUrl] = useState("");
     const [googleClientId, setGoogleClientId] = useState("");
     const [googleClientSecret, setGoogleClientSecret] = useState("");
     const [isSaving, setIsSaving] = useState(false);
@@ -111,6 +113,8 @@ export default function SettingsPage() {
                 setWhatsappAdminToken(settings.whatsappAdminToken || "");
                 setWhatsappUserToken(settings.whatsappUserToken || "");
                 setWhatsappInstanceName(settings.whatsappInstanceName || "zen-crm");
+                setWhatsappProxyEnabled(Boolean(settings.whatsappProxyEnabled));
+                setWhatsappProxyUrl(settings.whatsappProxyUrl || "");
                 setGoogleClientId(settings.googleClientId || "");
                 setGoogleClientSecret(settings.googleClientSecret || "");
             } catch (error) {
@@ -176,6 +180,8 @@ export default function SettingsPage() {
                     whatsappAdminToken,
                     whatsappUserToken,
                     whatsappInstanceName,
+                    whatsappProxyEnabled,
+                    whatsappProxyUrl,
                     googleClientId,
                     googleClientSecret,
                 }),
@@ -373,12 +379,16 @@ export default function SettingsPage() {
                         whatsappAdminToken={whatsappAdminToken}
                         whatsappUserToken={whatsappUserToken}
                         whatsappInstanceName={whatsappInstanceName}
+                        whatsappProxyEnabled={whatsappProxyEnabled}
+                        whatsappProxyUrl={whatsappProxyUrl}
                         onChange={(field, value) => {
                             if (field === "whatsappBaseUrl") setWhatsappBaseUrl(value);
                             if (field === "whatsappAdminToken") setWhatsappAdminToken(value);
                             if (field === "whatsappUserToken") setWhatsappUserToken(value);
                             if (field === "whatsappInstanceName") setWhatsappInstanceName(value);
+                            if (field === "whatsappProxyUrl") setWhatsappProxyUrl(value);
                         }}
+                        onProxyEnabledChange={setWhatsappProxyEnabled}
                         onSave={handleSave}
                         isSaving={isSaving}
                     />

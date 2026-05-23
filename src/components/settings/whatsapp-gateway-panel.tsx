@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
     Select,
@@ -16,12 +17,22 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
 
+type WhatsAppGatewayField =
+    | "whatsappBaseUrl"
+    | "whatsappAdminToken"
+    | "whatsappUserToken"
+    | "whatsappInstanceName"
+    | "whatsappProxyUrl";
+
 type Props = {
     whatsappBaseUrl: string;
     whatsappAdminToken: string;
     whatsappUserToken: string;
     whatsappInstanceName: string;
-    onChange: (field: "whatsappBaseUrl" | "whatsappAdminToken" | "whatsappUserToken" | "whatsappInstanceName", value: string) => void;
+    whatsappProxyEnabled: boolean;
+    whatsappProxyUrl: string;
+    onChange: (field: WhatsAppGatewayField, value: string) => void;
+    onProxyEnabledChange: (value: boolean) => void;
     onSave: () => Promise<boolean>;
     isSaving: boolean;
 };
@@ -267,6 +278,43 @@ export function WhatsAppGatewayPanel(props: Props) {
                                 </div>
                             </div>
                         ) : null}
+                    </div>
+
+                    <div className="space-y-4 rounded-2xl border bg-muted/20 p-4">
+                        <div>
+                            <p className="font-medium">Proxy residencial opcional</p>
+                            <p className="text-sm text-muted-foreground">
+                                Se enviara a WuzAPI como proxyConfig para que la sesion de WhatsApp salga por el proxy configurado.
+                            </p>
+                        </div>
+                        <div className="flex items-start justify-between gap-4 rounded-xl border bg-background/75 px-4 py-3">
+                            <div className="space-y-1">
+                                <Label htmlFor="whatsapp-proxy-enabled" className="text-sm font-medium">
+                                    Activar proxy para esta instancia
+                                </Label>
+                                <p className="text-xs text-muted-foreground">
+                                    Activalo antes de preparar la sesion QR. Si cambias el proxy en una sesion activa, reconecta el canal para aplicar la salida nueva.
+                                </p>
+                            </div>
+                            <Switch
+                                id="whatsapp-proxy-enabled"
+                                checked={props.whatsappProxyEnabled}
+                                onCheckedChange={props.onProxyEnabledChange}
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label>Proxy URL</Label>
+                            <Input
+                                type="password"
+                                value={props.whatsappProxyUrl}
+                                onChange={(event) => props.onChange("whatsappProxyUrl", event.target.value)}
+                                placeholder="http://usuario:password@gw.dataimpulse.com:10000"
+                                disabled={!props.whatsappProxyEnabled}
+                            />
+                            <p className="text-xs text-muted-foreground">
+                                Usa formato completo con protocolo y puerto: http://, https:// o socks5://. Mantén IP pegajosa para evitar cambios bruscos de ubicacion.
+                            </p>
+                        </div>
                     </div>
 
                     <div className="space-y-3 rounded-2xl border bg-muted/20 p-4">

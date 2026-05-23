@@ -18,6 +18,8 @@ type WuzapiConfig = {
     adminToken: string;
     userToken: string;
     instanceName: string;
+    proxyEnabled: boolean;
+    proxyUrl: string;
 };
 
 type WuzapiRequestMode = "admin" | "user";
@@ -101,6 +103,35 @@ function normalizeBaseUrl(value: string) {
     return value.trim().replace(/\/+$/, "");
 }
 
+function normalizeProxyUrl(value: string) {
+    return value.trim();
+}
+
+function isSupportedProxyUrl(value: string) {
+    return /^(https?|socks5):\/\/.+:\d+\/?$/i.test(value.trim());
+}
+
+function buildWuzapiUserPayload(config: WuzapiConfig, webhookUrl: string, events: string) {
+    const proxyUrl = normalizeProxyUrl(config.proxyUrl);
+
+    if (config.proxyEnabled && !isSupportedProxyUrl(proxyUrl)) {
+        throw new WuzapiConfigError(
+            "El proxy de WhatsApp debe incluir protocolo, credenciales/host y puerto. Ejemplo: http://usuario:password@host:10000",
+        );
+    }
+
+    return {
+        name: config.instanceName,
+        token: config.userToken,
+        webhook: webhookUrl,
+        events,
+        proxyConfig: {
+            enabled: Boolean(config.proxyEnabled && proxyUrl),
+            proxyURL: config.proxyEnabled ? proxyUrl : "",
+        },
+    };
+}
+
 function isObjectRecord(value: unknown): value is Record<string, unknown> {
     return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
@@ -174,6 +205,8 @@ export async function getWuzapiConfig(): Promise<WuzapiConfig> {
     const adminToken = (settings.whatsappAdminToken || "").trim();
     const userToken = (settings.whatsappUserToken || "").trim();
     const instanceName = (settings.whatsappInstanceName || "zen-crm").trim() || "zen-crm";
+    const proxyEnabled = Boolean(settings.whatsappProxyEnabled);
+    const proxyUrl = normalizeProxyUrl(settings.whatsappProxyUrl || "");
 
     if (!baseUrl) {
         throw new WuzapiConfigError("Falta configurar la URL base del servicio de WhatsApp.");
@@ -182,7 +215,7 @@ export async function getWuzapiConfig(): Promise<WuzapiConfig> {
         throw new WuzapiConfigError("Falta configurar el token del canal de WhatsApp.");
     }
 
-    return { baseUrl, adminToken, userToken, instanceName };
+    return { baseUrl, adminToken, userToken, instanceName, proxyEnabled, proxyUrl };
 }
 
 async function requestWuzapi<T>(
@@ -276,6 +309,7 @@ export async function provisionWuzapiInstance(appBaseUrl?: string) {
     const config = await getWuzapiConfig();
     const webhookUrl = buildWebhookUrl(appBaseUrl);
     const events = WUZAPI_SUBSCRIBED_EVENTS.join(",");
+    const userPayload = buildWuzapiUserPayload(config, webhookUrl, events);
     const users = await requestWuzapi<WuzapiUser[]>("admin", "/admin/users", { method: "GET" });
     const existingUser = users.find(
         (user) => user.token === config.userToken || user.name === config.instanceName,
@@ -284,23 +318,16 @@ export async function provisionWuzapiInstance(appBaseUrl?: string) {
     if (!existingUser) {
         await requestWuzapi<{ id: string | number }>("admin", "/admin/users", {
             method: "POST",
-            body: JSON.stringify({
-                name: config.instanceName,
-                token: config.userToken,
-                webhook: webhookUrl,
-                events,
-            }),
+            body: JSON.stringify(userPayload),
         });
     } else if (existingUser.id) {
         await requestWuzapi<unknown>("admin", `/admin/users/${existingUser.id}`, {
             method: "PUT",
-            body: JSON.stringify({
-                name: config.instanceName,
-                token: config.userToken,
-                webhook: webhookUrl,
-                events,
-            }),
-        }).catch(() => {
+            body: JSON.stringify(userPayload),
+        }).catch((error) => {
+            if (config.proxyEnabled) {
+                throw error;
+            }
             // Older WuzAPI builds do not expose update via admin; webhook will be refreshed below.
         });
     }

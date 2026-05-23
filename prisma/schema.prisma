@@ -447,6 +447,8 @@ model SystemSettings {
   whatsappAdminToken String?
   whatsappUserToken String?
   whatsappInstanceName String? @default("zen-crm")
+  whatsappProxyEnabled Boolean @default(false)
+  whatsappProxyUrl String?
   isBotEnabled    Boolean  @default(false)
   n8nWebhookUrl   String?
   agentName       String?  @default("Asistente Zen")

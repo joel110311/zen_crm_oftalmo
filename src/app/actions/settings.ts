@@ -23,6 +23,8 @@ export async function updateSystemSettings(data: {
     whatsappAdminToken?: string;
     whatsappUserToken?: string;
     whatsappInstanceName?: string;
+    whatsappProxyEnabled?: boolean;
+    whatsappProxyUrl?: string;
     isBotEnabled?: boolean;
     n8nWebhookUrl?: string;
     agentName?: string;

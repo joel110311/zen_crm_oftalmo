@@ -25,6 +25,7 @@ export async function POST(request: NextRequest) {
             ycloudApiKey: data.ycloudApiKey ? "***" : undefined,
             whatsappAdminToken: data.whatsappAdminToken ? "***" : undefined,
             whatsappUserToken: data.whatsappUserToken ? "***" : undefined,
+            whatsappProxyUrl: data.whatsappProxyUrl ? "***" : undefined,
             googleClientSecret: data.googleClientSecret ? "***" : undefined,
         });
 
@@ -36,6 +37,7 @@ export async function POST(request: NextRequest) {
             "ycloudApiKey",
             "whatsappAdminToken",
             "whatsappUserToken",
+            "whatsappProxyUrl",
             "googleClientSecret",
         ] as const;
 

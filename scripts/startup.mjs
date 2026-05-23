@@ -156,6 +156,19 @@ async function startup() {
         );
         await runSafeQuery(
             pool,
+            'ALTER TABLE "SystemSettings" ADD COLUMN IF NOT EXISTS "whatsappProxyEnabled" BOOLEAN DEFAULT false',
+        );
+        await runSafeQuery(pool, 'ALTER TABLE "SystemSettings" ADD COLUMN IF NOT EXISTS "whatsappProxyUrl" TEXT');
+        await runSafeQuery(
+            pool,
+            'UPDATE "SystemSettings" SET "whatsappProxyEnabled" = false WHERE "whatsappProxyEnabled" IS NULL',
+        );
+        await runSafeQuery(
+            pool,
+            'ALTER TABLE "SystemSettings" ALTER COLUMN "whatsappProxyEnabled" SET DEFAULT false',
+        );
+        await runSafeQuery(
+            pool,
             `ALTER TABLE "SystemSettings" ADD COLUMN IF NOT EXISTS "agentName" TEXT DEFAULT 'Asistente Zen'`,
         );
         await runSafeQuery(pool, 'ALTER TABLE "SystemSettings" ADD COLUMN IF NOT EXISTS "agentPrompt" TEXT');

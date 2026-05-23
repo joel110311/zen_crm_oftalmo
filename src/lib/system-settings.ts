@@ -15,6 +15,8 @@ export const SYSTEM_SETTINGS_DEFAULTS = {
     whatsappAdminToken: process.env.WUZAPI_ADMIN_TOKEN || "",
     whatsappUserToken: process.env.WUZAPI_USER_TOKEN || "",
     whatsappInstanceName: process.env.WHATSAPP_INSTANCE_NAME || "zen-crm",
+    whatsappProxyEnabled: process.env.WHATSAPP_PROXY_ENABLED === "true",
+    whatsappProxyUrl: process.env.WHATSAPP_PROXY_URL || "",
     agentName: "Asistente Zen",
     agentPrompt: `Eres un asistente de WhatsApp para un CRM. Responde siempre en espanol claro, breve y profesional.
 Usa el contexto recuperado cuando sea relevante.
