@@ -22,6 +22,7 @@ import { buildInboundMediaContext, shouldSkipAutoReplyText } from "@/lib/ai/medi
 import { maybeHandleAppointmentBooking } from "@/lib/ai/appointment-booking";
 import { processLeadAutomationTurn } from "@/lib/ai/lead-intelligence";
 import { buildPhoneMatchClauses, normalizePhoneDigits } from "@/lib/phone";
+import { sendYCloudMediaMessage, sendYCloudTextMessage } from "@/lib/ycloud";
 import {
     normalizeMessageSourceType,
     resolveMessageSourceId,
@@ -1046,6 +1047,37 @@ async function touchAutomatedConversation(conversationId: string) {
     revalidatePath("/dashboard/pipeline");
 }
 
+async function getAutomatedConversationSource(conversationId: string): Promise<{
+    sourceType: MessageSourceType;
+    sourceId: string | null;
+}> {
+    const conversation = await prisma.conversation.findUnique({
+        where: { id: conversationId },
+        select: {
+            sourceType: true,
+            sourceId: true,
+        },
+    });
+
+    return {
+        sourceType: normalizeMessageSourceType(conversation?.sourceType),
+        sourceId: conversation?.sourceId || null,
+    };
+}
+
+function buildPublicMediaUrl(mediaUrl: string) {
+    if (/^https?:\/\//i.test(mediaUrl)) {
+        return mediaUrl;
+    }
+
+    const appBaseUrl = (process.env.APP_BASE_URL || process.env.AUTH_URL || "").trim();
+    if (!appBaseUrl) {
+        throw new Error("APP_BASE_URL o AUTH_URL es requerido para enviar multimedia por YCloud.");
+    }
+
+    return `${appBaseUrl.replace(/\/+$/, "")}${mediaUrl.startsWith("/") ? "" : "/"}${mediaUrl}`;
+}
+
 async function getAutomatedWelcomeMessage(params: {
     welcomeMessage?: string | null;
 }) {
@@ -1141,8 +1173,12 @@ async function sendAutomatedBotText(params: {
     const content = stripInternalDisclosureLines(params.content).trim();
     if (!content) return;
 
+    const source = await getAutomatedConversationSource(params.conversationId);
+
     try {
-        const transportResult = await sendWuzapiTextMessage(params.phone, content);
+        const transportResult = source.sourceType === "ycloud"
+            ? await sendYCloudTextMessage(params.phone, content)
+            : await sendWuzapiTextMessage(params.phone, content);
 
         await prisma.message.create({
             data: {
@@ -1151,6 +1187,8 @@ async function sendAutomatedBotText(params: {
                 direction: "outbound",
                 status: "sent",
                 type: "text",
+                sourceType: source.sourceType,
+                sourceId: source.sourceId,
                 senderType: "bot",
                 providerMessageId: transportResult?.Id || null,
             },
@@ -1164,6 +1202,8 @@ async function sendAutomatedBotText(params: {
                 direction: "outbound",
                 status: "failed",
                 type: "text",
+                sourceType: source.sourceType,
+                sourceId: source.sourceId,
                 senderType: "bot",
             },
         });
@@ -1181,6 +1221,7 @@ async function sendAutomatedBotMedia(params: {
 }) {
     const placeholderContent = params.mediaCategory === "image" ? "[image]" : "[document]";
     let storedMediaUrl = params.mediaUrl;
+    const source = await getAutomatedConversationSource(params.conversationId);
 
     try {
         const resolvedMedia = await resolveMediaToDataUrl(params.mediaUrl);
@@ -1196,14 +1237,22 @@ async function sendAutomatedBotMedia(params: {
             console.warn("[Catalog] Failed to persist automated media locally:", persistError);
         }
 
-        const result = await sendWuzapiMediaMessage({
-            phone: params.phone,
-            mediaCategory: params.mediaCategory,
-            dataUrl: resolvedMedia.dataUrl,
-            fileName: resolvedMedia.fileName,
-            mimeType: resolvedMedia.mimeType,
-            caption: params.mediaCategory === "document" ? `Catalogo PDF de ${params.development}` : undefined,
-        });
+        const result = source.sourceType === "ycloud"
+            ? await sendYCloudMediaMessage({
+                to: params.phone,
+                mediaType: params.mediaCategory,
+                link: buildPublicMediaUrl(storedMediaUrl),
+                caption: params.mediaCategory === "document" ? `Catalogo PDF de ${params.development}` : undefined,
+                fileName: resolvedMedia.fileName,
+            })
+            : await sendWuzapiMediaMessage({
+                phone: params.phone,
+                mediaCategory: params.mediaCategory,
+                dataUrl: resolvedMedia.dataUrl,
+                fileName: resolvedMedia.fileName,
+                mimeType: resolvedMedia.mimeType,
+                caption: params.mediaCategory === "document" ? `Catalogo PDF de ${params.development}` : undefined,
+            });
 
         await prisma.message.create({
             data: {
@@ -1212,6 +1261,8 @@ async function sendAutomatedBotMedia(params: {
                 direction: "outbound",
                 status: "sent",
                 type: params.mediaCategory,
+                sourceType: source.sourceType,
+                sourceId: source.sourceId,
                 senderType: "bot",
                 mediaUrl: storedMediaUrl,
                 mediaType: resolvedMedia.mimeType,
@@ -1231,6 +1282,8 @@ async function sendAutomatedBotMedia(params: {
                 direction: "outbound",
                 status: "failed",
                 type: params.mediaCategory,
+                sourceType: source.sourceType,
+                sourceId: source.sourceId,
                 senderType: "bot",
                 mediaUrl: storedMediaUrl,
                 mediaFileName: params.mediaLabel || null,
