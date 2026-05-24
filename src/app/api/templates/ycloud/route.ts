@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
-import { createYCloudTemplate, listYCloudTemplates } from "@/lib/ycloud";
+import { createYCloudTemplate, deleteYCloudTemplate, listYCloudTemplates } from "@/lib/ycloud";
 
 function getSessionRole(session: unknown) {
     return (session as { user?: { role?: string } } | null)?.user?.role || null;
@@ -95,6 +95,40 @@ export async function POST(request: NextRequest) {
     } catch (error) {
         console.error("[YCloud Templates] POST failed:", error);
         const message = error instanceof Error ? error.message : "No se pudo solicitar la plantilla en YCloud.";
+        return NextResponse.json({ error: message }, { status: 500 });
+    }
+}
+
+export async function DELETE(request: NextRequest) {
+    try {
+        const session = await auth();
+        const unauthorized = ensureAuthenticated(session);
+        if (unauthorized) return unauthorized;
+        const forbidden = ensureSuperadmin(session);
+        if (forbidden) return forbidden;
+
+        const { searchParams } = new URL(request.url);
+        const wabaId = (searchParams.get("wabaId") || "").trim();
+        const name = (searchParams.get("name") || "").trim();
+        const language = (searchParams.get("language") || "").trim();
+
+        if (!wabaId || !name) {
+            return NextResponse.json(
+                { error: "wabaId y name son obligatorios." },
+                { status: 400 },
+            );
+        }
+
+        const result = await deleteYCloudTemplate({
+            wabaId,
+            name,
+            ...(language ? { language } : {}),
+        });
+
+        return NextResponse.json({ success: true, result });
+    } catch (error) {
+        console.error("[YCloud Templates] DELETE failed:", error);
+        const message = error instanceof Error ? error.message : "No se pudo eliminar la plantilla en YCloud.";
         return NextResponse.json({ error: message }, { status: 500 });
     }
 }

@@ -58,7 +58,7 @@ const SECTIONS: Array<{
     { id: "theme", label: "Apariencia", description: "Tema y estilo general del CRM", icon: Palette },
     { id: "users", label: "Usuarios", description: "Accesos, roles y permisos", icon: Users, superadminOnly: true },
     { id: "ai", label: "Cerebro IA", description: "Claves y servicios de inteligencia", icon: Sparkles, superadminOnly: true },
-    { id: "whatsapp", label: "Canal WhatsApp", description: "Sesion QR y sincronizacion del numero", icon: MessageSquare, superadminOnly: true },
+    { id: "whatsapp", label: "Canal WhatsApp", description: "Credenciales YCloud, QR y sincronizacion del numero", icon: MessageSquare, superadminOnly: true },
     { id: "calendar", label: "Google Calendar", description: "Conexion y calendarios de agenda", icon: CalendarDays, superadminOnly: true },
     { id: "chats", label: "Notificaciones", description: "Sonidos y preferencias del inbox", icon: Volume2 },
 ];
@@ -372,27 +372,6 @@ export default function SettingsPage() {
                             <Label htmlFor="gemini">Gemini API key</Label>
                             <Input id="gemini" type="password" value={geminiKey} onChange={(event) => setGeminiKey(event.target.value)} />
                         </div>
-                        <div className="space-y-2">
-                            <Label htmlFor="ycloud-api-key">YCloud API key</Label>
-                            <Input
-                                id="ycloud-api-key"
-                                type="password"
-                                value={ycloudApiKey}
-                                onChange={(event) => setYcloudApiKey(event.target.value)}
-                            />
-                        </div>
-                        <div className="space-y-2">
-                            <Label htmlFor="ycloud-phone-id">YCloud Phone ID / Sender</Label>
-                            <Input
-                                id="ycloud-phone-id"
-                                value={ycloudPhoneId}
-                                onChange={(event) => setYcloudPhoneId(event.target.value)}
-                                placeholder="+524771075025"
-                            />
-                            <p className="text-xs text-muted-foreground">
-                                Se usa para envios oficiales por API y como `source_id` del feed YCloud.
-                            </p>
-                        </div>
                         <Button onClick={handleSave} disabled={isSaving}>
                             {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                             Guardar cambios
@@ -401,24 +380,71 @@ export default function SettingsPage() {
                 )}
 
                 {activeSection === "whatsapp" && isSuperadmin && (
-                    <WhatsAppGatewayPanel
-                        whatsappBaseUrl={whatsappBaseUrl}
-                        whatsappAdminToken={whatsappAdminToken}
-                        whatsappUserToken={whatsappUserToken}
-                        whatsappInstanceName={whatsappInstanceName}
-                        whatsappProxyEnabled={whatsappProxyEnabled}
-                        whatsappProxyUrl={whatsappProxyUrl}
-                        onChange={(field, value) => {
-                            if (field === "whatsappBaseUrl") setWhatsappBaseUrl(value);
-                            if (field === "whatsappAdminToken") setWhatsappAdminToken(value);
-                            if (field === "whatsappUserToken") setWhatsappUserToken(value);
-                            if (field === "whatsappInstanceName") setWhatsappInstanceName(value);
-                            if (field === "whatsappProxyUrl") setWhatsappProxyUrl(value);
-                        }}
-                        onProxyEnabledChange={setWhatsappProxyEnabled}
-                        onSave={handleSave}
-                        isSaving={isSaving}
-                    />
+                    <div className="space-y-6">
+                        <div className="max-w-3xl space-y-4 rounded-2xl border bg-muted/15 p-5">
+                            <div>
+                                <h2 className="font-semibold">WhatsApp via YCloud</h2>
+                                <p className="text-sm text-muted-foreground">
+                                    Conecta tu cuenta de YCloud para enviar y recibir mensajes por API oficial.
+                                </p>
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label htmlFor="ycloud-api-key">YCloud API key</Label>
+                                <Input
+                                    id="ycloud-api-key"
+                                    type="password"
+                                    value={ycloudApiKey}
+                                    onChange={(event) => setYcloudApiKey(event.target.value)}
+                                    placeholder="Tu API key de YCloud..."
+                                />
+                                <p className="text-xs text-muted-foreground">
+                                    Obten tu API key en YCloud Dashboard -&gt; Developer -&gt; API Keys.
+                                </p>
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label htmlFor="ycloud-phone-id">YCloud Phone Number ID</Label>
+                                <Input
+                                    id="ycloud-phone-id"
+                                    value={ycloudPhoneId}
+                                    onChange={(event) => setYcloudPhoneId(event.target.value)}
+                                    placeholder="+524771075025"
+                                />
+                                <p className="text-xs text-muted-foreground">
+                                    Se usa para envio oficial por API y como source_id del feed YCloud.
+                                </p>
+                            </div>
+
+                            <Button onClick={handleSave} disabled={isSaving}>
+                                {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                                Guardar cambios
+                            </Button>
+
+                            <p className="text-xs text-muted-foreground">
+                                Configura el webhook de YCloud apuntando a <code className="rounded bg-muted px-1 py-0.5">/api/webhooks/ycloud</code>.
+                            </p>
+                        </div>
+
+                        <WhatsAppGatewayPanel
+                            whatsappBaseUrl={whatsappBaseUrl}
+                            whatsappAdminToken={whatsappAdminToken}
+                            whatsappUserToken={whatsappUserToken}
+                            whatsappInstanceName={whatsappInstanceName}
+                            whatsappProxyEnabled={whatsappProxyEnabled}
+                            whatsappProxyUrl={whatsappProxyUrl}
+                            onChange={(field, value) => {
+                                if (field === "whatsappBaseUrl") setWhatsappBaseUrl(value);
+                                if (field === "whatsappAdminToken") setWhatsappAdminToken(value);
+                                if (field === "whatsappUserToken") setWhatsappUserToken(value);
+                                if (field === "whatsappInstanceName") setWhatsappInstanceName(value);
+                                if (field === "whatsappProxyUrl") setWhatsappProxyUrl(value);
+                            }}
+                            onProxyEnabledChange={setWhatsappProxyEnabled}
+                            onSave={handleSave}
+                            isSaving={isSaving}
+                        />
+                    </div>
                 )}
 
                 {activeSection === "calendar" && isSuperadmin && (

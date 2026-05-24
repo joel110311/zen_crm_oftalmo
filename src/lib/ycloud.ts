@@ -230,3 +230,28 @@ export async function createYCloudTemplate(payload: Record<string, unknown>) {
         body: JSON.stringify(payload),
     });
 }
+
+export async function deleteYCloudTemplate(params: {
+    wabaId: string;
+    name: string;
+    language?: string;
+}) {
+    const wabaId = params.wabaId.trim();
+    const name = params.name.trim();
+    const language = (params.language || "").trim();
+
+    if (!wabaId || !name) {
+        throw new Error("wabaId y name son obligatorios para eliminar la plantilla.");
+    }
+
+    const encodedWabaId = encodeURIComponent(wabaId);
+    const encodedName = encodeURIComponent(name);
+
+    const pathname = language
+        ? `/whatsapp/templates/${encodedWabaId}/${encodedName}/${encodeURIComponent(language)}`
+        : `/whatsapp/templates/${encodedWabaId}/${encodedName}`;
+
+    return requestYCloud(pathname, {
+        method: "DELETE",
+    });
+}

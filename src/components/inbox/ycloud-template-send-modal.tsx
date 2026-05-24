@@ -1,7 +1,14 @@
-"use client";
+﻿"use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Loader2, MessageSquareText, RefreshCw, Send } from "lucide-react";
+import {
+    CheckCircle2,
+    LayoutTemplate,
+    Loader2,
+    RefreshCw,
+    Search,
+    Send,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
     Dialog,
@@ -18,6 +25,7 @@ import { useToast } from "@/components/ui/use-toast";
 type YCloudTemplateComponent = {
     type?: string;
     text?: string;
+    buttons?: Array<{ type?: string; text?: string }>;
 };
 
 type YCloudTemplateItem = {
@@ -38,22 +46,34 @@ type Props = {
     onSent?: (message: unknown) => void;
 };
 
-function normalizeStatus(value: string | undefined) {
+function normalizeStatus(value?: string) {
     return (value || "").trim().toUpperCase();
 }
 
-function extractBodyText(template: YCloudTemplateItem) {
-    const body = (template.components || []).find((component) => (component.type || "").toUpperCase() === "BODY");
-    return (body?.text || "").trim();
+function categoryLabel(value?: string) {
+    const category = (value || "").trim().toUpperCase();
+    if (category === "UTILITY") return "Utilidad";
+    if (category === "MARKETING") return "Marketing";
+    if (category === "AUTHENTICATION") return "Autenticacion";
+    return value || "Sin categoria";
 }
 
-function extractBodyVariables(bodyText: string) {
-    const matches = [...bodyText.matchAll(/\{\{\s*(\d+)\s*\}\}/g)];
+function extractComponentText(template: YCloudTemplateItem, type: "HEADER" | "BODY" | "FOOTER") {
+    const component = (template.components || []).find((entry) => (entry.type || "").toUpperCase() === type);
+    return (component?.text || "").trim();
+}
+
+function extractVariables(text: string) {
+    const matches = [...text.matchAll(/\{\{\s*(\d+)\s*\}\}/g)];
     return Array.from(new Set(matches.map((match) => match[1]))).sort((left, right) => Number(left) - Number(right));
 }
 
-function applyBodyVariables(bodyText: string, values: Record<string, string>) {
-    return bodyText.replace(/\{\{\s*(\d+)\s*\}\}/g, (_, key: string) => values[key] || `{{${key}}}`);
+function replaceVariables(text: string, values: Record<string, string>) {
+    return text.replace(/\{\{\s*(\d+)\s*\}\}/g, (_, key: string) => values[key] || `{{${key}}}`);
+}
+
+function joinTemplateKey(template: YCloudTemplateItem) {
+    return `${template.name || ""}::${template.language || "es"}`;
 }
 
 export function YCloudTemplateSendModal({
@@ -68,6 +88,7 @@ export function YCloudTemplateSendModal({
     const [loading, setLoading] = useState(false);
     const [sending, setSending] = useState(false);
     const [query, setQuery] = useState("");
+    const [categoryFilter, setCategoryFilter] = useState("all");
     const [templates, setTemplates] = useState<YCloudTemplateItem[]>([]);
     const [selectedKey, setSelectedKey] = useState("");
     const [variableValues, setVariableValues] = useState<Record<string, string>>({});
@@ -75,18 +96,19 @@ export function YCloudTemplateSendModal({
     const loadTemplates = useCallback(async () => {
         setLoading(true);
         try {
-            const response = await fetch("/api/templates/ycloud?limit=200", { cache: "no-store" });
+            const response = await fetch("/api/templates/ycloud?limit=300", { cache: "no-store" });
             const result = await response.json();
             if (!response.ok) {
-                throw new Error(result.error || "No se pudieron cargar las plantillas.");
+                throw new Error(result.error || "No se pudieron cargar las plantillas de YCloud.");
             }
 
             const items = Array.isArray(result.items) ? (result.items as YCloudTemplateItem[]) : [];
-            setTemplates(items);
+            const approved = items.filter((template) => normalizeStatus(template.status) === "APPROVED");
+            setTemplates(approved);
         } catch (error) {
             toast({
                 title: "Error",
-                description: error instanceof Error ? error.message : "No se pudieron cargar las plantillas de YCloud.",
+                description: error instanceof Error ? error.message : "No se pudieron cargar las plantillas.",
                 variant: "destructive",
             });
         } finally {
@@ -96,29 +118,63 @@ export function YCloudTemplateSendModal({
 
     useEffect(() => {
         if (!open) return;
+
+        setQuery("");
+        setCategoryFilter("all");
+        setSelectedKey("");
+        setVariableValues({});
         void loadTemplates();
     }, [open, loadTemplates]);
 
-    const approvedTemplates = useMemo(() => {
+    const categories = useMemo(() => {
+        const counts = new Map<string, number>();
+        for (const template of templates) {
+            const category = (template.category || "").trim().toUpperCase() || "UNKNOWN";
+            counts.set(category, (counts.get(category) || 0) + 1);
+        }
+        return Array.from(counts.entries());
+    }, [templates]);
+
+    const filteredTemplates = useMemo(() => {
         const normalizedQuery = query.trim().toLowerCase();
-        return templates
-            .filter((template) => normalizeStatus(template.status) === "APPROVED")
-            .filter((template) => {
-                if (!normalizedQuery) return true;
-                return `${template.name || ""} ${template.language || ""} ${template.category || ""}`
-                    .toLowerCase()
-                    .includes(normalizedQuery);
-            });
-    }, [templates, query]);
+
+        return templates.filter((template) => {
+            const category = (template.category || "").trim().toUpperCase();
+            const body = extractComponentText(template, "BODY").toLowerCase();
+            const haystack = `${template.name || ""} ${template.language || ""} ${category} ${body}`.toLowerCase();
+            const matchesQuery = !normalizedQuery || haystack.includes(normalizedQuery);
+            const matchesCategory = categoryFilter === "all" || category === categoryFilter;
+            return matchesQuery && matchesCategory;
+        });
+    }, [templates, query, categoryFilter]);
+
+    useEffect(() => {
+        if (!open) return;
+        if (selectedKey) return;
+        if (filteredTemplates.length === 0) return;
+        setSelectedKey(joinTemplateKey(filteredTemplates[0]));
+    }, [open, selectedKey, filteredTemplates]);
 
     const selectedTemplate = useMemo(
-        () => approvedTemplates.find((template) => `${template.name || ""}::${template.language || "es"}` === selectedKey) || null,
-        [approvedTemplates, selectedKey],
+        () => filteredTemplates.find((template) => joinTemplateKey(template) === selectedKey)
+            || templates.find((template) => joinTemplateKey(template) === selectedKey)
+            || null,
+        [filteredTemplates, templates, selectedKey],
     );
 
-    const bodyText = selectedTemplate ? extractBodyText(selectedTemplate) : "";
-    const bodyVariables = useMemo(() => extractBodyVariables(bodyText), [bodyText]);
-    const renderedPreview = useMemo(() => applyBodyVariables(bodyText, variableValues), [bodyText, variableValues]);
+    const headerText = selectedTemplate ? extractComponentText(selectedTemplate, "HEADER") : "";
+    const bodyText = selectedTemplate ? extractComponentText(selectedTemplate, "BODY") : "";
+    const footerText = selectedTemplate ? extractComponentText(selectedTemplate, "FOOTER") : "";
+
+    const headerVariables = useMemo(() => extractVariables(headerText), [headerText]);
+    const bodyVariables = useMemo(() => extractVariables(bodyText), [bodyText]);
+    const allVariables = useMemo(
+        () => Array.from(new Set([...headerVariables, ...bodyVariables])).sort((a, b) => Number(a) - Number(b)),
+        [headerVariables, bodyVariables],
+    );
+
+    const previewHeader = useMemo(() => replaceVariables(headerText, variableValues), [headerText, variableValues]);
+    const previewBody = useMemo(() => replaceVariables(bodyText, variableValues), [bodyText, variableValues]);
 
     useEffect(() => {
         setVariableValues({});
@@ -134,11 +190,11 @@ export function YCloudTemplateSendModal({
             return;
         }
 
-        const missingVar = bodyVariables.find((key) => !variableValues[key]?.trim());
-        if (missingVar) {
+        const missingVariable = allVariables.find((key) => !variableValues[key]?.trim());
+        if (missingVariable) {
             toast({
                 title: "Faltan variables",
-                description: `Completa la variable {{${missingVar}}} antes de enviar.`,
+                description: `Completa la variable {{${missingVariable}}} antes de enviar.`,
                 variant: "destructive",
             });
             return;
@@ -146,14 +202,27 @@ export function YCloudTemplateSendModal({
 
         setSending(true);
         try {
-            const bodyParameters = bodyVariables.map((key) => ({
-                type: "text" as const,
-                text: variableValues[key].trim(),
-            }));
+            const requestComponents: Array<{ type: "HEADER" | "BODY"; parameters: Array<{ type: "text"; text: string }> }> = [];
 
-            const components = bodyParameters.length > 0
-                ? [{ type: "BODY", parameters: bodyParameters }]
-                : undefined;
+            if (headerVariables.length > 0) {
+                requestComponents.push({
+                    type: "HEADER",
+                    parameters: headerVariables.map((key) => ({
+                        type: "text",
+                        text: variableValues[key].trim(),
+                    })),
+                });
+            }
+
+            if (bodyVariables.length > 0) {
+                requestComponents.push({
+                    type: "BODY",
+                    parameters: bodyVariables.map((key) => ({
+                        type: "text",
+                        text: variableValues[key].trim(),
+                    })),
+                });
+            }
 
             const response = await fetch("/api/templates/ycloud/send", {
                 method: "POST",
@@ -162,8 +231,8 @@ export function YCloudTemplateSendModal({
                     conversationId,
                     templateName: selectedTemplate.name,
                     languageCode: selectedTemplate.language || "es",
-                    components,
-                    resolvedContent: renderedPreview || `[Plantilla: ${selectedTemplate.name}]`,
+                    components: requestComponents.length > 0 ? requestComponents : undefined,
+                    resolvedContent: previewBody || `[Plantilla: ${selectedTemplate.name}]`,
                 }),
             });
 
@@ -176,7 +245,10 @@ export function YCloudTemplateSendModal({
                 title: "Plantilla enviada",
                 description: "El mensaje plantilla se envio correctamente por YCloud.",
             });
-            onSent?.(result.message);
+
+            if (result.message) {
+                onSent?.(result.message);
+            }
             onOpenChange(false);
         } catch (error) {
             toast({
@@ -191,96 +263,160 @@ export function YCloudTemplateSendModal({
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="max-w-2xl">
-                <DialogHeader>
-                    <DialogTitle className="flex items-center gap-2">
-                        <MessageSquareText className="h-4 w-4" />
-                        Enviar plantilla YCloud
+            <DialogContent className="max-w-[1120px] gap-0 overflow-hidden p-0 sm:max-h-[88vh]">
+                <DialogHeader className="border-b px-5 py-4">
+                    <DialogTitle className="flex items-center gap-2 text-lg">
+                        <LayoutTemplate className="h-5 w-5 text-primary" />
+                        Agregar plantilla
                     </DialogTitle>
                     <DialogDescription>
-                        {contactName || "Contacto"} {contactPhone ? `(${contactPhone})` : ""}. Solo se muestran plantillas aprobadas.
+                        {contactName || "Contacto"} {contactPhone ? `(${contactPhone})` : ""}. Selecciona una plantilla aprobada en YCloud.
                     </DialogDescription>
                 </DialogHeader>
 
-                <div className="space-y-4">
-                    <div className="flex items-center gap-2">
-                        <Input
-                            placeholder="Buscar plantilla..."
-                            value={query}
-                            onChange={(event) => setQuery(event.target.value)}
-                        />
-                        <Button
-                            variant="outline"
-                            size="icon"
-                            onClick={() => void loadTemplates()}
-                            disabled={loading}
-                            title="Actualizar plantillas"
-                        >
-                            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-                        </Button>
+                {loading ? (
+                    <div className="flex min-h-[420px] items-center justify-center">
+                        <Loader2 className="h-6 w-6 animate-spin text-primary" />
                     </div>
-
-                    <div className="space-y-2">
-                        <Label>Plantilla aprobada</Label>
-                        <select
-                            value={selectedKey}
-                            onChange={(event) => setSelectedKey(event.target.value)}
-                            className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                        >
-                            <option value="">Selecciona una plantilla...</option>
-                            {approvedTemplates.map((template) => {
-                                const key = `${template.name || ""}::${template.language || "es"}`;
-                                return (
-                                    <option key={key} value={key}>
-                                        {template.name || "Sin nombre"} - {(template.language || "es").toLowerCase()}
-                                    </option>
-                                );
-                            })}
-                        </select>
-                    </div>
-
-                    {selectedTemplate && (
-                        <div className="space-y-3 rounded-lg border bg-muted/25 p-3">
-                            <div>
-                                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Vista previa</p>
-                                <p className="mt-1 whitespace-pre-wrap text-sm">
-                                    {renderedPreview || `[Plantilla: ${selectedTemplate.name}]`}
-                                </p>
+                ) : (
+                    <div className="grid min-h-[520px] grid-cols-1 lg:grid-cols-[260px_minmax(0,1fr)_320px]">
+                        <aside className="border-b p-4 lg:border-b-0 lg:border-r">
+                            <div className="relative">
+                                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                                <Input
+                                    placeholder="Buscar plantillas..."
+                                    className="pl-9"
+                                    value={query}
+                                    onChange={(event) => setQuery(event.target.value)}
+                                />
                             </div>
 
-                            {bodyVariables.length > 0 && (
-                                <div className="grid gap-2 md:grid-cols-2">
-                                    {bodyVariables.map((key) => (
-                                        <div key={key} className="space-y-1.5">
-                                            <Label htmlFor={`tpl-var-${key}`}>Variable {`{{${key}}}`}</Label>
-                                            <Input
-                                                id={`tpl-var-${key}`}
-                                                value={variableValues[key] || ""}
-                                                onChange={(event) =>
-                                                    setVariableValues((prev) => ({
-                                                        ...prev,
-                                                        [key]: event.target.value,
-                                                    }))
-                                                }
-                                                placeholder={`Valor para {{${key}}}`}
-                                            />
-                                        </div>
-                                    ))}
+                            <div className="mt-4 space-y-1">
+                                <button
+                                    type="button"
+                                    className={`w-full rounded-lg px-3 py-2 text-left text-sm ${categoryFilter === "all" ? "bg-primary/10 text-primary" : "hover:bg-muted/50"}`}
+                                    onClick={() => setCategoryFilter("all")}
+                                >
+                                    Todas las plantillas ({templates.length})
+                                </button>
+                                {categories.map(([category, count]) => (
+                                    <button
+                                        key={category}
+                                        type="button"
+                                        className={`w-full rounded-lg px-3 py-2 text-left text-sm ${categoryFilter === category ? "bg-primary/10 text-primary" : "hover:bg-muted/50"}`}
+                                        onClick={() => setCategoryFilter(category)}
+                                    >
+                                        {categoryLabel(category)} ({count})
+                                    </button>
+                                ))}
+                            </div>
+                        </aside>
+
+                        <section className="border-b p-4 lg:border-b-0 lg:border-r">
+                            <div className="mb-3 flex items-center justify-between">
+                                <p className="text-sm text-muted-foreground">
+                                    {filteredTemplates.length} plantilla{filteredTemplates.length === 1 ? "" : "s"} encontradas
+                                </p>
+                                <Button variant="outline" size="sm" onClick={() => void loadTemplates()} disabled={loading}>
+                                    {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+                                    Actualizar
+                                </Button>
+                            </div>
+
+                            {filteredTemplates.length === 0 ? (
+                                <div className="flex h-[420px] items-center justify-center rounded-xl border border-dashed text-sm text-muted-foreground">
+                                    No hay plantillas aprobadas para este filtro.
+                                </div>
+                            ) : (
+                                <div className="grid max-h-[430px] gap-3 overflow-y-auto pr-1 md:grid-cols-2">
+                                    {filteredTemplates.map((template) => {
+                                        const key = joinTemplateKey(template);
+                                        const selected = key === selectedKey;
+                                        const preview = extractComponentText(template, "BODY");
+
+                                        return (
+                                            <button
+                                                key={key}
+                                                type="button"
+                                                onClick={() => setSelectedKey(key)}
+                                                className={`rounded-xl border p-3 text-left transition ${selected ? "border-primary bg-primary/5" : "hover:border-primary/30"}`}
+                                            >
+                                                <p className="truncate text-sm font-semibold">{template.name || "Sin nombre"}</p>
+                                                <p className="mt-1 text-xs text-muted-foreground">
+                                                    {categoryLabel(template.category)} - {(template.language || "es").toLowerCase()}
+                                                </p>
+                                                <p className="mt-2 line-clamp-5 text-sm text-muted-foreground">
+                                                    {preview || "Sin cuerpo"}
+                                                </p>
+                                            </button>
+                                        );
+                                    })}
                                 </div>
                             )}
-                        </div>
-                    )}
-                </div>
+                        </section>
 
-                <DialogFooter>
-                    <Button variant="outline" onClick={() => onOpenChange(false)} disabled={sending}>
-                        Cancelar
-                    </Button>
-                    <Button onClick={handleSend} disabled={sending || !selectedTemplate || !conversationId}>
-                        {sending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
-                        Enviar plantilla
-                    </Button>
-                </DialogFooter>
+                        <section className="p-4">
+                            {selectedTemplate ? (
+                                <div className="flex h-full flex-col">
+                                    <div className="rounded-xl border bg-muted/20 p-4">
+                                        <div className="mb-3 flex items-center justify-between gap-2">
+                                            <p className="truncate text-sm font-semibold">{selectedTemplate.name}</p>
+                                            <span className="rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
+                                                Aprobada
+                                            </span>
+                                        </div>
+
+                                        <div className="rounded-xl border bg-background p-3 text-sm">
+                                            {previewHeader ? <p className="font-semibold">{previewHeader}</p> : null}
+                                            <p className="mt-2 whitespace-pre-wrap">{previewBody || `[Plantilla: ${selectedTemplate.name}]`}</p>
+                                            {footerText ? <p className="mt-2 text-xs italic text-muted-foreground">{footerText}</p> : null}
+                                        </div>
+                                    </div>
+
+                                    <div className="mt-4 flex-1 space-y-2 overflow-y-auto pr-1">
+                                        {allVariables.length > 0 ? (
+                                            allVariables.map((key) => (
+                                                <div key={key} className="space-y-1.5">
+                                                    <Label htmlFor={`tpl-var-${key}`}>Variable {`{{${key}}}`}</Label>
+                                                    <Input
+                                                        id={`tpl-var-${key}`}
+                                                        value={variableValues[key] || ""}
+                                                        onChange={(event) =>
+                                                            setVariableValues((prev) => ({
+                                                                ...prev,
+                                                                [key]: event.target.value,
+                                                            }))
+                                                        }
+                                                        placeholder={`Valor para {{${key}}}`}
+                                                    />
+                                                </div>
+                                            ))
+                                        ) : (
+                                            <div className="rounded-xl border border-dashed p-3 text-sm text-muted-foreground">
+                                                Esta plantilla no requiere variables.
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    <DialogFooter className="mt-4 px-0 pb-0">
+                                        <Button variant="outline" onClick={() => onOpenChange(false)} disabled={sending}>
+                                            Cancelar
+                                        </Button>
+                                        <Button onClick={() => void handleSend()} disabled={sending || !conversationId}>
+                                            {sending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
+                                            Usar esta plantilla
+                                        </Button>
+                                    </DialogFooter>
+                                </div>
+                            ) : (
+                                <div className="flex h-full flex-col items-center justify-center rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
+                                    <CheckCircle2 className="mb-2 h-7 w-7" />
+                                    Selecciona una plantilla para ver la vista previa.
+                                </div>
+                            )}
+                        </section>
+                    </div>
+                )}
             </DialogContent>
         </Dialog>
     );
