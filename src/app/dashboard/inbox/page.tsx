@@ -1152,7 +1152,7 @@ export default function InboxPage() {
         whatsAppSession?.jid,
     );
     const shouldShowWhatsAppWarning = whatsAppSession !== null && !isWhatsAppTransportReady;
-    const isConversationWindowExpired = Boolean(selectedChat?.sessionExpiresAt) && (
+    const isYCloudReplyWindowExpired = outboundSourceType === "ycloud" && Boolean(selectedChat?.sessionExpiresAt) && (
         !isWindowOpen ||
         (selectedChat?.sessionExpiresAt ? new Date(selectedChat.sessionExpiresAt).getTime() <= Date.now() : false)
     );
@@ -3113,10 +3113,12 @@ export default function InboxPage() {
                             )}
 
                             {/* Window Timer */}
-                            <WindowTimer expiresAt={selectedChat.sessionExpiresAt} onWindowChange={handleWindowChange} />
+                            {outboundSourceType === "ycloud" ? (
+                                <WindowTimer expiresAt={selectedChat.sessionExpiresAt} onWindowChange={handleWindowChange} />
+                            ) : null}
 
                             {/* Input Area — Locked when 24h window is closed */}
-                            {isConversationWindowExpired ? (
+                            {isYCloudReplyWindowExpired ? (
                                 /* ═══ LOCKED: 24h window expired ═══ */
                                 <div className="shrink-0 space-y-0">
                                     <p className="text-xs text-center text-muted-foreground px-6 py-3">

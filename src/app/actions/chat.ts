@@ -2319,7 +2319,9 @@ export async function processInboundMessage(
             where: { id: conversation.id },
             data: {
                 updatedAt: new Date(),
-                sessionExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+                ...(normalizedSourceType === "ycloud"
+                    ? { sessionExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000) }
+                    : {}),
             },
         });
 

@@ -422,7 +422,7 @@ export default function SettingsPage() {
                             </Button>
 
                             <p className="text-xs text-muted-foreground">
-                                Configura el webhook de YCloud apuntando a <code className="rounded bg-muted px-1 py-0.5">/api/webhooks/ycloud</code>.
+                                Configura el webhook de YCloud apuntando a <code className="rounded bg-muted px-1 py-0.5">/api/webhook</code>.
                             </p>
                         </div>
 
