@@ -8,7 +8,7 @@ import {
     FileText, Download, Square, Star, BellOff, Bell, Archive, Trash2,
     Info, Users, MessageSquare, ChevronRight, ChevronDown, Mail, Tag, Clock,
     Eraser, Image as ImageIcon, Play, Pause, Bot, User as UserIcon, AlertTriangle, LayoutTemplate,
-    Reply, Copy, SmilePlus, Forward, CheckCheck, CheckCircle2, Smartphone
+    Reply, Copy, SmilePlus, Forward, CheckCircle2
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -1147,7 +1147,6 @@ export default function InboxPage() {
     const [teamUsers, setTeamUsers] = useState<TeamUser[]>([]);
     const [messages, setMessages] = useState<Message[]>([]);
     const [inputText, setInputText] = useState("");
-    const [outboundSourceType, setOutboundSourceType] = useState<"wuzapi" | "ycloud">("wuzapi");
     const [templates, setTemplates] = useState<TemplateRecord[]>([]);
     const [isUploading, setIsUploading] = useState(false);
     const [pendingFile, setPendingFile] = useState<{
@@ -1177,13 +1176,7 @@ export default function InboxPage() {
         () => messages.find((message) => message.id === emojiPickerMsgId) || null,
         [messages, emojiPickerMsgId],
     );
-    const selectedChatSourceType = selectedChat?.sourceType;
-
-    useEffect(() => {
-        if (selectedChatSourceType) {
-            setOutboundSourceType(selectedChatSourceType);
-        }
-    }, [selectedChatSourceType]);
+    const outboundSourceType = selectedChat?.sourceType || "wuzapi";
 
     const isWhatsAppTransportReady = Boolean(
         whatsAppSession?.configured &&
@@ -1211,22 +1204,6 @@ export default function InboxPage() {
 
         return "No hay un numero de WhatsApp vinculado al CRM. Conectalo en Configuracion para enviar mensajes, usar plantillas y adjuntar archivos.";
     }, [whatsAppSession]);
-
-    const selectOutboundSource = useCallback((sourceType: "wuzapi" | "ycloud") => {
-        setOutboundSourceType(sourceType);
-
-        if (!selectedChat?.contact?.id) return;
-
-        const targetConversation = conversations.find((conversation) =>
-            conversation.contact?.id === selectedChat.contact?.id &&
-            conversation.sourceType === sourceType,
-        );
-
-        if (targetConversation && targetConversation.id !== selectedChat.id) {
-            setSelectedChat(targetConversation);
-            setShowContactInfo(false);
-        }
-    }, [conversations, selectedChat]);
 
     const refreshConversationsAndSelect = useCallback(async (conversationId: string) => {
         const url = new URL("/api/chat", window.location.origin);
@@ -3358,36 +3335,6 @@ export default function InboxPage() {
                                                     onPaste={handleComposerPaste}
                                                     onKeyDown={(e) => { void handleComposerKeyDown(e); }}
                                                 />
-                                            </div>
-                                            <div className="pb-1 flex items-center gap-1 shrink-0">
-                                                <button
-                                                    type="button"
-                                                    className={cn(
-                                                        "inline-flex h-10 w-10 items-center justify-center rounded-full border transition",
-                                                        outboundSourceType === "wuzapi"
-                                                            ? "border-sky-500/60 bg-sky-500/10 text-sky-700"
-                                                            : "border-border/60 bg-background/85 text-muted-foreground hover:text-foreground",
-                                                    )}
-                                                    onClick={() => selectOutboundSource("wuzapi")}
-                                                    disabled={!isWhatsAppTransportReady}
-                                                    title="Enviar por Wuzapi"
-                                                >
-                                                    <Smartphone className="h-4 w-4" />
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    className={cn(
-                                                        "inline-flex h-10 w-10 items-center justify-center rounded-full border transition",
-                                                        outboundSourceType === "ycloud"
-                                                            ? "border-emerald-500/60 bg-emerald-500/10 text-emerald-700"
-                                                            : "border-border/60 bg-background/85 text-muted-foreground hover:text-foreground",
-                                                    )}
-                                                    onClick={() => selectOutboundSource("ycloud")}
-                                                    disabled={!isWhatsAppTransportReady}
-                                                    title="Enviar por YCloud"
-                                                >
-                                                    <CheckCheck className="h-4 w-4" />
-                                                </button>
                                             </div>
                                             <div className="pb-1 pr-1 shrink-0">
                                                 {(inputText.trim() || pendingFile) ? (
