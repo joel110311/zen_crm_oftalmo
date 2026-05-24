@@ -8,7 +8,7 @@ import {
     FileText, Download, Square, Star, BellOff, Bell, Archive, Trash2,
     Info, Users, MessageSquare, ChevronRight, ChevronDown, Mail, Tag, Clock,
     Eraser, Image as ImageIcon, Play, Pause, Bot, User as UserIcon, AlertTriangle, LayoutTemplate,
-    Reply, Copy, SmilePlus, Forward, CheckCheck, Smartphone
+    Reply, Copy, SmilePlus, Forward, CheckCheck, CheckCircle2, Smartphone
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -537,6 +537,34 @@ function MessageResponderBadge({ label, compact = false }: { label: "IA" | "Huma
             )}
         >
             {label}
+        </span>
+    );
+}
+
+function MessageSourceBadge({
+    sourceType,
+    compact = false,
+}: {
+    sourceType: Message["sourceType"];
+    compact?: boolean;
+}) {
+    const isYCloud = sourceType === "ycloud";
+    const Icon = isYCloud ? CheckCircle2 : Smartphone;
+    const label = isYCloud ? "YCloud" : "Wuzapi";
+
+    return (
+        <span
+            title={isYCloud ? "YCloud API oficial" : "Wuzapi dispositivo vinculado"}
+            className={cn(
+                "inline-flex shrink-0 items-center rounded-full border font-semibold leading-none",
+                isYCloud
+                    ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                    : "border-sky-500/25 bg-sky-500/10 text-sky-700 dark:text-sky-300",
+                compact ? "gap-1 px-1.5 py-0.5 text-[9px]" : "gap-1.5 px-2 py-0.5 text-[10px]",
+            )}
+        >
+            <Icon className={compact ? "h-3 w-3" : "h-3.5 w-3.5"} aria-hidden="true" />
+            <span>{label}</span>
         </span>
     );
 }
@@ -2618,6 +2646,9 @@ export default function InboxPage() {
                                         <span className="text-[10px] font-medium text-muted-foreground/85 whitespace-nowrap">
                                             {formatConversationListTimestamp(chat.updatedAt)}
                                         </span>
+                                        {chat.messages[0]?.sourceType ? (
+                                            <MessageSourceBadge sourceType={chat.messages[0].sourceType} compact />
+                                        ) : null}
                                         <MessageResponderBadge
                                             label={currentModeLabel}
                                             compact
@@ -2957,11 +2988,7 @@ export default function InboxPage() {
                                                                 "mt-2 flex items-center justify-end gap-1.5 text-[10px] font-medium",
                                                                 msg.direction === "outbound" ? "text-foreground/50" : "text-muted-foreground"
                                                             )}>
-                                                                {msg.sourceType === "ycloud" ? (
-                                                                    <CheckCheck className="h-3.5 w-3.5 text-emerald-600" aria-label="YCloud" />
-                                                                ) : (
-                                                                    <Smartphone className="h-3.5 w-3.5 text-sky-600" aria-label="Wuzapi" />
-                                                                )}
+                                                                <MessageSourceBadge sourceType={msg.sourceType} />
                                                                 <p>
                                                                     {new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                                                                 </p>
