@@ -57,10 +57,9 @@ export async function sendOutboundConversationMessage(
     });
 
     const settings = await getSystemSettingsOrDefaults();
-    const selectedSourceId =
-        requestedSourceId ||
-        (conversation?.sourceType === selectedSourceType ? conversation.sourceId || null : null) ||
-        resolveMessageSourceId(selectedSourceType, settings);
+    const selectedSourceId = conversation?.sourceType === selectedSourceType
+        ? conversation.sourceId || null
+        : requestedSourceId || resolveMessageSourceId(selectedSourceType, settings);
 
     if (!conversation) {
         const contactById = await prisma.contact.findUnique({
@@ -87,10 +86,7 @@ export async function sendOutboundConversationMessage(
         throw new Error("Conversation not found");
     }
 
-    if (
-        conversation.sourceType !== selectedSourceType ||
-        (conversation.sourceId || null) !== (selectedSourceId || null)
-    ) {
+    if (conversation.sourceType !== selectedSourceType) {
         const ensuredConversation = await findOrCreateActiveConversationForContactSource({
             contactId: conversation.contactId,
             sourceType: selectedSourceType,
