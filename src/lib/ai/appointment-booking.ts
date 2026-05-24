@@ -5,6 +5,7 @@ import {
     AppointmentSchedulingError,
     createManagedAppointment,
     formatAppointmentSuggestions,
+    getAvailableSlotsForDate,
     getBusinessHoursConfig,
     validateManagedAppointment,
 } from "@/lib/calendar/appointments";
@@ -16,6 +17,7 @@ import {
     formatBusinessScheduleLines,
     formatDateTimeInZone,
     getBusinessDateKey,
+    formatTimeLabel,
     zonedDateTimeToUtc,
 } from "@/lib/calendar/business-hours";
 import { getContactFullName } from "@/lib/contact-name";
@@ -66,6 +68,9 @@ const APPOINTMENT_KEYWORDS = [
     "demo",
     "reservar",
     "reservame",
+    "horario",
+    "horarios",
+    "disponibilidad",
 ];
 
 function stripCodeFences(value: string) {
@@ -107,44 +112,81 @@ function buildConversationTranscript(
 
 function buildMissingInfoReply(
     missingFields: string[],
-    config: Awaited<ReturnType<typeof getBusinessHoursConfig>>,
+    planner?: PlannerResult,
 ) {
     const needsDate = missingFields.includes("date");
     const needsTime = missingFields.includes("time");
-    const hoursLabel = ["Horario comercial:", formatBusinessScheduleLines(config)].join("\n");
-
-    if (needsDate && needsTime) {
-        return [
-            "*Si puedo agendar la cita.*",
-            "",
-            "Solo necesito que me compartas *la fecha* y *la hora*.",
-            hoursLabel,
-        ].join("\n");
-    }
+    const requestedTime = planner?.localTime
+        ? formatTimeLabel(planner.localTime)
+        : null;
 
     if (needsDate) {
         return [
-            "*Si puedo agendarla.*",
+            "*Claro, reviso disponibilidad real en calendario.*",
             "",
-            "Solo me falta *la fecha*.",
-            hoursLabel,
+            requestedTime
+                ? `Para que dia quieres la cita a las *${requestedTime}*?`
+                : "Primero dime *que dia te interesa*.",
+            "",
+            "Ejemplo: manana, este viernes o 28 de mayo.",
         ].join("\n");
     }
 
     if (needsTime) {
         return [
-            "*Si puedo agendarla.*",
+            "*Perfecto, reviso ese dia.*",
             "",
-            "Solo me falta *la hora*.",
-            hoursLabel,
+            "Solo me falta *la hora* que prefieres.",
         ].join("\n");
     }
 
     return [
-        "*Si puedo ayudarte a agendar la cita.*",
+        "*Claro, puedo ayudarte a agendar.*",
         "",
-        "Comparteme por favor la *fecha* y la *hora* que prefieres.",
-        hoursLabel,
+        "Dime primero *que dia te interesa* y reviso los horarios libres.",
+    ].join("\n");
+}
+
+function buildDateAvailabilityReply(
+    localDate: string,
+    availability: Awaited<ReturnType<typeof getAvailableSlotsForDate>>,
+    config: Awaited<ReturnType<typeof getBusinessHoursConfig>>,
+) {
+    const dateReference = zonedDateTimeToUtc(localDate, "12:00", config.timeZone);
+    const dateLabel = formatDateTimeInZone(dateReference, config.timeZone, "es-MX", {
+        weekday: "long",
+        day: "numeric",
+        month: "long",
+    });
+
+    if (!availability.isOpen) {
+        return [
+            `*El ${dateLabel} no tenemos atencion.*`,
+            "",
+            "Dime otro dia y reviso disponibilidad real en calendario.",
+        ].join("\n");
+    }
+
+    if (availability.slots.length === 0) {
+        return [
+            `*Para el ${dateLabel} no veo horarios libres en calendario.*`,
+            "",
+            "Quieres que revise otro dia?",
+        ].join("\n");
+    }
+
+    return [
+        `*Si hay disponibilidad para el ${dateLabel}.*`,
+        "",
+        "*Horarios libres:*",
+        ...availability.slots.map((slot, index) =>
+            `${index + 1}. ${formatDateTimeInZone(slot, config.timeZone, "es-MX", {
+                hour: "numeric",
+                minute: "2-digit",
+            })}`,
+        ),
+        "",
+        "Responde con el horario que prefieras y lo confirmo en calendario.",
     ].join("\n");
 }
 
@@ -300,11 +342,15 @@ ${formatBusinessScheduleLines(config)}
 REGLAS
 - Usa el historial para resolver mensajes como "manana a las 3" o "si, a esa hora".
 - Solo marca intent = "schedule" si realmente quiere una cita, reunion, llamada, demo o consulta.
+- Si pregunta por horarios o disponibilidad para una cita, tambien es intent = "schedule".
 - Si falta fecha o falta hora, usa action = "ask_missing".
+- Si menciona un dia pero no una hora, localDate debe tener ese dia y localTime debe ser null.
+- Si menciona una hora pero no un dia, localTime debe tener esa hora y localDate debe ser null.
 - Si no hay intencion clara de cita, usa intent = "other" y action = "ignore".
 - Si no mencionan duracion, deja durationMinutes en null.
 - El titulo debe ser corto y util.
 - No inventes fecha ni hora si no se pueden deducir con seguridad.
+- No trates el horario comercial como disponibilidad real; la disponibilidad se valida despues con calendario.
 
 HISTORIAL
 ${transcript || "Sin historial"}
@@ -368,14 +414,31 @@ export async function maybeHandleAppointmentBooking(
             ? [selectedSpecialist.calendarId]
             : bookingContext.availabilitySources.map((source) => source.calendarId);
 
-    if (planner.action === "ask_missing" || !planner.localDate || !planner.localTime) {
+    if (!planner.localDate || !planner.localTime) {
+        if (planner.localDate && !planner.localTime) {
+            const availability = await getAvailableSlotsForDate(
+                planner.localDate,
+                durationMinutes * 60 * 1000,
+                config,
+                {
+                    calendarIds: blockingCalendarIds,
+                    limit: 6,
+                },
+            );
+
+            return {
+                kind: "missing",
+                reply: buildDateAvailabilityReply(planner.localDate, availability, config),
+            };
+        }
+
         return {
             kind: "missing",
-            reply: buildMissingInfoReply(planner.missingFields || [], config),
+            reply: buildMissingInfoReply(planner.missingFields || [], planner),
         };
     }
 
-    if (planner.action !== "create") {
+    if (planner.action === "ignore") {
         return { kind: "none", reply: null };
     }
 

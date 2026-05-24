@@ -254,6 +254,80 @@ export async function suggestAvailableSlots(
     return suggestions;
 }
 
+export async function getAvailableSlotsForDate(
+    localDate: string,
+    durationMs: number,
+    config: BusinessHoursConfig,
+    options: AvailableSlotOptions = {},
+) {
+    try {
+        await syncGoogleCalendarToCrm(false);
+    } catch (syncError) {
+        console.error("[Google Calendar] Pre-sync failed before availability lookup:", syncError);
+    }
+
+    const stepMs = 15 * 60 * 1000;
+    const safeDurationMs = Math.max(durationMs, 15 * 60 * 1000);
+    const limit = options.limit ?? 6;
+    const dayReference = zonedDateTimeToUtc(localDate, "12:00", config.timeZone);
+    const dayBounds = businessBoundsForDate(dayReference, config);
+
+    if (!dayBounds.isOpen) {
+        return {
+            ...dayBounds,
+            slots: [] as Date[],
+        };
+    }
+
+    const dayAppointments = await prisma.appointment.findMany({
+        where: {
+            ...(options.excludeAppointmentId
+                ? { id: { not: options.excludeAppointmentId } }
+                : {}),
+            ...(options.calendarIds && options.calendarIds.length > 0
+                ? { googleCalendarId: { in: options.calendarIds } }
+                : {}),
+            startTime: { lt: dayBounds.end },
+            endTime: { gt: dayBounds.start },
+        },
+        orderBy: { startTime: "asc" },
+    });
+
+    const now = new Date();
+    const todayKey = getBusinessDateKey(now, config.timeZone);
+    const from = options.from && getBusinessDateKey(options.from, config.timeZone) === dayBounds.dateKey
+        ? options.from
+        : null;
+    const lowerBound = todayKey === dayBounds.dateKey && now > dayBounds.start
+        ? now
+        : dayBounds.start;
+    const firstCursor = new Date(
+        Math.ceil(Math.max(lowerBound.getTime(), from?.getTime() || dayBounds.start.getTime()) / stepMs) * stepMs,
+    );
+    const slots: Date[] = [];
+
+    for (let cursor = firstCursor.getTime(); cursor + safeDurationMs <= dayBounds.end.getTime(); cursor += stepMs) {
+        const slotStart = new Date(cursor);
+        const slotEnd = new Date(cursor + safeDurationMs);
+        const conflict = dayAppointments.some((appointment) =>
+            appointment.startTime < slotEnd && appointment.endTime > slotStart,
+        );
+
+        if (!conflict) {
+            slots.push(slotStart);
+        }
+
+        if (slots.length >= limit) {
+            break;
+        }
+    }
+
+    return {
+        ...dayBounds,
+        slots,
+    };
+}
+
 export async function createManagedAppointment(input: AppointmentInput) {
     const config = await getBusinessHoursConfig();
     try {
