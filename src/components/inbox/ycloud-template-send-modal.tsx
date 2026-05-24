@@ -96,7 +96,7 @@ export function YCloudTemplateSendModal({
     const loadTemplates = useCallback(async () => {
         setLoading(true);
         try {
-            const response = await fetch("/api/templates/ycloud?limit=300", { cache: "no-store" });
+            const response = await fetch("/api/templates/ycloud?limit=100", { cache: "no-store" });
             const result = await response.json();
             if (!response.ok) {
                 throw new Error(result.error || "No se pudieron cargar las plantillas de YCloud.");

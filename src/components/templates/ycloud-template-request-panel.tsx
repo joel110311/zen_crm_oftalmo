@@ -214,7 +214,7 @@ export function YCloudTemplateRequestPanel() {
         setError(null);
 
         try {
-            const response = await fetch("/api/templates/ycloud?limit=200", {
+            const response = await fetch("/api/templates/ycloud?limit=100", {
                 cache: "no-store",
             });
             const result = await response.json();

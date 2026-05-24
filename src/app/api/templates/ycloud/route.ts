@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
         const wabaId = searchParams.get("wabaId") || undefined;
 
         const payload = await listYCloudTemplates({
-            limit: Number.isFinite(limit) ? Math.min(Math.max(limit, 1), 200) : 100,
+            limit: Number.isFinite(limit) ? Math.min(Math.max(limit, 1), 100) : 100,
             page: Number.isFinite(page) ? Math.max(page, 1) : 1,
             wabaId,
         });
