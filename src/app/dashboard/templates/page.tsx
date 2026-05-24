@@ -48,7 +48,7 @@ export default function TemplatesPage() {
     }
 
     return (
-        <div className="mx-auto max-w-[1280px] space-y-4">
+        <div className="mx-auto w-full max-w-none space-y-4">
             <div className="rounded-xl border bg-card px-5 py-4 shadow-[0_12px_28px_-22px_rgba(15,23,42,0.25)]">
                 <h1 className="flex items-center gap-2.5 text-[1.85rem] font-semibold tracking-tight">
                     <LayoutTemplate className="h-6 w-6 text-primary" />
