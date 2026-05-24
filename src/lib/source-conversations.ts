@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db";
-import type { MessageSourceType } from "@/lib/message-source";
+import { MESSAGE_SOURCE_WUZAPI, type MessageSourceType } from "@/lib/message-source";
 
 export async function findOrCreateActiveConversationForContactSource(params: {
     contactId: string;
@@ -12,6 +12,35 @@ export async function findOrCreateActiveConversationForContactSource(params: {
     };
 }) {
     const sourceId = params.sourceId?.trim() || null;
+
+    if (params.sourceType === MESSAGE_SOURCE_WUZAPI) {
+        const existingWuzapiConversations = await prisma.conversation.findMany({
+            where: {
+                contactId: params.contactId,
+                status: "active",
+                sourceType: MESSAGE_SOURCE_WUZAPI,
+            },
+            orderBy: { updatedAt: "desc" },
+        });
+
+        if (existingWuzapiConversations.length > 0) {
+            return existingWuzapiConversations.sort((left, right) => {
+                const leftAssignedScore = left.assignedUserId ? 1 : 0;
+                const rightAssignedScore = right.assignedUserId ? 1 : 0;
+                if (leftAssignedScore !== rightAssignedScore) {
+                    return rightAssignedScore - leftAssignedScore;
+                }
+
+                const leftHumanModeScore = left.botActive ? 0 : 1;
+                const rightHumanModeScore = right.botActive ? 0 : 1;
+                if (leftHumanModeScore !== rightHumanModeScore) {
+                    return rightHumanModeScore - leftHumanModeScore;
+                }
+
+                return right.updatedAt.getTime() - left.updatedAt.getTime();
+            })[0];
+        }
+    }
 
     const existingConversation = await prisma.conversation.findFirst({
         where: {
@@ -32,7 +61,7 @@ export async function findOrCreateActiveConversationForContactSource(params: {
             contactId: params.contactId,
             status: "active",
             sourceType: params.sourceType,
-            sourceId,
+            sourceId: params.sourceType === MESSAGE_SOURCE_WUZAPI ? null : sourceId,
             assignedUserId: params.defaults?.assignedUserId || undefined,
             botActive: params.defaults?.botActive ?? true,
             sessionExpiresAt: params.defaults?.sessionExpiresAt || undefined,
