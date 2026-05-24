@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { resolveMediaToDataUrl } from "@/lib/media-data-url";
+import { getPublicMediaUrl } from "@/lib/media-url";
 import {
     normalizeMessageSourceType,
     resolveMessageSourceId,
@@ -148,14 +149,7 @@ export async function sendOutboundConversationMessage(
 
                 if (selectedSourceType === "ycloud") {
                     const appBaseUrl = (process.env.APP_BASE_URL || process.env.AUTH_URL || "").trim();
-                    const isAbsoluteMediaUrl = /^https?:\/\//i.test(params.mediaUrl);
-                    if (!isAbsoluteMediaUrl && !appBaseUrl) {
-                        throw new Error("APP_BASE_URL o AUTH_URL es requerido para enviar multimedia por YCloud.");
-                    }
-
-                    const publicMediaUrl = isAbsoluteMediaUrl
-                        ? params.mediaUrl
-                        : `${appBaseUrl.replace(/\/+$/, "")}${params.mediaUrl.startsWith("/") ? "" : "/"}${params.mediaUrl}`;
+                    const publicMediaUrl = getPublicMediaUrl(params.mediaUrl, appBaseUrl);
 
                     result = await sendYCloudMediaMessage({
                         to: conversation.contact.phone,

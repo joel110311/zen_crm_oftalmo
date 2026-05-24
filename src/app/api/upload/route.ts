@@ -29,8 +29,8 @@ export async function POST(request: NextRequest) {
         const buffer = Buffer.from(bytes);
         await writeFile(filePath, buffer);
 
-        // Return the public URL
-        const publicUrl = `/uploads/${uniqueName}`;
+        // Return the media API URL so external providers can download it reliably.
+        const publicUrl = `/api/media/${uniqueName}`;
 
         // Determine media type category
         let mediaCategory = "document";
