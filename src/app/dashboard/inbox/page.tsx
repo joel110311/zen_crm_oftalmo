@@ -119,11 +119,25 @@ function isTemporaryMessage(message: Message) {
     return message.id.startsWith("temp-");
 }
 
+function normalizeComparableMediaUrl(mediaUrl?: string | null) {
+    const trimmed = mediaUrl?.trim();
+    if (!trimmed) return null;
+
+    try {
+        const parsed = new URL(trimmed, "https://crm.local");
+        return parsed.pathname + parsed.search;
+    } catch {
+        return trimmed.replace(/^https?:\/\/[^/]+/i, "");
+    }
+}
+
 function areLikelySameMessage(left: Message, right: Message) {
     if (left.id === right.id) return true;
 
     const leftCreatedAt = left.createdAt instanceof Date ? left.createdAt.getTime() : new Date(left.createdAt).getTime();
     const rightCreatedAt = right.createdAt instanceof Date ? right.createdAt.getTime() : new Date(right.createdAt).getTime();
+    const leftMediaUrl = normalizeComparableMediaUrl(left.mediaUrl);
+    const rightMediaUrl = normalizeComparableMediaUrl(right.mediaUrl);
 
     return (
         left.direction === right.direction &&
@@ -132,7 +146,7 @@ function areLikelySameMessage(left: Message, right: Message) {
         left.sourceType === right.sourceType &&
         (left.sourceId || null) === (right.sourceId || null) &&
         (left.content || "") === (right.content || "") &&
-        (left.mediaUrl || null) === (right.mediaUrl || null) &&
+        leftMediaUrl === rightMediaUrl &&
         (left.mediaFileName || null) === (right.mediaFileName || null) &&
         Math.abs(leftCreatedAt - rightCreatedAt) <= 15000
     );
@@ -2356,6 +2370,8 @@ export default function InboxPage() {
     const sendMediaMessage = async (mediaUrl: string, mediaCategory: string, fileName?: string, mimeType?: string, caption?: string) => {
         if (!selectedChat || !isWhatsAppTransportReady) return;
 
+        const fullMediaUrl = mediaUrl.startsWith("http") ? mediaUrl : `${window.location.origin}${mediaUrl}`;
+
         // Optimistic update
         const optimisticId = "temp-" + Date.now();
         const optimistic: Message = {
@@ -2365,7 +2381,7 @@ export default function InboxPage() {
             sourceType: outboundSourceType,
             sourceId: outboundSourceType === selectedChat.sourceType ? selectedChat.sourceId || null : null,
             senderType: "human",
-            mediaUrl,
+            mediaUrl: fullMediaUrl,
             mediaType: mimeType,
             mediaFileName: fileName,
         };
@@ -2375,8 +2391,6 @@ export default function InboxPage() {
         restoreMobileInboxViewport();
 
         try {
-            const fullMediaUrl = mediaUrl.startsWith("http") ? mediaUrl : `${window.location.origin}${mediaUrl}`;
-
             const res = await fetch("/api/send-message", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
