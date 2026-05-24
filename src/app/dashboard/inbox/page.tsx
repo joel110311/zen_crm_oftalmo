@@ -2386,7 +2386,7 @@ export default function InboxPage() {
             senderId: "me", direction: "outbound", createdAt: new Date(),
             type: mediaCategory,
             sourceType: outboundSourceType,
-            sourceId: null,
+            sourceId: outboundSourceType === selectedChat.sourceType ? selectedChat.sourceId || null : null,
             senderType: "human",
             mediaUrl,
             mediaType: mimeType,
@@ -2407,6 +2407,7 @@ export default function InboxPage() {
                     conversationId: selectedChat.id, content: caption || `[${mediaCategory}]`,
                     direction: "outbound", type: mediaCategory,
                     sourceType: outboundSourceType,
+                    sourceId: outboundSourceType === selectedChat.sourceType ? selectedChat.sourceId || null : null,
                     mediaUrl: fullMediaUrl, mediaType: mimeType, mediaFileName: fileName,
                 }),
             });
@@ -2460,7 +2461,7 @@ export default function InboxPage() {
             createdAt: new Date(),
             type: "text",
             sourceType: outboundSourceType,
-            sourceId: null,
+            sourceId: outboundSourceType === selectedChat.sourceType ? selectedChat.sourceId || null : null,
             senderType: "human",
         };
         setMessages(prev => [...prev, optimistic]);
@@ -2479,6 +2480,7 @@ export default function InboxPage() {
                     content: fullContent,
                     direction: "outbound",
                     sourceType: outboundSourceType,
+                    sourceId: outboundSourceType === selectedChat.sourceType ? selectedChat.sourceId || null : null,
                 }),
             });
             if (!res.ok) throw new Error("Failed");

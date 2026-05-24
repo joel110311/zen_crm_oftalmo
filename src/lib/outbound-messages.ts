@@ -46,16 +46,21 @@ export async function sendOutboundConversationMessage(
         throw new Error("conversationId and content or mediaUrl are required");
     }
 
-    const settings = await getSystemSettingsOrDefaults();
     const selectedSourceType = normalizeMessageSourceType(params.sourceType);
-    const selectedSourceId =
-        params.sourceId?.trim() ||
-        resolveMessageSourceId(selectedSourceType, settings);
+    const requestedSourceId = typeof params.sourceId === "string" && params.sourceId.trim()
+        ? params.sourceId.trim()
+        : null;
 
     let conversation = await prisma.conversation.findUnique({
         where: { id: params.conversationId },
         include: { contact: true },
     });
+
+    const settings = await getSystemSettingsOrDefaults();
+    const selectedSourceId =
+        requestedSourceId ||
+        (conversation?.sourceType === selectedSourceType ? conversation.sourceId || null : null) ||
+        resolveMessageSourceId(selectedSourceType, settings);
 
     if (!conversation) {
         const contactById = await prisma.contact.findUnique({
