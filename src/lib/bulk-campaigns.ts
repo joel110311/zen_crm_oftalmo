@@ -12,10 +12,17 @@ import {
     normalizeBusinessHours,
 } from "@/lib/calendar/business-hours";
 import {
-    findOrCreateActiveConversationForContact,
     type OutboundMessageType,
     sendOutboundConversationMessage,
 } from "@/lib/outbound-messages";
+import { findOrCreateActiveConversationForContactSource } from "@/lib/source-conversations";
+import {
+    MESSAGE_SOURCE_YCLOUD,
+    MESSAGE_SOURCE_WUZAPI,
+    normalizeMessageSourceType,
+    resolveMessageSourceId,
+    type MessageSourceType,
+} from "@/lib/message-source";
 import { getSystemSettingsOrDefaults } from "@/lib/system-settings";
 import { listTemplateVariableKeys, renderTemplateContent } from "@/lib/templates";
 import {
@@ -35,6 +42,7 @@ import { buildPhoneMatchClauses, normalizePhoneDigits } from "@/lib/phone";
 const DEFAULT_VARIANT_LABELS = ["A", "B", "C", "D", "E"];
 const WORKER_LOCK_TTL_MS = 60_000;
 const ALLOWED_CAMPAIGN_TYPES = new Set<OutboundMessageType>(["text", "image", "document"]);
+const YCLOUD_OPEN_WINDOW_GRACE_MS = 60_000;
 
 export type BulkCampaignVariantInput = {
     label: string;
@@ -47,6 +55,8 @@ export type BulkCampaignVariantInput = {
 export type BulkCampaignUpsertInput = {
     name: string;
     description: string;
+    sourceType: MessageSourceType;
+    sourceId: string | null;
     type: OutboundMessageType;
     mediaUrl: string | null;
     mediaType: string | null;
@@ -98,6 +108,20 @@ function normalizeCampaignType(value: unknown): OutboundMessageType {
     return "text";
 }
 
+function normalizeCampaignSourceType(value: unknown): MessageSourceType {
+    return normalizeMessageSourceType(typeof value === "string" ? value : MESSAGE_SOURCE_WUZAPI);
+}
+
+function normalizeCampaignSourceId(value: unknown) {
+    return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function normalizeAudienceWindowDate(value: string) {
+    if (!value) return null;
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
 function buildDefaultVariant(index = 0): BulkCampaignVariantInput {
     return {
         label: DEFAULT_VARIANT_LABELS[index] || `Variante ${index + 1}`,
@@ -142,10 +166,25 @@ export function normalizeBulkCampaignVariants(
 export function normalizeBulkCampaignPayload(value: unknown): BulkCampaignUpsertInput {
     const record = typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
     const type = normalizeCampaignType(record.type);
+    const sourceType = normalizeCampaignSourceType(record.sourceType);
+    const sourceId = normalizeCampaignSourceId(record.sourceId);
+    const audienceFilters = normalizeBulkCampaignAudienceFilters(
+        record.audienceFilters,
+        MAX_BULK_CAMPAIGN_AUDIENCE_LIMIT,
+    );
+
+    const normalizedAudienceFilters = {
+        ...audienceFilters,
+        sourceType: sourceType === MESSAGE_SOURCE_YCLOUD ? MESSAGE_SOURCE_YCLOUD : audienceFilters.sourceType,
+        sourceId: sourceType === MESSAGE_SOURCE_YCLOUD ? (sourceId || audienceFilters.sourceId) || "" : audienceFilters.sourceId,
+        onlyOpenYCloudWindow: sourceType === MESSAGE_SOURCE_YCLOUD ? true : audienceFilters.onlyOpenYCloudWindow,
+    };
 
     return {
         name: typeof record.name === "string" ? record.name.trim() : "",
         description: typeof record.description === "string" ? record.description.trim() : "",
+        sourceType,
+        sourceId,
         type,
         mediaUrl: typeof record.mediaUrl === "string" && record.mediaUrl.trim() ? record.mediaUrl.trim() : null,
         mediaType: typeof record.mediaType === "string" && record.mediaType.trim() ? record.mediaType.trim() : null,
@@ -159,10 +198,7 @@ export function normalizeBulkCampaignPayload(value: unknown): BulkCampaignUpsert
         stopOnReply: record.stopOnReply !== false,
         followUpCount: clampInteger(record.followUpCount, 0, 0, 12),
         followUpDelayDays: clampInteger(record.followUpDelayDays, 2, 1, 30),
-        audienceFilters: normalizeBulkCampaignAudienceFilters(
-            record.audienceFilters,
-            MAX_BULK_CAMPAIGN_AUDIENCE_LIMIT,
-        ),
+        audienceFilters: normalizedAudienceFilters,
         variants: normalizeBulkCampaignVariants(record.variants, type),
     };
 }
@@ -200,10 +236,64 @@ function ensureCampaignCanLaunch(campaign: BulkCampaignRecord) {
     }
 }
 
-function buildAudienceWhere(filters: BulkCampaignAudienceFilters): Prisma.ContactWhereInput {
+function needsYCloudAudienceConstraint(filters: BulkCampaignAudienceFilters) {
+    return (
+        filters.sourceType === MESSAGE_SOURCE_YCLOUD ||
+        filters.onlyOpenYCloudWindow ||
+        Boolean(filters.lastInboundFrom || filters.lastInboundTo)
+    );
+}
+
+async function loadEligibleYCloudContactIds(filters: BulkCampaignAudienceFilters) {
+    if (!needsYCloudAudienceConstraint(filters)) {
+        return null;
+    }
+
+    const createdAt: Prisma.DateTimeFilter = {};
+    const from = normalizeAudienceWindowDate(filters.lastInboundFrom);
+    const to = normalizeAudienceWindowDate(filters.lastInboundTo);
+    if (from) createdAt.gte = from;
+    if (to) createdAt.lte = to;
+
+    const conversations = await prisma.conversation.findMany({
+        where: {
+            sourceType: MESSAGE_SOURCE_YCLOUD,
+            ...(filters.sourceId ? { sourceId: filters.sourceId } : {}),
+            ...(filters.onlyOpenYCloudWindow
+                ? {
+                    sessionExpiresAt: {
+                        gt: new Date(Date.now() + YCLOUD_OPEN_WINDOW_GRACE_MS),
+                    },
+                }
+                : {}),
+            ...(from || to
+                ? {
+                    messages: {
+                        some: {
+                            direction: "inbound",
+                            sourceType: MESSAGE_SOURCE_YCLOUD,
+                            createdAt,
+                        },
+                    },
+                }
+                : {}),
+        },
+        select: {
+            contactId: true,
+        },
+    });
+
+    return Array.from(new Set(conversations.map((conversation) => conversation.contactId)));
+}
+
+function buildAudienceWhere(
+    filters: BulkCampaignAudienceFilters,
+    eligibleContactIds?: string[] | null,
+): Prisma.ContactWhereInput {
     const query = filters.query.trim();
 
     return {
+        ...(eligibleContactIds ? { id: { in: eligibleContactIds } } : {}),
         phone: {
             not: "",
         },
@@ -273,14 +363,22 @@ export type BulkCampaignAudiencePreview = {
         status: string;
         value: number;
     }>;
+    ycloudWindow: {
+        enabled: boolean;
+        eligibleContacts: number | null;
+        onlyOpenWindow: boolean;
+        lastInboundFrom: string | null;
+        lastInboundTo: string | null;
+    };
 };
 
 async function loadFilterAudienceContacts(
     filters: BulkCampaignAudienceFilters,
     take = filters.limit ?? MAX_BULK_CAMPAIGN_AUDIENCE_LIMIT,
+    eligibleContactIds?: string[] | null,
 ) {
     return prisma.contact.findMany({
-        where: buildAudienceWhere(filters),
+        where: buildAudienceWhere(filters, eligibleContactIds),
         orderBy: [
             { updatedAt: "desc" },
             { createdAt: "desc" },
@@ -290,15 +388,26 @@ async function loadFilterAudienceContacts(
     });
 }
 
-async function loadSelectedAudienceContacts(selectedContactIds: string[]) {
+async function loadSelectedAudienceContacts(
+    selectedContactIds: string[],
+    eligibleContactIds?: string[] | null,
+) {
     if (selectedContactIds.length === 0) {
+        return [] as AudienceContactRecord[];
+    }
+
+    const allowedIds = eligibleContactIds
+        ? selectedContactIds.filter((id) => eligibleContactIds.includes(id))
+        : selectedContactIds;
+
+    if (allowedIds.length === 0) {
         return [] as AudienceContactRecord[];
     }
 
     const contacts = await prisma.contact.findMany({
         where: {
             id: {
-                in: selectedContactIds,
+                in: allowedIds,
             },
             phone: {
                 not: "",
@@ -308,7 +417,7 @@ async function loadSelectedAudienceContacts(selectedContactIds: string[]) {
         select: AUDIENCE_CONTACT_SELECT,
     });
 
-    const orderMap = new Map(selectedContactIds.map((id, index) => [id, index]));
+    const orderMap = new Map(allowedIds.map((id, index) => [id, index]));
     return contacts.sort((left, right) => (orderMap.get(left.id) ?? 0) - (orderMap.get(right.id) ?? 0));
 }
 
@@ -397,21 +506,22 @@ function mergeAudienceContactsByMode(
 }
 
 async function countAudienceContacts(filters: BulkCampaignAudienceFilters) {
+    const eligibleYCloudContactIds = await loadEligibleYCloudContactIds(filters);
     const [filterMatchesCount, filterContacts, selectedContacts] = await Promise.all([
         prisma.contact.count({
-            where: buildAudienceWhere(filters),
+            where: buildAudienceWhere(filters, eligibleYCloudContactIds),
         }),
         filters.mode === "selected"
             ? Promise.resolve([] as AudienceContactRecord[])
-            : loadFilterAudienceContacts(filters, filters.limit ?? MAX_BULK_CAMPAIGN_AUDIENCE_LIMIT),
-        loadSelectedAudienceContacts(filters.selectedContactIds),
+            : loadFilterAudienceContacts(filters, filters.limit ?? MAX_BULK_CAMPAIGN_AUDIENCE_LIMIT, eligibleYCloudContactIds),
+        loadSelectedAudienceContacts(filters.selectedContactIds, eligibleYCloudContactIds),
     ]);
 
     const recipients = dedupePreviewRecipients([
         ...mergeAudienceContactsByMode(filters.mode, filterContacts, selectedContacts).map((contact) =>
             buildPreviewRecipientFromContact(contact, "filters"),
         ),
-        ...filters.manualEntries.map((entry) => buildPreviewRecipientFromManualEntry(entry)),
+        ...(eligibleYCloudContactIds ? [] : filters.manualEntries.map((entry) => buildPreviewRecipientFromManualEntry(entry))),
     ]);
 
     return {
@@ -481,15 +591,16 @@ async function materializeManualAudienceContacts(entries: BulkCampaignManualEntr
 }
 
 async function resolveBulkCampaignAudienceContacts(filters: BulkCampaignAudienceFilters) {
+    const eligibleYCloudContactIds = await loadEligibleYCloudContactIds(filters);
     const [filterContacts, selectedContacts] = await Promise.all([
         filters.mode === "selected"
             ? Promise.resolve([] as AudienceContactRecord[])
-            : loadFilterAudienceContacts(filters, filters.limit ?? MAX_BULK_CAMPAIGN_AUDIENCE_LIMIT),
-        loadSelectedAudienceContacts(filters.selectedContactIds),
+            : loadFilterAudienceContacts(filters, filters.limit ?? MAX_BULK_CAMPAIGN_AUDIENCE_LIMIT, eligibleYCloudContactIds),
+        loadSelectedAudienceContacts(filters.selectedContactIds, eligibleYCloudContactIds),
     ]);
 
     const crmContacts = mergeAudienceContactsByMode(filters.mode, filterContacts, selectedContacts);
-    const manualContacts = await materializeManualAudienceContacts(filters.manualEntries);
+    const manualContacts = eligibleYCloudContactIds ? [] : await materializeManualAudienceContacts(filters.manualEntries);
     const deduped = new Map<string, Contact | AudienceContactRecord>();
 
     for (const contact of crmContacts) {
@@ -547,14 +658,15 @@ function buildRecipientQueueRows(
 }
 
 export async function getBulkCampaignAudiencePreview(filters: BulkCampaignAudienceFilters) {
+    const eligibleYCloudContactIds = await loadEligibleYCloudContactIds(filters);
     const [candidateContacts, filterContacts, selectedContacts, filterMatchesCount] = await Promise.all([
-        loadFilterAudienceContacts(filters, Math.min(120, filters.limit ?? 120)),
+        loadFilterAudienceContacts(filters, Math.min(120, filters.limit ?? 120), eligibleYCloudContactIds),
         filters.mode === "selected"
             ? Promise.resolve([] as AudienceContactRecord[])
-            : loadFilterAudienceContacts(filters, filters.limit ?? MAX_BULK_CAMPAIGN_AUDIENCE_LIMIT),
-        loadSelectedAudienceContacts(filters.selectedContactIds),
+            : loadFilterAudienceContacts(filters, filters.limit ?? MAX_BULK_CAMPAIGN_AUDIENCE_LIMIT, eligibleYCloudContactIds),
+        loadSelectedAudienceContacts(filters.selectedContactIds, eligibleYCloudContactIds),
         prisma.contact.count({
-            where: buildAudienceWhere(filters),
+            where: buildAudienceWhere(filters, eligibleYCloudContactIds),
         }),
     ]);
 
@@ -565,7 +677,7 @@ export async function getBulkCampaignAudiencePreview(filters: BulkCampaignAudien
                 filterContacts.some((candidate) => candidate.id === contact.id) ? "filters" : "selected",
             ),
         ),
-        ...filters.manualEntries.map((entry) => buildPreviewRecipientFromManualEntry(entry)),
+        ...(eligibleYCloudContactIds ? [] : filters.manualEntries.map((entry) => buildPreviewRecipientFromManualEntry(entry))),
     ]);
 
     const sourceBreakdown = [
@@ -597,6 +709,13 @@ export async function getBulkCampaignAudiencePreview(filters: BulkCampaignAudien
         },
         sourceBreakdown,
         statusBreakdown,
+        ycloudWindow: {
+            enabled: Boolean(eligibleYCloudContactIds),
+            eligibleContacts: eligibleYCloudContactIds ? eligibleYCloudContactIds.length : null,
+            onlyOpenWindow: filters.onlyOpenYCloudWindow,
+            lastInboundFrom: filters.lastInboundFrom || null,
+            lastInboundTo: filters.lastInboundTo || null,
+        },
     } satisfies BulkCampaignAudiencePreview;
 }
 
@@ -696,6 +815,8 @@ export async function createBulkCampaign(input: BulkCampaignUpsertInput, created
         data: {
             name: input.name,
             description: input.description || null,
+            sourceType: input.sourceType,
+            sourceId: input.sourceId,
             type: input.type,
             mediaUrl: input.mediaUrl,
             mediaType: input.mediaType,
@@ -756,6 +877,8 @@ export async function updateBulkCampaign(id: string, input: BulkCampaignUpsertIn
             data: {
                 name: input.name,
                 description: input.description || null,
+                sourceType: input.sourceType,
+                sourceId: input.sourceId,
                 type: input.type,
                 mediaUrl: input.mediaUrl,
                 mediaType: input.mediaType,
@@ -1328,6 +1451,8 @@ async function processClaimedCampaign(campaignId: string, lockId: string) {
         }
 
         const settings = await getSystemSettingsOrDefaults();
+        const campaignSourceType = normalizeMessageSourceType(campaign.sourceType);
+        const campaignSourceId = campaign.sourceId || resolveMessageSourceId(campaignSourceType, settings);
         const variant = chooseVariant(campaign.variants, campaign.type as OutboundMessageType);
 
         if (!variant) {
@@ -1342,8 +1467,42 @@ async function processClaimedCampaign(campaignId: string, lockId: string) {
             try {
                 const conversation = recipient.conversationId
                     ? await prisma.conversation.findUnique({ where: { id: recipient.conversationId } })
-                    : await findOrCreateActiveConversationForContact(recipient.contactId);
-                const activeConversation = conversation || await findOrCreateActiveConversationForContact(recipient.contactId);
+                    : null;
+                const activeConversation = conversation?.sourceType === campaignSourceType &&
+                    (conversation.sourceId || null) === (campaignSourceId || null)
+                    ? conversation
+                    : await findOrCreateActiveConversationForContactSource({
+                        contactId: recipient.contactId,
+                        sourceType: campaignSourceType,
+                        sourceId: campaignSourceId,
+                        defaults: {
+                            botActive: true,
+                        },
+                    });
+
+                if (
+                    campaignSourceType === MESSAGE_SOURCE_YCLOUD &&
+                    (!activeConversation.sessionExpiresAt ||
+                        activeConversation.sessionExpiresAt.getTime() <= Date.now() + YCLOUD_OPEN_WINDOW_GRACE_MS)
+                ) {
+                    await prisma.bulkCampaignRecipient.update({
+                        where: { id: recipient.id },
+                        data: {
+                            status: "skipped",
+                            conversationId: activeConversation.id,
+                            lastError: "Ventana YCloud cerrada; usa una plantilla aprobada para este contacto.",
+                        },
+                    });
+
+                    await refreshBulkCampaignStats(campaignId);
+                    await releaseCampaignLockForNextRecipient(
+                        campaign,
+                        lockId,
+                        recipient.sequenceIndex,
+                        new Date(),
+                    );
+                    return;
+                }
                 const renderedContent = renderTemplateContent(variant.content || "", {
                     contact: {
                         name: recipient.contact.name,
@@ -1357,6 +1516,8 @@ async function processClaimedCampaign(campaignId: string, lockId: string) {
                     conversationId: activeConversation.id,
                     content: renderedContent,
                     type: campaign.type as OutboundMessageType,
+                    sourceType: campaignSourceType,
+                    sourceId: campaignSourceId,
                     mediaUrl: campaign.type === "text" ? null : campaign.mediaUrl,
                     mediaType: campaign.type === "text" ? null : campaign.mediaType,
                     mediaFileName: campaign.type === "text" ? null : campaign.mediaFileName,

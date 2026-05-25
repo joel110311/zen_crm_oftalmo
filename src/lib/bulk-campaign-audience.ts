@@ -2,8 +2,10 @@ import { isPlausiblePhoneDigits, normalizePhoneDigits } from "@/lib/phone";
 
 export const MAX_BULK_CAMPAIGN_AUDIENCE_LIMIT = 5000;
 export const BULK_CAMPAIGN_AUDIENCE_MODES = ["filters", "selected", "mixed"] as const;
+export const BULK_CAMPAIGN_AUDIENCE_SOURCES = ["any", "wuzapi", "ycloud"] as const;
 
 export type BulkCampaignAudienceMode = (typeof BULK_CAMPAIGN_AUDIENCE_MODES)[number];
+export type BulkCampaignAudienceSource = (typeof BULK_CAMPAIGN_AUDIENCE_SOURCES)[number];
 
 export type BulkCampaignManualEntry = {
     phone: string;
@@ -17,6 +19,11 @@ export type BulkCampaignAudienceFilters = {
     tags: string[];
     query: string;
     limit: number | null;
+    sourceType: BulkCampaignAudienceSource;
+    sourceId: string;
+    onlyOpenYCloudWindow: boolean;
+    lastInboundFrom: string;
+    lastInboundTo: string;
     selectedContactIds: string[];
     manualEntries: BulkCampaignManualEntry[];
 };
@@ -46,6 +53,14 @@ export function normalizeBulkCampaignAudienceMode(value: unknown): BulkCampaignA
         return normalized as BulkCampaignAudienceMode;
     }
     return "filters";
+}
+
+export function normalizeBulkCampaignAudienceSource(value: unknown): BulkCampaignAudienceSource {
+    const normalized = normalizeString(value).toLowerCase();
+    if (BULK_CAMPAIGN_AUDIENCE_SOURCES.includes(normalized as BulkCampaignAudienceSource)) {
+        return normalized as BulkCampaignAudienceSource;
+    }
+    return "any";
 }
 
 function parseManualLine(line: string): BulkCampaignManualEntry | null {
@@ -158,6 +173,11 @@ export function normalizeBulkCampaignAudienceFilters(
         tags,
         query,
         limit: limitRaw > 0 ? limitRaw : null,
+        sourceType: normalizeBulkCampaignAudienceSource(record.sourceType),
+        sourceId: normalizeString(record.sourceId),
+        onlyOpenYCloudWindow: record.onlyOpenYCloudWindow === true,
+        lastInboundFrom: normalizeString(record.lastInboundFrom),
+        lastInboundTo: normalizeString(record.lastInboundTo),
         selectedContactIds: normalizeStringList(record.selectedContactIds),
         manualEntries: normalizeBulkCampaignManualEntries(record.manualEntries),
     };

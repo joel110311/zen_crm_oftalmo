@@ -212,6 +212,63 @@ export function BulkCampaignAudienceTab({
                             </div>
                         </div>
 
+                        {form.sourceType === "ycloud" ? (
+                            <div className="mt-4 rounded-xl border border-sky-200/70 bg-sky-50/70 p-4 text-sky-950 dark:border-sky-500/25 dark:bg-sky-500/10 dark:text-sky-100">
+                                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                                    <div>
+                                        <p className="text-sm font-semibold">Seguimiento YCloud por ventana abierta</p>
+                                        <p className="mt-1 text-xs leading-5 opacity-80">
+                                            Filtra contactos que escribieron al número API en un rango específico y que todavía tienen ventana de 24h abierta.
+                                        </p>
+                                    </div>
+                                    <Badge variant="outline" className="w-fit bg-background/70">
+                                        {audiencePreview?.ycloudWindow?.eligibleContacts ?? 0} elegibles
+                                    </Badge>
+                                </div>
+
+                                <div className="mt-4 grid gap-3 md:grid-cols-3">
+                                    <label className="flex items-center gap-3 rounded-xl border bg-background/75 px-3 py-2 text-sm">
+                                        <Checkbox
+                                            checked={form.audienceOnlyOpenYCloudWindow}
+                                            onCheckedChange={(checked) =>
+                                                onFormChange((current) => ({
+                                                    ...current,
+                                                    audienceOnlyOpenYCloudWindow: checked === true,
+                                                }))
+                                            }
+                                        />
+                                        Solo ventana abierta
+                                    </label>
+                                    <div className="space-y-1.5">
+                                        <Label>Último inbound desde</Label>
+                                        <Input
+                                            type="datetime-local"
+                                            value={form.audienceLastInboundFrom}
+                                            onChange={(event) =>
+                                                onFormChange((current) => ({
+                                                    ...current,
+                                                    audienceLastInboundFrom: event.target.value,
+                                                }))
+                                            }
+                                        />
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <Label>Último inbound hasta</Label>
+                                        <Input
+                                            type="datetime-local"
+                                            value={form.audienceLastInboundTo}
+                                            onChange={(event) =>
+                                                onFormChange((current) => ({
+                                                    ...current,
+                                                    audienceLastInboundTo: event.target.value,
+                                                }))
+                                            }
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                        ) : null}
+
                         <div className="mt-4 min-w-0 overflow-x-auto rounded-xl border bg-background/85">
                             <div className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3">
                                 <div>
@@ -291,6 +348,11 @@ export function BulkCampaignAudienceTab({
                         <p className="mt-1 text-sm text-muted-foreground">
                             Un número por línea. Puedes usar <span className="font-medium text-foreground">Nombre | teléfono</span> o solo teléfono.
                         </p>
+                        {form.sourceType === "ycloud" ? (
+                            <div className="mt-3 rounded-xl border border-amber-200/70 bg-amber-50/80 px-3 py-2 text-xs leading-5 text-amber-900">
+                                En YCloud con mensaje libre solo se consideran contactos que ya tienen conversación API con ventana abierta. Los números manuales se omiten para evitar envíos fuera de regla; para ellos usa Plantillas YCloud.
+                            </div>
+                        ) : null}
                         <Textarea
                             value={form.manualAudienceText}
                             onChange={(event) =>

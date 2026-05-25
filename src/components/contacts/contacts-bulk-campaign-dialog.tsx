@@ -14,6 +14,13 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/use-toast";
@@ -49,6 +56,7 @@ type QuickCampaignFormState = {
     followUpDelayDays: number;
     selectedTemplateId: string | null;
     selectedTemplateName: string;
+    sourceType: "wuzapi" | "ycloud";
 };
 
 type ContactsBulkCampaignDialogProps = {
@@ -74,6 +82,7 @@ const DEFAULT_QUICK_CAMPAIGN_FORM: QuickCampaignFormState = {
     followUpDelayDays: 2,
     selectedTemplateId: null,
     selectedTemplateName: "",
+    sourceType: "wuzapi",
 };
 
 function buildQuickCampaignName(count: number) {
@@ -272,6 +281,8 @@ export function ContactsBulkCampaignDialog({
             const payload = {
                 name: form.name.trim(),
                 description: `Envio rapido desde Contactos para ${contacts.length} destinatario(s).`,
+                sourceType: form.sourceType,
+                sourceId: null,
                 type: form.type,
                 mediaUrl: form.type === "text" ? null : form.mediaUrl,
                 mediaType: form.type === "text" ? null : form.mediaType,
@@ -291,6 +302,11 @@ export function ContactsBulkCampaignDialog({
                     tags: [],
                     query: "",
                     limit: null,
+                    sourceType: form.sourceType === "ycloud" ? "ycloud" : "any",
+                    sourceId: "",
+                    onlyOpenYCloudWindow: form.sourceType === "ycloud",
+                    lastInboundFrom: "",
+                    lastInboundTo: "",
                     selectedContactIds: contacts.map((contact) => contact.id),
                     manualEntries: [],
                 },
@@ -336,9 +352,11 @@ export function ContactsBulkCampaignDialog({
                 void fetch(`/api/templates/${form.selectedTemplateId}/use`, { method: "POST" });
             }
 
+            const recipientCount = createResult.campaign?.totalRecipients ?? contacts.length;
+
             toast({
                 title: submitLabel === "Programar envio" ? "Envio programado" : "Envio iniciado",
-                description: `${contacts.length} contacto${contacts.length === 1 ? "" : "s"} quedaron dentro de la campana.`,
+                description: `${recipientCount} contacto${recipientCount === 1 ? "" : "s"} quedaron dentro de la campana.`,
             });
 
             handleOpenChange(false);
@@ -433,6 +451,33 @@ export function ContactsBulkCampaignDialog({
                                         }
                                         className="h-11 rounded-xl"
                                     />
+                                </div>
+
+                                <div className="space-y-2">
+                                    <Label>Canal de salida</Label>
+                                    <Select
+                                        value={form.sourceType}
+                                        onValueChange={(value: "wuzapi" | "ycloud") =>
+                                            setForm((current) => ({
+                                                ...current,
+                                                sourceType: value,
+                                                followUpCount: value === "ycloud" ? 0 : current.followUpCount,
+                                            }))
+                                        }
+                                    >
+                                        <SelectTrigger className="h-11 rounded-xl">
+                                            <SelectValue placeholder="Selecciona canal" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="wuzapi">WhatsApp Wuzapi</SelectItem>
+                                            <SelectItem value="ycloud">WhatsApp API YCloud (ventana abierta)</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                    <p className="text-xs text-muted-foreground">
+                                        {form.sourceType === "ycloud"
+                                            ? "Solo se incluiran contactos seleccionados que tengan ventana YCloud abierta."
+                                            : "Usa el envio masivo Wuzapi actual."}
+                                    </p>
                                 </div>
 
                                 <div className="space-y-2">

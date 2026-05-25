@@ -2215,12 +2215,17 @@ export default function InboxPage() {
             const formData = new FormData();
             formData.append("file", audioBlob, `nota-de-voz-${Date.now()}.${ext}`);
             const uploadRes = await fetch("/api/upload", { method: "POST", body: formData });
-            const uploadResult = await uploadRes.json();
+            const uploadResult = await uploadRes.json().catch(() => ({}));
+            if (!uploadRes.ok || !uploadResult.success) {
+                throw new Error(uploadResult.error || "No se pudo subir el audio.");
+            }
             if (uploadResult.success) {
                 await sendMediaMessage(uploadResult.url, "audio", uploadResult.fileName, mimeType);
             }
         } catch (error) {
             console.error("Upload audio error:", error);
+            const message = error instanceof Error ? error.message : "Error inesperado";
+            alert(`Error al enviar audio: ${message}`);
         } finally {
             setIsUploading(false);
         }
@@ -2236,16 +2241,20 @@ export default function InboxPage() {
             const formData = new FormData();
             formData.append("file", file);
             const response = await fetch("/api/upload", { method: "POST", body: formData });
-            const result = await response.json();
+            const result = await response.json().catch(() => ({}));
+            if (!response.ok || !result.success) {
+                throw new Error(result.error || "No se pudo subir el archivo.");
+            }
             if (result.success) {
-                if (result.mediaCategory === "image") {
-                    setPendingFile({ ...result, previewUrl: URL.createObjectURL(file) });
-                } else {
-                    await sendMediaMessage(result.url, result.mediaCategory, result.fileName, result.mimeType);
-                }
+                const previewUrl = ["image", "video"].includes(result.mediaCategory)
+                    ? URL.createObjectURL(file)
+                    : undefined;
+                setPendingFile({ ...result, previewUrl });
             }
         } catch (error) {
             console.error("Upload error:", error);
+            const message = error instanceof Error ? error.message : "Error inesperado";
+            alert(`Error al subir archivo: ${message}`);
         } finally {
             setIsUploading(false);
         }
@@ -3186,6 +3195,18 @@ export default function InboxPage() {
                                                 alt="Preview"
                                                 className="h-16 w-16 rounded-xl object-cover"
                                             />
+                                        ) : pendingFile.mediaCategory === "video" ? (
+                                            <video
+                                                src={pendingFile.previewUrl || getSafeMediaUrl(pendingFile.url)}
+                                                className="h-16 w-16 rounded-xl object-cover"
+                                                muted
+                                                playsInline
+                                                preload="metadata"
+                                            />
+                                        ) : pendingFile.mediaCategory === "audio" ? (
+                                            <div className="flex h-16 w-16 items-center justify-center rounded-xl bg-primary/10">
+                                                <Mic className="h-8 w-8 text-primary" />
+                                            </div>
                                         ) : (
                                             <div className="flex h-16 w-16 items-center justify-center rounded-xl bg-primary/10">
                                                 <FileText className="h-8 w-8 text-primary" />

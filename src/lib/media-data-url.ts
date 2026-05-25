@@ -23,8 +23,14 @@ const MIME_BY_EXTENSION: Record<string, string> = {
     ".m4a": "audio/mp4",
     ".aac": "audio/aac",
     ".mp4": "video/mp4",
+    ".m4v": "video/mp4",
     ".mov": "video/quicktime",
     ".webm": "video/webm",
+    ".3gp": "video/3gpp",
+    ".3gpp": "video/3gpp",
+    ".avi": "video/x-msvideo",
+    ".mpeg": "video/mpeg",
+    ".mpg": "video/mpeg",
 };
 
 const EXTENSION_BY_MIME: Record<string, string> = {
@@ -38,6 +44,17 @@ const EXTENSION_BY_MIME: Record<string, string> = {
     "image/heif": ".heif",
     "image/avif": ".avif",
     "application/pdf": ".pdf",
+    "audio/ogg": ".ogg",
+    "audio/mpeg": ".mp3",
+    "audio/mp4": ".m4a",
+    "audio/aac": ".aac",
+    "audio/wav": ".wav",
+    "video/mp4": ".mp4",
+    "video/quicktime": ".mov",
+    "video/webm": ".webm",
+    "video/3gpp": ".3gp",
+    "video/x-msvideo": ".avi",
+    "video/mpeg": ".mpeg",
 };
 
 function inferMimeType(fileName: string, explicitMimeType?: string | null) {

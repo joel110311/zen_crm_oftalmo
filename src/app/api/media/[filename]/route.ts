@@ -14,6 +14,13 @@ const MIME_TYPES: Record<string, string> = {
     ".amr": "audio/amr",
     ".webm": "audio/webm",
     ".mp4": "video/mp4",
+    ".m4v": "video/mp4",
+    ".mov": "video/quicktime",
+    ".3gp": "video/3gpp",
+    ".3gpp": "video/3gpp",
+    ".avi": "video/x-msvideo",
+    ".mpeg": "video/mpeg",
+    ".mpg": "video/mpeg",
     ".jpg": "image/jpeg",
     ".jpeg": "image/jpeg",
     ".png": "image/png",
@@ -42,11 +49,7 @@ function buildMissingMediaPlaceholderSvg(label: string) {
 `.trim();
 }
 
-export async function GET(
-    _request: NextRequest,
-    { params }: { params: Promise<{ filename: string }> }
-) {
-    const { filename } = await params;
+async function buildMediaResponse(filename: string, includeBody: boolean) {
 
     // Security: only allow alphanumeric, dash, underscore, dot
     if (!/^[\w\-\.]+$/.test(filename)) {
@@ -78,7 +81,7 @@ export async function GET(
 
     console.log(`[MEDIA] Serving ${filename} as ${contentType} (${fileBuffer.length} bytes)`);
 
-    return new NextResponse(fileBuffer, {
+    return new NextResponse(includeBody ? fileBuffer : null, {
         status: 200,
         headers: {
             "Content-Type": contentType,
@@ -88,4 +91,20 @@ export async function GET(
             "Access-Control-Allow-Origin": "*",
         },
     });
+}
+
+export async function GET(
+    _request: NextRequest,
+    { params }: { params: Promise<{ filename: string }> }
+) {
+    const { filename } = await params;
+    return buildMediaResponse(filename, true);
+}
+
+export async function HEAD(
+    _request: NextRequest,
+    { params }: { params: Promise<{ filename: string }> }
+) {
+    const { filename } = await params;
+    return buildMediaResponse(filename, false);
 }

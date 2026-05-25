@@ -43,6 +43,8 @@ function mapCampaignToForm(campaign: CampaignRecord): CampaignFormState {
         name: campaign.name,
         description: campaign.description || "",
         status: campaign.status,
+        sourceType: campaign.sourceType === "ycloud" ? "ycloud" : "wuzapi",
+        sourceId: campaign.sourceId || "",
         type: campaign.type,
         mediaUrl: campaign.mediaUrl,
         mediaType: campaign.mediaType,
@@ -56,11 +58,14 @@ function mapCampaignToForm(campaign: CampaignRecord): CampaignFormState {
         stopOnReply: campaign.stopOnReply,
         followUpCount: campaign.followUpCount,
         followUpDelayDays: campaign.followUpDelayDays,
-        audienceMode: "selected",
+        audienceMode: campaign.audienceFilters?.mode || "selected",
         audienceStatuses: campaign.audienceFilters?.statuses || [],
         audienceTags: (campaign.audienceFilters?.tags || []).join(", "),
         audienceQuery: campaign.audienceFilters?.query || "",
         audienceLimit: campaign.audienceFilters?.limit ? String(campaign.audienceFilters.limit) : "",
+        audienceOnlyOpenYCloudWindow: campaign.audienceFilters?.onlyOpenYCloudWindow ?? (campaign.sourceType === "ycloud"),
+        audienceLastInboundFrom: toLocalDateTimeValue(campaign.audienceFilters?.lastInboundFrom || null),
+        audienceLastInboundTo: toLocalDateTimeValue(campaign.audienceFilters?.lastInboundTo || null),
         audienceSelectedContactIds: campaign.audienceFilters?.selectedContactIds || [],
         manualAudienceText: formatBulkCampaignManualEntries(campaign.audienceFilters?.manualEntries || []),
         totalRecipients: campaign.totalRecipients,
@@ -176,19 +181,30 @@ export function BulkCampaignManagerPanel() {
     );
 
     const audiencePayload = useMemo(() => ({
-        mode: "selected" as const,
+        mode: form.audienceMode,
         statuses: form.audienceStatuses,
         tags: splitCommaSeparatedValues(form.audienceTags),
         query: form.audienceQuery,
         limit: form.audienceLimit.trim() ? Number.parseInt(form.audienceLimit, 10) : null,
+        sourceType: form.sourceType === "ycloud" ? "ycloud" : "any",
+        sourceId: form.sourceId.trim(),
+        onlyOpenYCloudWindow: form.sourceType === "ycloud" ? form.audienceOnlyOpenYCloudWindow : false,
+        lastInboundFrom: form.audienceLastInboundFrom ? new Date(form.audienceLastInboundFrom).toISOString() : "",
+        lastInboundTo: form.audienceLastInboundTo ? new Date(form.audienceLastInboundTo).toISOString() : "",
         selectedContactIds: form.audienceSelectedContactIds,
         manualEntries,
     }), [
+        form.audienceMode,
         form.audienceLimit,
+        form.audienceLastInboundFrom,
+        form.audienceLastInboundTo,
+        form.audienceOnlyOpenYCloudWindow,
         form.audienceQuery,
         form.audienceSelectedContactIds,
         form.audienceStatuses,
         form.audienceTags,
+        form.sourceId,
+        form.sourceType,
         manualEntries,
     ]);
 
@@ -269,6 +285,8 @@ export function BulkCampaignManagerPanel() {
             const payload = {
                 name: form.name,
                 description: form.description,
+                sourceType: form.sourceType,
+                sourceId: form.sourceId.trim() || null,
                 type: form.type,
                 mediaUrl: form.type === "text" ? null : form.mediaUrl,
                 mediaType: form.type === "text" ? null : form.mediaType,
@@ -572,7 +590,7 @@ export function BulkCampaignManagerPanel() {
                         )}
                     </div>
 
-                    <div className="mt-5 grid gap-4 lg:grid-cols-2">
+                    <div className="mt-5 grid gap-4 lg:grid-cols-3">
                         <div className="space-y-2">
                             <Label>Nombre de la acción</Label>
                             <Input
@@ -580,6 +598,35 @@ export function BulkCampaignManagerPanel() {
                                 onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
                                 placeholder="PROMO REACTIVACIÓN 27/03"
                             />
+                        </div>
+                        <div className="space-y-2">
+                            <Label>Número / canal de salida</Label>
+                            <Select
+                                value={form.sourceType}
+                                onValueChange={(value: CampaignFormState["sourceType"]) =>
+                                    setForm((current) => ({
+                                        ...current,
+                                        sourceType: value,
+                                        sourceId: "",
+                                        audienceOnlyOpenYCloudWindow: value === "ycloud" ? true : current.audienceOnlyOpenYCloudWindow,
+                                        audienceMode: value === "ycloud" ? "filters" : current.audienceMode,
+                                        followUpCount: value === "ycloud" ? 0 : current.followUpCount,
+                                    }))
+                                }
+                            >
+                                <SelectTrigger className="w-full">
+                                    <SelectValue placeholder="Selecciona canal" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="wuzapi">WhatsApp Wuzapi</SelectItem>
+                                    <SelectItem value="ycloud">WhatsApp API YCloud</SelectItem>
+                                </SelectContent>
+                            </Select>
+                            <p className="text-xs text-muted-foreground">
+                                {form.sourceType === "ycloud"
+                                    ? "YCloud solo enviara mensajes libres a ventanas abiertas; fuera de ventana usa Plantillas YCloud."
+                                    : "Wuzapi mantiene el envio masivo actual sin regla de ventana 24h."}
+                            </p>
                         </div>
                         <div className="space-y-2">
                             <Label>Tipo de envío</Label>

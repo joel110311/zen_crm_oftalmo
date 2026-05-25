@@ -263,6 +263,8 @@ model BulkCampaign {
   description           String?
   status                String    @default("draft") // draft, running, paused, completed, cancelled, failed
   audienceFilters       Json?
+  sourceType            String    @default("wuzapi") @map("source_type") // wuzapi, ycloud
+  sourceId              String?   @map("source_id") // selected sender account / number
   type                  String    @default("text") // text, image, document
   mediaUrl              String?
   mediaType             String?
@@ -297,6 +299,7 @@ model BulkCampaign {
   recipients BulkCampaignRecipient[]
 
   @@index([status, nextRunAt])
+  @@index([sourceType, sourceId])
   @@index([createdAt(sort: Desc)])
 }
 

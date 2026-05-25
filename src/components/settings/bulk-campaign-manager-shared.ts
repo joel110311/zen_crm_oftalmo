@@ -15,6 +15,11 @@ export type CampaignAudienceFilters = {
     tags?: string[];
     query?: string;
     limit?: number | null;
+    sourceType?: "any" | "wuzapi" | "ycloud";
+    sourceId?: string;
+    onlyOpenYCloudWindow?: boolean;
+    lastInboundFrom?: string;
+    lastInboundTo?: string;
     selectedContactIds?: string[];
     manualEntries?: BulkCampaignManualEntry[];
 };
@@ -25,6 +30,8 @@ export type CampaignRecord = {
     description: string | null;
     status: string;
     audienceFilters: CampaignAudienceFilters | null;
+    sourceType?: "wuzapi" | "ycloud";
+    sourceId?: string | null;
     type: "text" | "image" | "document";
     mediaUrl: string | null;
     mediaType: string | null;
@@ -94,6 +101,13 @@ export type AudiencePreview = {
         status: string;
         value: number;
     }>;
+    ycloudWindow?: {
+        enabled: boolean;
+        eligibleContacts: number | null;
+        onlyOpenWindow: boolean;
+        lastInboundFrom: string | null;
+        lastInboundTo: string | null;
+    };
 };
 
 export type CampaignVariantFormState = {
@@ -121,11 +135,16 @@ export type CampaignFormState = {
     stopOnReply: boolean;
     followUpCount: number;
     followUpDelayDays: number;
+    sourceType: "wuzapi" | "ycloud";
+    sourceId: string;
     audienceMode: BulkCampaignAudienceMode;
     audienceStatuses: string[];
     audienceTags: string;
     audienceQuery: string;
     audienceLimit: string;
+    audienceOnlyOpenYCloudWindow: boolean;
+    audienceLastInboundFrom: string;
+    audienceLastInboundTo: string;
     audienceSelectedContactIds: string[];
     manualAudienceText: string;
     totalRecipients: number;
@@ -158,11 +177,16 @@ export const EMPTY_FORM: CampaignFormState = {
     stopOnReply: true,
     followUpCount: 0,
     followUpDelayDays: 2,
+    sourceType: "wuzapi",
+    sourceId: "",
     audienceMode: "selected",
     audienceStatuses: ["lead"],
     audienceTags: "",
     audienceQuery: "",
     audienceLimit: "",
+    audienceOnlyOpenYCloudWindow: true,
+    audienceLastInboundFrom: "",
+    audienceLastInboundTo: "",
     audienceSelectedContactIds: [],
     manualAudienceText: "",
     totalRecipients: 0,
