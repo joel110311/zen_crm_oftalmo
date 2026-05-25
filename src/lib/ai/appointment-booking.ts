@@ -54,24 +54,32 @@ export type AppointmentHandlingResult =
         };
     };
 
-const APPOINTMENT_KEYWORDS = [
-    "cita",
-    "agendar",
-    "agenda",
-    "agendame",
-    "programa",
-    "programar",
-    "reunion",
-    "reunion",
-    "llamada",
-    "consulta",
-    "demo",
-    "reservar",
-    "reservame",
-    "horario",
-    "horarios",
-    "disponibilidad",
+const STRONG_APPOINTMENT_PATTERNS = [
+    /\b(cita|agendar|agendame|agenda|programar|reservar|reservame|reunion|reunión|llamada|consulta|demo|calendario)\b/i,
+    /\b(quiero|quisiera|puedo|podemos|me gustaria|me gustaría)\s+(ir|pasar|asistir|verlos|visitarlos|atenderme)\b/i,
+    /\b(me pueden|pueden|podrian|podrían)\s+(atender|recibir|ver)\b/i,
 ];
+
+const APPOINTMENT_AVAILABILITY_PATTERNS = [
+    /\b(disponibilidad|disponible|horario|hora|espacio)\b.{0,50}\b(cita|agendar|agenda|atender|atencion|atención|consulta|demo|reunion|reunión|llamada)\b/i,
+    /\b(cita|agendar|agenda|atender|atencion|atención|consulta|demo|reunion|reunión|llamada)\b.{0,50}\b(disponibilidad|disponible|horario|hora|espacio)\b/i,
+];
+
+const APPOINTMENT_FOLLOW_UP_PROMPTS = [
+    /\b(que|qué)\s+d[ií]a\b.{0,80}\b(cita|agendar|calendario|horarios libres|disponibilidad real)\b/i,
+    /\b(cita|agendar|calendario|horarios libres|disponibilidad real)\b.{0,80}\b(que|qué)\s+d[ií]a\b/i,
+    /\b(horario|hora)\s+que\s+prefieras\b/i,
+    /\bresponde\s+con\s+el\s+horario\b/i,
+];
+
+const EVENT_OR_QUOTE_CONTEXT_PATTERNS = [
+    /\b(fecha|d[ií]a)\b.{0,40}\b(evento|cotizaci[oó]n|cotizar|pedido|entrega)\b/i,
+    /\b(evento|cotizaci[oó]n|cotizar|pedido|entrega)\b.{0,40}\b(fecha|d[ií]a)\b/i,
+    /\b(cuantas|cuántas|piezas|unidades|tipo prefieres|glowsync|audior[ií]tmicas)\b/i,
+];
+
+const DATE_OR_TIME_ANSWER_PATTERN =
+    /\b(hoy|mañana|manana|pasado mañana|pasado manana|lunes|martes|miercoles|miércoles|jueves|viernes|sabado|sábado|domingo|enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre|\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?|\d{1,2}:\d{2}|\d{1,2}\s*(?:am|pm|a\.m\.|p\.m\.))\b/i;
 
 function stripCodeFences(value: string) {
     const fenced = value.match(/```(?:json)?\s*([\s\S]*?)```/i);
@@ -90,9 +98,52 @@ function parsePlannerResult(raw: string): PlannerResult | null {
     }
 }
 
-function hasAppointmentContext(history: string[], latestUserMessage: string) {
-    const combined = [latestUserMessage, ...history].join(" ").toLowerCase();
-    return APPOINTMENT_KEYWORDS.some((keyword) => combined.includes(keyword));
+function hasExplicitAppointmentIntent(text: string) {
+    return (
+        STRONG_APPOINTMENT_PATTERNS.some((pattern) => pattern.test(text)) ||
+        APPOINTMENT_AVAILABILITY_PATTERNS.some((pattern) => pattern.test(text))
+    );
+}
+
+function isEventOrQuoteDataCollectionContext(text: string) {
+    return EVENT_OR_QUOTE_CONTEXT_PATTERNS.some((pattern) => pattern.test(text));
+}
+
+function looksLikeDateOrTimeAnswer(text: string) {
+    const normalized = text.trim();
+    if (!normalized || normalized.length > 80) return false;
+    return DATE_OR_TIME_ANSWER_PATTERN.test(normalized);
+}
+
+function getLastAssistantMessage(
+    messages: Array<{ content: string; direction: string; senderType: string | null }>,
+) {
+    return messages.find((message) =>
+        message.direction === "outbound" || message.senderType === "bot",
+    )?.content || "";
+}
+
+function assistantRequestedAppointmentDetail(text: string) {
+    return APPOINTMENT_FOLLOW_UP_PROMPTS.some((pattern) => pattern.test(text));
+}
+
+function hasAppointmentContext(
+    messages: Array<{ content: string; direction: string; senderType: string | null }>,
+    latestUserMessage: string,
+) {
+    if (hasExplicitAppointmentIntent(latestUserMessage)) {
+        return true;
+    }
+
+    const lastAssistantMessage = getLastAssistantMessage(messages);
+    if (isEventOrQuoteDataCollectionContext(lastAssistantMessage)) {
+        return false;
+    }
+
+    return (
+        looksLikeDateOrTimeAnswer(latestUserMessage) &&
+        assistantRequestedAppointmentDetail(lastAssistantMessage)
+    );
 }
 
 function buildConversationTranscript(
@@ -300,11 +351,7 @@ async function planAppointmentFromConversation(
         return null;
     }
 
-    const historyTexts = conversation.messages
-        .map((message) => message.content)
-        .filter(Boolean);
-
-    if (!hasAppointmentContext(historyTexts, latestUserMessage)) {
+    if (!hasAppointmentContext(conversation.messages, latestUserMessage)) {
         return null;
     }
 
@@ -343,6 +390,9 @@ REGLAS
 - Usa el historial para resolver mensajes como "manana a las 3" o "si, a esa hora".
 - Solo marca intent = "schedule" si realmente quiere una cita, reunion, llamada, demo o consulta.
 - Si pregunta por horarios o disponibilidad para una cita, tambien es intent = "schedule".
+- Si la fecha es del evento, entrega, pedido o cotizacion, NO es una cita del CRM: usa intent = "other" y action = "ignore".
+- Si el asistente pregunto "que fecha es tu evento" o pidio datos para cotizar, una respuesta como "17 de octubre" NO debe activar agenda.
+- No niegues atencion por calendario salvo que el cliente haya pedido claramente agendar/ser atendido en una fecha u horario.
 - Si falta fecha o falta hora, usa action = "ask_missing".
 - Si menciona un dia pero no una hora, localDate debe tener ese dia y localTime debe ser null.
 - Si menciona una hora pero no un dia, localTime debe tener esa hora y localDate debe ser null.
