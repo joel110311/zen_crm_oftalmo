@@ -7,7 +7,7 @@ import {
     Search, MoreVertical, Phone, Video, Paperclip, Send, Mic, X,
     FileText, Download, Square, Star, BellOff, Bell, Archive, Trash2,
     Info, Users, MessageSquare, ChevronRight, ChevronDown, Mail, Tag, Clock,
-    Eraser, Image as ImageIcon, Play, Pause, Bot, User as UserIcon, AlertTriangle, LayoutTemplate, Lock,
+    Eraser, Image as ImageIcon, Play, Pause, Bot, User as UserIcon, AlertTriangle, LayoutTemplate,
     Reply, Copy, SmilePlus, Forward, CheckCircle2
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -575,7 +575,7 @@ function ConversationSourceIcon({
 
     return (
         <span
-            title={isYCloud ? "YCloud API oficial" : "Wuzapi dispositivo vinculado"}
+            title={isYCloud ? "YCloud API oficial" : "WhatsApp por QR"}
             className={cn(
                 "inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border shadow-sm ring-2 ring-background",
                 isYCloud
@@ -2664,9 +2664,6 @@ export default function InboxPage() {
                             {filteredConversations.map((chat) => {
                                 const currentModeLabel = getConversationModeLabel(chat);
                                 const chatTransportReady = isConversationTransportReady(chat);
-                                const channelBlockedLabel = chat.sourceType === "ycloud"
-                                    ? "YCloud sin configurar"
-                                    : "Wuzapi desvinculado";
                                 return (
                                 <button
                                     key={chat.id}
@@ -2724,12 +2721,6 @@ export default function InboxPage() {
                                         <p className="mt-0.5 text-[11px] leading-tight text-muted-foreground truncate">
                                             {getLastMessagePreview(chat)}
                                         </p>
-                                        {!chatTransportReady && (
-                                            <span className="mt-1 inline-flex max-w-full items-center gap-1 rounded-full border border-amber-300/70 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
-                                                <Lock className="h-3 w-3 shrink-0" />
-                                                <span className="truncate">{channelBlockedLabel}</span>
-                                            </span>
-                                        )}
                                     </div>
                                     <div className="flex shrink-0 flex-col items-end gap-0.5 pt-0.5">
                                         <span className="text-[10px] font-medium text-muted-foreground/85 whitespace-nowrap">

@@ -754,7 +754,7 @@ export function ContactsBulkCampaignDialog({
                                             <SelectValue placeholder="Selecciona canal" />
                                         </SelectTrigger>
                                         <SelectContent>
-                                            <SelectItem value="wuzapi">WhatsApp Wuzapi</SelectItem>
+                                            <SelectItem value="wuzapi">WhatsApp por QR</SelectItem>
                                             <SelectItem value="ycloud">WhatsApp API YCloud</SelectItem>
                                         </SelectContent>
                                     </Select>
@@ -763,7 +763,7 @@ export function ContactsBulkCampaignDialog({
                                             ? form.type === "template"
                                                 ? "La plantilla puede enviarse aunque el contacto no tenga ventana abierta."
                                                 : "El mensaje libre solo incluira contactos seleccionados con ventana YCloud abierta."
-                                            : "Usa el envio masivo Wuzapi actual."}
+                                            : "Usa el envio masivo actual por WhatsApp QR."}
                                     </p>
                                 </div>
 

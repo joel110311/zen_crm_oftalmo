@@ -656,14 +656,14 @@ export function BulkCampaignManagerPanel() {
                                     <SelectValue placeholder="Selecciona canal" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="wuzapi">WhatsApp Wuzapi</SelectItem>
+                                    <SelectItem value="wuzapi">WhatsApp por QR</SelectItem>
                                     <SelectItem value="ycloud">WhatsApp API YCloud</SelectItem>
                                 </SelectContent>
                             </Select>
                             <p className="text-xs text-muted-foreground">
                                 {form.sourceType === "ycloud"
                                     ? "YCloud solo enviara mensajes libres a ventanas abiertas; fuera de ventana usa Plantillas YCloud."
-                                    : "Wuzapi mantiene el envio masivo actual sin regla de ventana 24h."}
+                                    : "WhatsApp por QR mantiene el envio masivo actual sin regla de ventana 24h."}
                             </p>
                         </div>
                         <div className="space-y-2">

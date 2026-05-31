@@ -69,7 +69,7 @@ export async function DELETE(request: NextRequest) {
         } else if (message.providerMessageId && !message.conversation?.contact?.phone && message.sourceType === "wuzapi") {
             whatsappWarning = "No hay telefono del contacto para sincronizar borrado con WhatsApp.";
         } else if (message.providerMessageId && message.sourceType !== "wuzapi") {
-            whatsappWarning = "Este mensaje proviene de otro origen y no se sincroniza por Wuzapi.";
+            whatsappWarning = "Este mensaje proviene de otro origen y no se sincroniza con WhatsApp.";
         } else if (!message.providerMessageId) {
             whatsappWarning = "Este mensaje no tiene identificador nativo para borrarlo en WhatsApp.";
         }
