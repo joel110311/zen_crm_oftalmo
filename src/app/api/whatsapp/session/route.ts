@@ -12,9 +12,27 @@ import {
     provisionWuzapiInstance,
 } from "@/lib/wuzapi";
 import { clearCrmChatHistory, importWhatsAppHistory } from "@/lib/whatsapp-history-import";
+import { getSystemSettingsOrDefaults } from "@/lib/system-settings";
+
+async function getYCloudSessionSnapshot() {
+    const settings = await getSystemSettingsOrDefaults();
+    const ycloudApiKey = (settings.ycloudApiKey || process.env.YCLOUD_API_KEY || "").trim();
+    const ycloudPhoneId = (settings.ycloudPhoneId || process.env.YCLOUD_WHATSAPP_PHONE_ID || "").trim();
+
+    return {
+        ycloudConfigured: Boolean(ycloudApiKey && ycloudPhoneId),
+        ycloudPhoneId: ycloudPhoneId || null,
+    };
+}
 
 export async function GET(request: NextRequest) {
+    let ycloud = {
+        ycloudConfigured: false,
+        ycloudPhoneId: null as string | null,
+    };
+
     try {
+        ycloud = await getYCloudSessionSnapshot();
         const includeQr = request.nextUrl.searchParams.get("includeQr") === "1";
         const status = await getWuzapiSessionStatus();
 
@@ -30,19 +48,20 @@ export async function GET(request: NextRequest) {
 
         return NextResponse.json({
             configured: true,
+            ...ycloud,
             ...status,
             qrCode,
         });
     } catch (error) {
         if (error instanceof WuzapiConfigError) {
             return NextResponse.json(
-                { configured: false, error: error.message },
+                { configured: false, ...ycloud, error: error.message },
                 { status: 200 },
             );
         }
 
         return NextResponse.json(
-            { configured: true, error: error instanceof Error ? error.message : "No se pudo consultar WhatsApp" },
+            { configured: true, ...ycloud, error: error instanceof Error ? error.message : "No se pudo consultar WhatsApp" },
             { status: 500 },
         );
     }

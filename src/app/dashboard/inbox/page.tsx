@@ -7,7 +7,7 @@ import {
     Search, MoreVertical, Phone, Video, Paperclip, Send, Mic, X,
     FileText, Download, Square, Star, BellOff, Bell, Archive, Trash2,
     Info, Users, MessageSquare, ChevronRight, ChevronDown, Mail, Tag, Clock,
-    Eraser, Image as ImageIcon, Play, Pause, Bot, User as UserIcon, AlertTriangle, LayoutTemplate,
+    Eraser, Image as ImageIcon, Play, Pause, Bot, User as UserIcon, AlertTriangle, LayoutTemplate, Lock,
     Reply, Copy, SmilePlus, Forward, CheckCircle2
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -272,6 +272,8 @@ type WhatsAppSessionStatus = {
     loggedIn?: boolean;
     jid?: string | null;
     qrCode?: string | null;
+    ycloudConfigured?: boolean;
+    ycloudPhoneId?: string | null;
     error?: string;
 };
 
@@ -1192,18 +1194,34 @@ export default function InboxPage() {
     );
     const outboundSourceType = selectedChat?.sourceType || "wuzapi";
 
-    const isWhatsAppTransportReady = Boolean(
+    const isWuzapiTransportReady = Boolean(
         whatsAppSession?.configured &&
         whatsAppSession?.connected &&
         whatsAppSession?.loggedIn &&
         whatsAppSession?.jid,
     );
+    const isYCloudTransportReady = Boolean(whatsAppSession?.ycloudConfigured);
+    const isWhatsAppTransportReady = outboundSourceType === "ycloud"
+        ? isYCloudTransportReady
+        : isWuzapiTransportReady;
+    const isConversationTransportReady = useCallback((conversation: Conversation) => (
+        conversation.sourceType === "ycloud" ? isYCloudTransportReady : isWuzapiTransportReady
+    ), [isWuzapiTransportReady, isYCloudTransportReady]);
     const shouldShowWhatsAppWarning = whatsAppSession !== null && !isWhatsAppTransportReady;
-    const isYCloudReplyWindowExpired = outboundSourceType === "ycloud" && Boolean(selectedChat?.sessionExpiresAt) && (
+    const isYCloudReplyWindowExpired = outboundSourceType === "ycloud" && (
+        !selectedChat?.sessionExpiresAt ||
         !isWindowOpen ||
         (selectedChat?.sessionExpiresAt ? new Date(selectedChat.sessionExpiresAt).getTime() <= Date.now() : false)
     );
     const whatsAppWarningText = useMemo(() => {
+        if (outboundSourceType === "ycloud") {
+            if (!whatsAppSession?.ycloudConfigured) {
+                return "Configura YCloud API Key y Phone Number ID en Configuracion para responder desde este chat.";
+            }
+
+            return "YCloud esta configurado, pero no se pudo validar el estado del canal en este momento.";
+        }
+
         if (whatsAppSession?.error) {
             return whatsAppSession.error;
         }
@@ -1217,7 +1235,7 @@ export default function InboxPage() {
         }
 
         return "No hay un numero de WhatsApp vinculado al CRM. Conectalo en Configuracion para enviar mensajes, usar plantillas y adjuntar archivos.";
-    }, [whatsAppSession]);
+    }, [outboundSourceType, whatsAppSession]);
 
     const refreshConversationsAndSelect = useCallback(async (conversationId: string) => {
         const url = new URL("/api/chat", window.location.origin);
@@ -1493,11 +1511,14 @@ export default function InboxPage() {
                     loggedIn: payload?.loggedIn ?? false,
                     jid: payload?.jid || null,
                     qrCode: payload?.qrCode || null,
+                    ycloudConfigured: Boolean(payload?.ycloudConfigured),
+                    ycloudPhoneId: payload?.ycloudPhoneId || null,
                     error: payload?.error || undefined,
                 });
             } catch (error) {
                 setWhatsAppSession({
                     configured: false,
+                    ycloudConfigured: false,
                     error: error instanceof Error ? error.message : "No se pudo consultar el canal de WhatsApp.",
                 });
             }
@@ -2626,19 +2647,6 @@ export default function InboxPage() {
                                 </button>
                             ))}
                         </div>
-                        {shouldShowWhatsAppWarning && (
-                            <div className="rounded-[1.2rem] border border-amber-200/80 bg-amber-50/95 px-4 py-3 text-amber-950 shadow-[0_16px_34px_-28px_rgba(217,119,6,0.35)]">
-                                <div className="flex items-start gap-3">
-                                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
-                                    <div>
-                                        <p className="text-sm font-semibold">WhatsApp no esta listo en este CRM</p>
-                                        <p className="mt-1 text-xs leading-relaxed text-amber-900/80">
-                                            {whatsAppWarningText}
-                                        </p>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
                     </div>
 
                     <ScrollArea
@@ -2655,6 +2663,10 @@ export default function InboxPage() {
                             )}
                             {filteredConversations.map((chat) => {
                                 const currentModeLabel = getConversationModeLabel(chat);
+                                const chatTransportReady = isConversationTransportReady(chat);
+                                const channelBlockedLabel = chat.sourceType === "ycloud"
+                                    ? "YCloud sin configurar"
+                                    : "Wuzapi desvinculado";
                                 return (
                                 <button
                                     key={chat.id}
@@ -2672,7 +2684,8 @@ export default function InboxPage() {
                                         "grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-2 rounded-[1.05rem] border px-2.5 py-2 text-left transition-all",
                                         selectedChat?.id === chat.id
                                             ? "border-border/70 bg-background/90 shadow-[0_20px_45px_-32px_rgba(15,23,42,0.45)]"
-                                            : "border-transparent bg-transparent hover:border-border/50 hover:bg-background/65 hover:shadow-[0_18px_40px_-34px_rgba(15,23,42,0.35)]"
+                                            : "border-transparent bg-transparent hover:border-border/50 hover:bg-background/65 hover:shadow-[0_18px_40px_-34px_rgba(15,23,42,0.35)]",
+                                        !chatTransportReady && "border-amber-200/70 bg-amber-50/45 dark:border-amber-500/20 dark:bg-amber-500/8",
                                     )}
                                 >
                                     <div className="relative shrink-0">
@@ -2711,6 +2724,12 @@ export default function InboxPage() {
                                         <p className="mt-0.5 text-[11px] leading-tight text-muted-foreground truncate">
                                             {getLastMessagePreview(chat)}
                                         </p>
+                                        {!chatTransportReady && (
+                                            <span className="mt-1 inline-flex max-w-full items-center gap-1 rounded-full border border-amber-300/70 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+                                                <Lock className="h-3 w-3 shrink-0" />
+                                                <span className="truncate">{channelBlockedLabel}</span>
+                                            </span>
+                                        )}
                                     </div>
                                     <div className="flex shrink-0 flex-col items-end gap-0.5 pt-0.5">
                                         <span className="text-[10px] font-medium text-muted-foreground/85 whitespace-nowrap">

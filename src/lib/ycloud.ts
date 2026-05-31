@@ -82,6 +82,28 @@ async function requestYCloud(pathname: string, init: RequestInit) {
     return payload;
 }
 
+function extractYCloudMessageId(response: unknown) {
+    const record = response && typeof response === "object"
+        ? response as Record<string, unknown>
+        : {};
+    const whatsappMessage = record.whatsappMessage && typeof record.whatsappMessage === "object"
+        ? record.whatsappMessage as Record<string, unknown>
+        : undefined;
+
+    for (const candidate of [
+        whatsappMessage?.wamid,
+        record.wamid,
+        whatsappMessage?.id,
+        record.id,
+    ]) {
+        if (typeof candidate === "string" && candidate.trim()) {
+            return candidate.trim();
+        }
+    }
+
+    return null;
+}
+
 export async function sendYCloudTextMessage(to: string, text: string) {
     const { phoneId } = await getYCloudCredentials();
 
@@ -104,15 +126,8 @@ export async function sendYCloudTextMessage(to: string, text: string) {
         body: JSON.stringify(payload),
     });
 
-    const record = response as Record<string, unknown>;
-    const whatsappMessage = record.whatsappMessage as Record<string, unknown> | undefined;
-    const messageId =
-        (typeof whatsappMessage?.id === "string" && whatsappMessage.id) ||
-        (typeof record.id === "string" && record.id) ||
-        null;
-
     return {
-        Id: messageId,
+        Id: extractYCloudMessageId(response),
         raw: response,
     };
 }
@@ -148,15 +163,8 @@ export async function sendYCloudTemplateMessage(params: {
         body: JSON.stringify(payload),
     });
 
-    const record = response as Record<string, unknown>;
-    const whatsappMessage = record.whatsappMessage as Record<string, unknown> | undefined;
-    const messageId =
-        (typeof whatsappMessage?.id === "string" && whatsappMessage.id) ||
-        (typeof record.id === "string" && record.id) ||
-        null;
-
     return {
-        Id: messageId,
+        Id: extractYCloudMessageId(response),
         raw: response,
     };
 }
@@ -199,15 +207,41 @@ export async function sendYCloudMediaMessage(params: {
         body: JSON.stringify(payload),
     });
 
-    const record = response as Record<string, unknown>;
-    const whatsappMessage = record.whatsappMessage as Record<string, unknown> | undefined;
-    const messageId =
-        (typeof whatsappMessage?.id === "string" && whatsappMessage.id) ||
-        (typeof record.id === "string" && record.id) ||
-        null;
+    return {
+        Id: extractYCloudMessageId(response),
+        raw: response,
+    };
+}
+
+export async function sendYCloudReaction(params: {
+    to: string;
+    providerMessageId: string;
+    reaction: string | null;
+}) {
+    const { phoneId } = await getYCloudCredentials();
+
+    if (!phoneId) {
+        throw new Error("YCloud Phone Number ID no configurado.");
+    }
+
+    const payload = {
+        from: formatPhoneE164(phoneId),
+        to: formatPhoneE164(params.to),
+        type: "reaction" as const,
+        reaction: {
+            message_id: params.providerMessageId,
+            emoji: params.reaction || "",
+        },
+        externalId: `zencrm_reaction_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    };
+
+    const response = await requestYCloud(YCLOUD_SEND_MESSAGE_PATH, {
+        method: "POST",
+        body: JSON.stringify(payload),
+    });
 
     return {
-        Id: messageId,
+        Id: extractYCloudMessageId(response),
         raw: response,
     };
 }

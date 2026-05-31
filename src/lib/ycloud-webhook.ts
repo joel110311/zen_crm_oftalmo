@@ -20,7 +20,8 @@ export type YCloudNormalizedMessage = {
 
 export type YCloudWebhookNormalizedEvent =
     | { kind: "message"; message: YCloudNormalizedMessage }
-    | { kind: "status"; providerMessageId: string; status: string; sourceId: string | null }
+    | { kind: "status"; providerMessageId: string; providerMessageIds: string[]; status: string; sourceId: string | null }
+    | { kind: "reaction"; targetProviderMessageId: string; reaction: string | null; sourceId: string | null }
     | { kind: "ignore"; reason: string };
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -34,6 +35,25 @@ function pickString(...values: unknown[]) {
         }
     }
     return "";
+}
+
+function pickOptionalString(value: unknown) {
+    return typeof value === "string" ? value.trim() : null;
+}
+
+function uniqueStrings(values: unknown[]) {
+    const seen = new Set<string>();
+    const result: string[] = [];
+
+    for (const value of values) {
+        if (typeof value !== "string" || !value.trim()) continue;
+        const normalized = value.trim();
+        if (seen.has(normalized)) continue;
+        seen.add(normalized);
+        result.push(normalized);
+    }
+
+    return result;
 }
 
 function normalizePhone(value: string) {
@@ -148,6 +168,26 @@ function extractMessageContent(message: Record<string, unknown>) {
     };
 }
 
+function extractReactionContent(message: Record<string, unknown>) {
+    const messageType = pickString(message.type).toLowerCase();
+    if (messageType !== "reaction") return null;
+
+    const reaction = asRecord(message.reaction);
+    const targetProviderMessageId = pickString(
+        reaction?.message_id,
+        reaction?.messageId,
+        reaction?.messageID,
+        reaction?.wamid,
+    );
+
+    if (!targetProviderMessageId) return null;
+
+    return {
+        targetProviderMessageId,
+        reaction: pickOptionalString(reaction?.emoji),
+    };
+}
+
 export function normalizeYCloudWebhookPayload(
     rawPayload: unknown,
     options?: { fallbackSourceId?: string | null },
@@ -164,6 +204,16 @@ export function normalizeYCloudWebhookPayload(
 
     const inboundMessage = asRecord(payload.whatsappInboundMessage);
     if (eventType === "whatsapp.inbound_message.received" && inboundMessage) {
+        const reaction = extractReactionContent(inboundMessage);
+        if (reaction) {
+            return {
+                kind: "reaction",
+                targetProviderMessageId: reaction.targetProviderMessageId,
+                reaction: reaction.reaction,
+                sourceId: resolveSourceId(payload, inboundMessage, options?.fallbackSourceId || null),
+            };
+        }
+
         const from = normalizePhone(pickString(inboundMessage.from));
         if (!from) {
             return { kind: "ignore", reason: "missing_inbound_from" };
@@ -188,6 +238,16 @@ export function normalizeYCloudWebhookPayload(
     }
 
     if (eventType === "whatsapp.smb.message.echoes" && inboundMessage) {
+        const reaction = extractReactionContent(inboundMessage);
+        if (reaction) {
+            return {
+                kind: "reaction",
+                targetProviderMessageId: reaction.targetProviderMessageId,
+                reaction: reaction.reaction,
+                sourceId: resolveSourceId(payload, inboundMessage, options?.fallbackSourceId || null),
+            };
+        }
+
         const to = normalizePhone(pickString(inboundMessage.to, inboundMessage.from));
         if (!to) {
             return { kind: "ignore", reason: "missing_echo_to" };
@@ -212,7 +272,11 @@ export function normalizeYCloudWebhookPayload(
 
     if (eventType === "whatsapp.message.updated") {
         const messageStatus = asRecord(payload.whatsappMessage) || asRecord(payload.whatsappMessageStatus);
-        const providerMessageId = pickString(messageStatus?.id, messageStatus?.wamid);
+        const providerMessageIds = uniqueStrings([
+            messageStatus?.wamid,
+            messageStatus?.id,
+        ]);
+        const providerMessageId = providerMessageIds[0] || "";
         const status = pickString(messageStatus?.status).toLowerCase();
 
         if (!providerMessageId || !status) {
@@ -222,6 +286,7 @@ export function normalizeYCloudWebhookPayload(
         return {
             kind: "status",
             providerMessageId,
+            providerMessageIds,
             status,
             sourceId: resolveSourceId(payload, messageStatus || {}, options?.fallbackSourceId || null),
         };

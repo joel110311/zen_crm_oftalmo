@@ -183,11 +183,17 @@ async function storeYCloudOutboundEcho(message: YCloudNormalizedMessage) {
 
 async function applyYCloudStatus(params: {
     providerMessageId: string;
+    providerMessageIds?: string[];
     status: string;
     sourceId: string | null;
 }) {
+    const providerMessageIds = (params.providerMessageIds && params.providerMessageIds.length > 0
+        ? params.providerMessageIds
+        : [params.providerMessageId])
+        .filter((value, index, array) => Boolean(value) && array.indexOf(value) === index);
+
     const where = {
-        providerMessageId: params.providerMessageId,
+        providerMessageId: { in: providerMessageIds },
         sourceType: MESSAGE_SOURCE_YCLOUD,
         ...(params.sourceId ? { sourceId: params.sourceId } : {}),
     };
@@ -201,7 +207,7 @@ async function applyYCloudStatus(params: {
     if (!target) {
         target = await prisma.message.findFirst({
             where: {
-                providerMessageId: params.providerMessageId,
+                providerMessageId: { in: providerMessageIds },
                 sourceType: MESSAGE_SOURCE_YCLOUD,
             },
             select: { id: true, conversationId: true, status: true },
@@ -219,6 +225,64 @@ async function applyYCloudStatus(params: {
         data: {
             status: mappedStatus,
         },
+    });
+
+    await prisma.conversation.update({
+        where: { id: target.conversationId },
+        data: { updatedAt: new Date() },
+    });
+
+    revalidatePath("/dashboard/inbox");
+}
+
+async function applyYCloudReaction(params: {
+    targetProviderMessageId: string;
+    reaction: string | null;
+    sourceId: string | null;
+}) {
+    const nextReaction = params.reaction?.trim() || null;
+    const scopedWhere = {
+        providerMessageId: params.targetProviderMessageId,
+        sourceType: MESSAGE_SOURCE_YCLOUD,
+        ...(params.sourceId ? { sourceId: params.sourceId } : {}),
+    };
+
+    let target = await prisma.message.findFirst({
+        where: scopedWhere,
+        select: {
+            id: true,
+            conversationId: true,
+            reaction: true,
+        },
+        orderBy: {
+            createdAt: "desc",
+        },
+    });
+
+    if (!target) {
+        target = await prisma.message.findFirst({
+            where: {
+                providerMessageId: params.targetProviderMessageId,
+                sourceType: MESSAGE_SOURCE_YCLOUD,
+            },
+            select: {
+                id: true,
+                conversationId: true,
+                reaction: true,
+            },
+            orderBy: {
+                createdAt: "desc",
+            },
+        });
+    }
+
+    if (!target || target.reaction === nextReaction) {
+        return;
+    }
+
+    await prisma.message.update({
+        where: { id: target.id },
+        data: { reaction: nextReaction },
     });
 
     await prisma.conversation.update({
@@ -258,10 +322,20 @@ export async function handleYCloudWebhookPayload(rawPayload: unknown) {
     if (normalizedEvent.kind === "status") {
         await applyYCloudStatus({
             providerMessageId: normalizedEvent.providerMessageId,
+            providerMessageIds: normalizedEvent.providerMessageIds,
             status: normalizedEvent.status,
             sourceId: normalizedEvent.sourceId || fallbackSourceId,
         });
         return { ok: true, statusUpdated: true };
+    }
+
+    if (normalizedEvent.kind === "reaction") {
+        await applyYCloudReaction({
+            targetProviderMessageId: normalizedEvent.targetProviderMessageId,
+            reaction: normalizedEvent.reaction,
+            sourceId: normalizedEvent.sourceId || fallbackSourceId,
+        });
+        return { ok: true, reactionUpdated: true };
     }
 
     if (normalizedEvent.message.direction === "inbound") {

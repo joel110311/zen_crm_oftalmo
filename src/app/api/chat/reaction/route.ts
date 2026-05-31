@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { sendWuzapiReaction } from "@/lib/wuzapi";
+import { sendYCloudReaction } from "@/lib/ycloud";
 
 export async function POST(request: NextRequest) {
     try {
@@ -31,28 +32,41 @@ export async function POST(request: NextRequest) {
             });
         }
 
+        const nextReaction = typeof reaction === "string" && reaction.trim()
+            ? reaction.trim()
+            : null;
+        const shouldSyncClear = Boolean(existing.reaction && !nextReaction);
+
         const updated = await prisma.message.update({
             where: { id: messageId },
-            data: { reaction: reaction || null }, // null to clear reaction
+            data: { reaction: nextReaction },
         });
 
         let whatsappSynced = false;
         let whatsappWarning: string | null = null;
 
-        if (reaction && existing.providerMessageId && existing.conversation.contact?.phone) {
+        if ((nextReaction || shouldSyncClear) && existing.providerMessageId && existing.conversation.contact?.phone) {
             try {
-                await sendWuzapiReaction({
-                    phone: existing.conversation.contact.phone,
-                    reaction,
-                    providerMessageId: existing.providerMessageId,
-                    ownMessage: existing.direction === "outbound",
-                });
+                if (existing.sourceType === "ycloud") {
+                    await sendYCloudReaction({
+                        to: existing.conversation.contact.phone,
+                        reaction: nextReaction,
+                        providerMessageId: existing.providerMessageId,
+                    });
+                } else {
+                    await sendWuzapiReaction({
+                        phone: existing.conversation.contact.phone,
+                        reaction: nextReaction || "",
+                        providerMessageId: existing.providerMessageId,
+                        ownMessage: existing.direction === "outbound",
+                    });
+                }
                 whatsappSynced = true;
             } catch (error) {
                 console.error("[Reaction API] WhatsApp sync error:", error);
                 whatsappWarning = error instanceof Error ? error.message : "No se pudo sincronizar con WhatsApp";
             }
-        } else if (reaction) {
+        } else if (nextReaction || shouldSyncClear) {
             whatsappWarning = "Este mensaje no tiene identificador nativo de WhatsApp todavia.";
         }
 
