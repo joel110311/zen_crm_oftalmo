@@ -532,7 +532,11 @@ export async function processLeadAutomationTurn(params: {
             direction: "inbound",
         },
         orderBy: { createdAt: "desc" },
-        select: { createdAt: true },
+        select: {
+            content: true,
+            createdAt: true,
+            type: true,
+        },
     });
     const latestOutboundBeforeInbound = latestInboundMessage
         ? await prisma.message.findFirst({
@@ -613,10 +617,14 @@ export async function processLeadAutomationTurn(params: {
     let savedNameThisTurn = false;
     let savedEmailThisTurn = false;
     let declinedFieldThisTurn: PendingCaptureField | null = null;
+    const latestTextMessageForCapture =
+        latestInboundMessage?.type === "text"
+            ? latestInboundMessage.content || latestUserMessage
+            : "";
 
     const directEmail =
-        thresholdReached && settings.captureLeadEmail && !emailCaptured
-            ? extractEmail(latestUserMessage)
+        thresholdReached && settings.captureLeadEmail && !emailCaptured && latestTextMessageForCapture
+            ? extractEmail(latestTextMessageForCapture)
             : null;
     const latestOutboundAskedForName = Boolean(
         latestInboundMessage &&
@@ -628,16 +636,17 @@ export async function processLeadAutomationTurn(params: {
         thresholdReached &&
         settings.captureLeadName &&
         !nameCaptured &&
+        Boolean(latestTextMessageForCapture) &&
         (
             pendingCaptureField === "name" ||
-            NAME_PREFIX_REGEX.test(latestUserMessage) ||
-            (latestOutboundAskedForName && looksLikeStandaloneName(latestUserMessage))
+            NAME_PREFIX_REGEX.test(latestTextMessageForCapture) ||
+            (latestOutboundAskedForName && looksLikeStandaloneName(latestTextMessageForCapture))
         );
     const nameExtraction = shouldTryNameCapture
-        ? await extractNameValue(latestUserMessage, pendingCaptureField === "name" || latestOutboundAskedForName)
+        ? await extractNameValue(latestTextMessageForCapture, pendingCaptureField === "name" || latestOutboundAskedForName)
         : { value: null, declined: false };
 
-    if (pendingCaptureField === "name" && detectFieldDecline(latestUserMessage, "name")) {
+    if (pendingCaptureField === "name" && latestTextMessageForCapture && detectFieldDecline(latestTextMessageForCapture, "name")) {
         nameDeclined = true;
         declinedFieldThisTurn = "name";
     } else if (shouldTryNameCapture && nameExtraction.declined) {
@@ -650,7 +659,7 @@ export async function processLeadAutomationTurn(params: {
         savedNameThisTurn = true;
     }
 
-    if (pendingCaptureField === "email" && detectFieldDecline(latestUserMessage, "email")) {
+    if (pendingCaptureField === "email" && latestTextMessageForCapture && detectFieldDecline(latestTextMessageForCapture, "email")) {
         emailDeclined = true;
         declinedFieldThisTurn = "email";
     } else if (directEmail) {
