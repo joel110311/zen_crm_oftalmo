@@ -77,9 +77,17 @@ const BUSINESS_CONTEXT_KEYWORDS = [
 
 const EMAIL_REGEX = /([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/;
 const NAME_PREFIX_REGEX = /(?:mi nombre es|me llamo|soy|habla|hablo como|nombre completo(?: es)?|puedes poner(?:me)? como)\s+(.+)/i;
+const NAME_REQUEST_CAPTURE_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
 function normalizeWhitespace(value: string) {
     return value.replace(/\s+/g, " ").trim();
+}
+
+function normalizeForIntent(value: string) {
+    return normalizeWhitespace(value)
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase();
 }
 
 function cleanCustomerName(value: string) {
@@ -266,6 +274,24 @@ function calculateLeadScore(messageCount: number, combinedInboundText: string) {
 
 function containsAppointmentIntent(text: string) {
     return /\b(cita|agendar|agenda|demo|llamada|reunion|reunión|calendar|calendario)\b/i.test(text);
+}
+
+function assistantAskedForCustomerName(text?: string | null) {
+    const normalized = normalizeForIntent(text || "");
+    if (!normalized) return false;
+
+    const mentionsName =
+        /\bnombre completo\b/.test(normalized) ||
+        /\bnombre real\b/.test(normalized) ||
+        /\btu nombre\b/.test(normalized) ||
+        /\bcomo te llamas\b/.test(normalized) ||
+        /\bcomo puedo llamarte\b/.test(normalized);
+    const asksForName =
+        /\b(me compartes|comparteme|compartir|compartas|podrias|puedes|dime|cual es|registrarte|agendarte)\b/.test(normalized) ||
+        normalized.includes("como te llamas") ||
+        normalized.includes("como puedo llamarte");
+
+    return mentionsName && asksForName;
 }
 
 function buildSavedDataNote(name: string | null, email: string | null) {
@@ -508,6 +534,21 @@ export async function processLeadAutomationTurn(params: {
         orderBy: { createdAt: "desc" },
         select: { createdAt: true },
     });
+    const latestOutboundBeforeInbound = latestInboundMessage
+        ? await prisma.message.findFirst({
+            where: {
+                conversationId,
+                direction: "outbound",
+                type: { not: "system" },
+                createdAt: { lt: latestInboundMessage.createdAt },
+            },
+            orderBy: { createdAt: "desc" },
+            select: {
+                content: true,
+                createdAt: true,
+            },
+        })
+        : null;
 
     const timeZone = settings.businessTimeZone || "America/Mexico_City";
     const threshold = Math.max(15, settings.leadInterestThreshold || 45);
@@ -577,13 +618,23 @@ export async function processLeadAutomationTurn(params: {
         thresholdReached && settings.captureLeadEmail && !emailCaptured
             ? extractEmail(latestUserMessage)
             : null;
+    const latestOutboundAskedForName = Boolean(
+        latestInboundMessage &&
+        latestOutboundBeforeInbound &&
+        latestInboundMessage.createdAt.getTime() - latestOutboundBeforeInbound.createdAt.getTime() <= NAME_REQUEST_CAPTURE_WINDOW_MS &&
+        assistantAskedForCustomerName(latestOutboundBeforeInbound.content),
+    );
     const shouldTryNameCapture =
         thresholdReached &&
         settings.captureLeadName &&
         !nameCaptured &&
-        (pendingCaptureField === "name" || NAME_PREFIX_REGEX.test(latestUserMessage));
+        (
+            pendingCaptureField === "name" ||
+            NAME_PREFIX_REGEX.test(latestUserMessage) ||
+            (latestOutboundAskedForName && looksLikeStandaloneName(latestUserMessage))
+        );
     const nameExtraction = shouldTryNameCapture
-        ? await extractNameValue(latestUserMessage, pendingCaptureField === "name")
+        ? await extractNameValue(latestUserMessage, pendingCaptureField === "name" || latestOutboundAskedForName)
         : { value: null, declined: false };
 
     if (pendingCaptureField === "name" && detectFieldDecline(latestUserMessage, "name")) {
