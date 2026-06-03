@@ -34,6 +34,8 @@ export async function updateSystemSettings(data: {
     agentTemperature?: number;
     knowledgeTopK?: number;
     autoReplyDelayMs?: number;
+    botReplyDelayMinMs?: number;
+    botReplyDelayMaxMs?: number;
     businessHoursStart?: string;
     businessHoursEnd?: string;
     businessTimeZone?: string;

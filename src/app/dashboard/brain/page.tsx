@@ -30,7 +30,7 @@ export default function BrainConfigPage() {
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [isBotEnabled, setIsBotEnabled] = useState(false);
-    const [autoReplyDelaySeconds, setAutoReplyDelaySeconds] = useState([8]);
+    const [botReplyDelayMaxSeconds, setBotReplyDelayMaxSeconds] = useState(8);
     const [agentName, setAgentName] = useState("Asistente Zen");
     const [agentPrompt, setAgentPrompt] = useState("");
     const [welcomeMessage, setWelcomeMessage] = useState("");
@@ -73,9 +73,9 @@ export default function BrainConfigPage() {
                             "👋 ¡Hola! Gracias por contactarnos.\n\n¿En qué te podemos ayudar hoy?",
                     );
                     setWelcomeRepeatHours(String(settings.welcomeRepeatHours || 24));
-                    setAutoReplyDelaySeconds([
-                        Math.max(3, Math.min(20, Math.round((settings.autoReplyDelayMs || 8000) / 1000))),
-                    ]);
+                    setBotReplyDelayMaxSeconds(
+                        Math.max(8, Math.min(16, Math.round((settings.botReplyDelayMaxMs || 8000) / 1000))),
+                    );
                     setOpenaiModel(normalizeChatModelSelection(settings.openaiModel));
                     setKnowledgeTopK(String(settings.knowledgeTopK || 6));
                     setTemperature([settings.agentTemperature || 0.3]);
@@ -134,7 +134,9 @@ export default function BrainConfigPage() {
                 openaiModel,
                 knowledgeTopK: Number(knowledgeTopK) || 6,
                 agentTemperature: temperature[0] || 0.3,
-                autoReplyDelayMs: (autoReplyDelaySeconds[0] || 8) * 1000,
+                autoReplyDelayMs: 4000,
+                botReplyDelayMinMs: 4000,
+                botReplyDelayMaxMs: botReplyDelayMaxSeconds * 1000,
                 businessHoursStart: normalizedBusinessHours.start,
                 businessHoursEnd: normalizedBusinessHours.end,
                 businessTimeZone: normalizedBusinessHours.timeZone,
@@ -262,48 +264,38 @@ export default function BrainConfigPage() {
                                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                                         <div>
                                             <Label className="text-base font-medium">
-                                                Tiempo de espera antes de responder
+                                                Pacing humano del bot
                                             </Label>
                                             <p className="mt-1 text-sm text-muted-foreground">
-                                                Si el cliente manda varios mensajes seguidos, el agente espera este tiempo antes de contestar para leer mejor el turno completo.
+                                                Despues de preparar la respuesta, el agente espera un tiempo aleatorio antes de enviarla para evitar un patron rigido.
                                             </p>
                                         </div>
                                         <span className="rounded-full border px-3 py-1 text-sm font-semibold text-foreground">
-                                            {autoReplyDelaySeconds[0]} s
+                                            4 a {botReplyDelayMaxSeconds} s
                                         </span>
                                     </div>
 
-                                    <div className="mt-5 space-y-4">
-                                        <Slider
-                                            value={autoReplyDelaySeconds}
-                                            onValueChange={setAutoReplyDelaySeconds}
-                                            min={3}
-                                            max={20}
-                                            step={1}
-                                        />
-
-                                        <div className="flex flex-wrap gap-2">
-                                            {[4, 8, 12, 15].map((seconds) => (
-                                                <Button
-                                                    key={seconds}
-                                                    type="button"
-                                                    variant={
-                                                        autoReplyDelaySeconds[0] === seconds
-                                                            ? "default"
-                                                            : "outline"
-                                                    }
-                                                    size="sm"
-                                                    onClick={() => setAutoReplyDelaySeconds([seconds])}
-                                                >
-                                                    {seconds}s
-                                                </Button>
-                                            ))}
-                                        </div>
-
-                                        <p className="text-xs text-muted-foreground">
-                                            Recomendado: 8 segundos. Rango disponible: 3 a 20 segundos.
-                                        </p>
+                                    <div className="mt-5 flex flex-wrap gap-2">
+                                        {[8, 12, 16].map((maxSeconds) => (
+                                            <Button
+                                                key={maxSeconds}
+                                                type="button"
+                                                variant={
+                                                    botReplyDelayMaxSeconds === maxSeconds
+                                                        ? "default"
+                                                        : "outline"
+                                                }
+                                                size="sm"
+                                                onClick={() => setBotReplyDelayMaxSeconds(maxSeconds)}
+                                            >
+                                                4 a {maxSeconds}s
+                                            </Button>
+                                        ))}
                                     </div>
+
+                                    <p className="mt-4 text-xs text-muted-foreground">
+                                        Recomendado: 4 a 8 segundos para respuestas normales; usa 4 a 16 segundos si quieres una cadencia mas variable.
+                                    </p>
                                 </div>
                             </div>
                         </CardContent>

@@ -17,7 +17,7 @@ import {
 } from "@/lib/catalog/catalog";
 import { sendWuzapiMediaMessage, sendWuzapiTextMessage } from "@/lib/wuzapi";
 import { generateConversationReply } from "@/lib/ai/chatbot";
-import { getSystemSettingsOrDefaults } from "@/lib/system-settings";
+import { getSystemSettingsOrDefaults, type AppSystemSettings } from "@/lib/system-settings";
 import { buildInboundMediaContext, shouldSkipAutoReplyText } from "@/lib/ai/media-understanding";
 import { maybeHandleAppointmentBooking } from "@/lib/ai/appointment-booking";
 import { processLeadAutomationTurn } from "@/lib/ai/lead-intelligence";
@@ -44,6 +44,8 @@ const CATALOG_OFFER_EXPIRY_MS = 1000 * 60 * 90;
 const KNOWLEDGE_IMAGE_URL_REGEX = /https?:\/\/[^\s<>"']+/gi;
 const KNOWLEDGE_MARKDOWN_LINK_WITH_URL_REGEX = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/gi;
 const KNOWLEDGE_IMAGE_MIN_SCORE = 3;
+const BOT_REPLY_DELAY_MIN_MS = 4000;
+const BOT_REPLY_DELAY_MAX_MS = 16000;
 const KNOWLEDGE_IMAGE_TOKEN_STOPWORDS = new Set([
     "de",
     "del",
@@ -87,6 +89,26 @@ type KnowledgeImageEntry = {
     searchableText: string;
     normalizedLabel: string;
 };
+
+function sleep(ms: number) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function clampBotDelayMs(value: number, fallback: number) {
+    if (!Number.isFinite(value)) return fallback;
+    return Math.min(Math.max(Math.round(value), BOT_REPLY_DELAY_MIN_MS), BOT_REPLY_DELAY_MAX_MS);
+}
+
+function resolveRandomBotReplyDelayMs(settings: AppSystemSettings) {
+    const minMs = clampBotDelayMs(settings.botReplyDelayMinMs || BOT_REPLY_DELAY_MIN_MS, BOT_REPLY_DELAY_MIN_MS);
+    const maxMs = clampBotDelayMs(settings.botReplyDelayMaxMs || BOT_REPLY_DELAY_MAX_MS, BOT_REPLY_DELAY_MAX_MS);
+    const lower = Math.min(minMs, maxMs);
+    const upper = Math.max(minMs, maxMs);
+
+    if (upper <= lower) return lower;
+
+    return lower + Math.floor(Math.random() * (upper - lower + 1));
+}
 
 export type InboundAttribution = {
     conversionSource?: string;
@@ -1467,6 +1489,7 @@ async function maybeSendKnowledgeImageFromTextSources(params: {
 
 async function maybeHandleCatalogAssetReply(params: {
     conversationId: string;
+    inboundMessageId: string;
     phone: string;
     latestUserMessage: string;
     settings: Awaited<ReturnType<typeof getSystemSettingsOrDefaults>>;
@@ -1501,8 +1524,16 @@ async function maybeHandleCatalogAssetReply(params: {
         state.catalogItem.assets,
         params.settings.catalogMaxImagesToSend,
     );
+    const waitBeforeCatalogSend = () =>
+        waitForBotReplyPacing({
+            settings: params.settings,
+            conversationId: params.conversationId,
+            inboundMessageId: params.inboundMessageId,
+        });
 
     if (intent.negative && isOfferActive) {
+        if (!(await waitBeforeCatalogSend())) return true;
+
         await sendAutomatedBotText({
             conversationId: params.conversationId,
             phone: params.phone,
@@ -1535,9 +1566,11 @@ async function maybeHandleCatalogAssetReply(params: {
     if (!sendImages && !sendPdf) {
         const unavailableReply = intent.wantsImages
             ? "En esta ficha no tengo imagenes cargadas por ahora."
-            : intent.wantsPdf
+                : intent.wantsPdf
                 ? "En esta ficha no tengo un catalogo en PDF cargado por ahora."
                 : "Por ahora no tengo archivos adicionales de esta ficha.";
+
+        if (!(await waitBeforeCatalogSend())) return true;
 
         await sendAutomatedBotText({
             conversationId: params.conversationId,
@@ -1547,6 +1580,8 @@ async function maybeHandleCatalogAssetReply(params: {
         await touchAutomatedConversation(params.conversationId);
         return true;
     }
+
+    if (!(await waitBeforeCatalogSend())) return true;
 
     await sendAutomatedBotText({
         conversationId: params.conversationId,
@@ -1610,7 +1645,7 @@ async function maybeSendAutomatedReply(
         }
 
         if (settings.autoReplyDelayMs > 0) {
-            await new Promise((resolve) => setTimeout(resolve, settings.autoReplyDelayMs));
+            await sleep(settings.autoReplyDelayMs);
         }
 
         const [latestConversation, latestMessage, previousInboundMessage] = await Promise.all([
@@ -1683,6 +1718,13 @@ async function maybeSendAutomatedReply(
             });
 
             if (welcomeMessage) {
+                const canSendAfterPacing = await waitForBotReplyPacing({
+                    settings,
+                    conversationId,
+                    inboundMessageId,
+                });
+                if (!canSendAfterPacing) return;
+
                 await sendAutomatedBotText({
                     conversationId,
                     phone: latestConversation.contact.phone,
@@ -1696,6 +1738,7 @@ async function maybeSendAutomatedReply(
         const handledCatalogReply = catalogAssistantEnabled
             ? await maybeHandleCatalogAssetReply({
                 conversationId,
+                inboundMessageId,
                 phone: latestConversation.contact.phone,
                 latestUserMessage,
                 settings,
@@ -1943,6 +1986,13 @@ async function maybeSendAutomatedReply(
             }
         }
 
+        const canSendAfterPacing = await waitForBotReplyPacing({
+            settings,
+            conversationId,
+            inboundMessageId,
+        });
+        if (!canSendAfterPacing) return;
+
         let replyToSend = reply;
         let preferredReplyImageSent = false;
         let knowledgeImageSent = false;
@@ -2050,6 +2100,29 @@ async function maybeSendAutomatedReply(
     } catch (error) {
         console.error("[Bot] Failed to send automated reply:", error);
     }
+}
+
+async function waitForBotReplyPacing(params: {
+    settings: AppSystemSettings;
+    conversationId: string;
+    inboundMessageId: string;
+}) {
+    const delayMs = resolveRandomBotReplyDelayMs(params.settings);
+    if (delayMs > 0) {
+        await sleep(delayMs);
+    }
+
+    const latestInbound = await prisma.message.findFirst({
+        where: {
+            conversationId: params.conversationId,
+            direction: "inbound",
+            type: { not: "system" },
+        },
+        orderBy: { createdAt: "desc" },
+        select: { id: true },
+    });
+
+    return latestInbound?.id === params.inboundMessageId;
 }
 
 export async function getConversations() {
