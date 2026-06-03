@@ -193,7 +193,22 @@ function normalizeWuzapiRecipient(phone: string) {
         return trimmed.replace(/\s+/g, "");
     }
 
-    return trimmed.replace(/\D/g, "");
+    const digits = trimmed.replace(/\D/g, "");
+    if (!digits) return "";
+
+    // WhatsApp linked-device JIDs for Mexico commonly require the legacy mobile
+    // marker `1` after country code 52. Some webhook payloads arrive as
+    // 52 + 10 digits, but sending back to that form can be acknowledged without
+    // reaching the real chat. Canonicalize QR outbound sends to 521 + local 10.
+    if (digits.length === 10) {
+        return `521${digits}`;
+    }
+
+    if (digits.length === 12 && digits.startsWith("52") && !digits.startsWith("521")) {
+        return `521${digits.slice(2)}`;
+    }
+
+    return digits;
 }
 
 function sleep(ms: number) {
