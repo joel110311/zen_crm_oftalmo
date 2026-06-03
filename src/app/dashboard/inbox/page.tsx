@@ -55,6 +55,7 @@ export type Message = {
     direction: string;
     createdAt: Date;
     type: string;
+    status?: string | null;
     sourceType: "wuzapi" | "ycloud";
     sourceId?: string | null;
     senderType?: string | null;
@@ -71,6 +72,7 @@ type RawMessageRecord = {
     direction: string;
     createdAt: string | Date;
     type: string;
+    status?: string | null;
     sourceType?: "wuzapi" | "ycloud";
     sourceId?: string | null;
     senderType?: string | null;
@@ -88,6 +90,7 @@ function normalizeMessageRecord(raw: RawMessageRecord): Message {
         direction: raw.direction,
         createdAt: raw.createdAt instanceof Date ? raw.createdAt : new Date(raw.createdAt),
         type: raw.type,
+        status: raw.status ?? null,
         sourceType: raw.sourceType === "ycloud" ? "ycloud" : "wuzapi",
         sourceId: raw.sourceId ?? null,
         senderType: raw.senderType ?? null,
@@ -3069,8 +3072,18 @@ export default function InboxPage() {
                                                             )}
                                                             <div className={cn(
                                                                 "mt-2 flex items-center justify-end gap-1.5 text-[10px] font-medium",
-                                                                msg.direction === "outbound" ? "text-foreground/50" : "text-muted-foreground"
+                                                                msg.direction === "outbound"
+                                                                    ? msg.status === "failed"
+                                                                        ? "text-destructive"
+                                                                        : "text-foreground/50"
+                                                                    : "text-muted-foreground"
                                                             )}>
+                                                                {msg.direction === "outbound" && msg.status === "failed" && (
+                                                                    <span className="inline-flex items-center gap-1 font-semibold">
+                                                                        <AlertTriangle className="h-3 w-3" />
+                                                                        No enviado
+                                                                    </span>
+                                                                )}
                                                                 <p>
                                                                     {new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                                                                 </p>

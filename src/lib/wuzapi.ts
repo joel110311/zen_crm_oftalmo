@@ -87,6 +87,26 @@ export type WuzapiHistoryMessageRecord = {
 const WUZAPI_RETRYABLE_SEND_ERRORS = [
     "cannot start a transaction within a transaction",
     "failed to save cached sessions",
+    "context deadline exceeded",
+    "deadline exceeded",
+    "timeout",
+    "timed out",
+    "i/o timeout",
+    "connection reset",
+    "connection refused",
+    "connection closed",
+    "temporary network",
+    "service unavailable",
+    "bad gateway",
+    "gateway timeout",
+    "devolvio 500",
+    "devolvio 502",
+    "devolvio 503",
+    "devolvio 504",
+    "websocket",
+    "not connected",
+    "no session",
+    "session not connected",
 ];
 const WUZAPI_SUBSCRIBED_EVENTS = ["Message", "HistorySync"];
 
