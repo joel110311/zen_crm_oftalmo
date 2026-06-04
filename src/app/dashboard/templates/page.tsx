@@ -1,16 +1,38 @@
 "use client";
 
+import { useMemo } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
-import { LayoutTemplate, Loader2, Megaphone, ShieldAlert, MessageSquare } from "lucide-react";
+import { LayoutTemplate, Loader2, Megaphone, ShieldAlert, MessageSquare, ReceiptText } from "lucide-react";
+import { QuoteBuilderPanel } from "@/components/quotes/quote-builder-panel";
 import { BulkCampaignManagerPanel } from "@/components/settings/bulk-campaign-manager-panel";
 import { TemplateManagerPanel } from "@/components/settings/template-manager-panel";
 import { YCloudTemplateRequestPanel } from "@/components/templates/ycloud-template-request-panel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
+const TEMPLATE_TABS = new Set(["templates", "ycloud", "campaigns", "quotes"]);
+
 export default function TemplatesPage() {
+    const router = useRouter();
+    const pathname = usePathname();
+    const searchParams = useSearchParams();
     const { data: session, status } = useSession();
     const sessionUser = session?.user as { role?: string } | undefined;
     const isSuperadmin = sessionUser?.role === "SUPERADMIN";
+    const currentUserName = session?.user?.name || "";
+    const requestedTab = searchParams.get("tab") || "templates";
+    const activeTab = TEMPLATE_TABS.has(requestedTab) ? requestedTab : "templates";
+    const quoteInitialContact = useMemo(() => ({
+        name: searchParams.get("contactName") || "",
+        phone: searchParams.get("phone") || "",
+        company: searchParams.get("company") || "",
+    }), [searchParams]);
+
+    const handleTabChange = (value: string) => {
+        const params = new URLSearchParams(searchParams.toString());
+        params.set("tab", value);
+        router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+    };
 
     if (status === "loading") {
         return (
@@ -59,8 +81,8 @@ export default function TemplatesPage() {
                 </p>
             </div>
 
-            <Tabs defaultValue="templates" className="space-y-4">
-                <TabsList className="grid h-auto w-full max-w-[48rem] grid-cols-3 gap-2 rounded-2xl border bg-card p-1.5 shadow-[0_12px_24px_-20px_rgba(15,23,42,0.22)]">
+            <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-4">
+                <TabsList className="grid h-auto w-full max-w-[64rem] grid-cols-2 gap-2 rounded-2xl border bg-card p-1.5 shadow-[0_12px_24px_-20px_rgba(15,23,42,0.22)] md:grid-cols-4">
                     <TabsTrigger value="templates" className="min-w-0 h-10 gap-1.5 rounded-xl border border-transparent bg-background px-3 text-[13px] font-semibold text-foreground/75 data-[state=active]:border-primary/30 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-[0_14px_28px_-18px_rgba(37,99,235,0.72)] sm:h-11 sm:px-4 sm:text-sm">
                         <LayoutTemplate className="hidden h-4 w-4 sm:block" />
                         <span className="truncate">Respuestas guardadas</span>
@@ -72,6 +94,10 @@ export default function TemplatesPage() {
                     <TabsTrigger value="campaigns" className="min-w-0 h-10 gap-1.5 rounded-xl border border-transparent bg-background px-3 text-[13px] font-semibold text-foreground/75 data-[state=active]:border-primary/30 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-[0_14px_28px_-18px_rgba(37,99,235,0.72)] sm:h-11 sm:px-4 sm:text-sm">
                         <Megaphone className="hidden h-4 w-4 sm:block" />
                         <span className="truncate">Envios masivos</span>
+                    </TabsTrigger>
+                    <TabsTrigger value="quotes" className="min-w-0 h-10 gap-1.5 rounded-xl border border-transparent bg-background px-3 text-[13px] font-semibold text-foreground/75 data-[state=active]:border-primary/30 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-[0_14px_28px_-18px_rgba(37,99,235,0.72)] sm:h-11 sm:px-4 sm:text-sm">
+                        <ReceiptText className="hidden h-4 w-4 sm:block" />
+                        <span className="truncate">Cotizaciones</span>
                     </TabsTrigger>
                 </TabsList>
 
@@ -85,6 +111,14 @@ export default function TemplatesPage() {
 
                 <TabsContent value="campaigns" className="mt-0">
                     <BulkCampaignManagerPanel />
+                </TabsContent>
+
+                <TabsContent value="quotes" className="mt-0">
+                    <QuoteBuilderPanel
+                        key={`${quoteInitialContact.name}-${quoteInitialContact.phone}-${quoteInitialContact.company}`}
+                        initialContact={quoteInitialContact}
+                        agentName={currentUserName}
+                    />
                 </TabsContent>
             </Tabs>
         </div>

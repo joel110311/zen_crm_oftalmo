@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import {
     Search, MoreVertical, Phone, Video, Paperclip, Send, Mic, X,
@@ -1155,6 +1155,7 @@ function WindowTimer({ expiresAt, onWindowChange }: { expiresAt: string | null |
 
 // ──────────── Main Inbox Page ────────────
 export default function InboxPage() {
+    const router = useRouter();
     const searchParams = useSearchParams();
     const { data: session } = useSession();
     const sessionUser = session?.user as { id?: string; role?: string } | undefined;
@@ -2372,6 +2373,20 @@ export default function InboxPage() {
         await markTemplateUsed(template.id);
     };
 
+    const openQuoteBuilder = useCallback(() => {
+        if (!selectedChat) return;
+
+        const params = new URLSearchParams();
+        params.set("tab", "quotes");
+        params.set("conversationId", selectedChat.id);
+
+        if (selectedChat.contact?.name) params.set("contactName", selectedChat.contact.name);
+        if (selectedChat.contact?.phone) params.set("phone", selectedChat.contact.phone);
+        if (selectedChat.contact?.company) params.set("company", selectedChat.contact.company);
+
+        router.push(`/dashboard/templates?${params.toString()}`);
+    }, [router, selectedChat]);
+
     const handleComposerKeyDown = async (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
         if (slashQuery !== null && slashTemplateMatches.length > 0) {
             if (e.key === "ArrowDown") {
@@ -2807,6 +2822,15 @@ export default function InboxPage() {
                                     </button>
                                 </div>
                                 <div className="ml-auto flex items-center gap-2 flex-wrap justify-end">
+                                    <Button
+                                        variant="ghost"
+                                        className="hidden h-11 rounded-2xl border border-border/60 bg-background/90 px-3 text-sm font-semibold shadow-sm lg:inline-flex"
+                                        onClick={openQuoteBuilder}
+                                        title="Crear cotizacion para este contacto"
+                                    >
+                                        <FileText className="h-4 w-4" />
+                                        Cotizar
+                                    </Button>
                                     <div className="min-w-[180px]">
                                         <Select
                                             value={selectedChat.assignedUserId || "__unassigned__"}
@@ -2859,6 +2883,9 @@ export default function InboxPage() {
                                         <DropdownMenuContent align="end" className="w-52">
                                             <DropdownMenuItem onClick={() => setShowContactInfo(true)}>
                                                 <Info className="h-4 w-4 mr-2" /> Info. del contacto
+                                            </DropdownMenuItem>
+                                            <DropdownMenuItem onClick={openQuoteBuilder}>
+                                                <FileText className="h-4 w-4 mr-2" /> Crear cotizacion
                                             </DropdownMenuItem>
                                             <DropdownMenuSeparator />
                                             <DropdownMenuItem onClick={() => performAction("mute")}>
