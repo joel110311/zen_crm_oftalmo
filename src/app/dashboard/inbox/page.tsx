@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import {
     Search, MoreVertical, Phone, Video, Paperclip, Send, Mic, X,
@@ -33,6 +33,14 @@ import { TemplateRecord, extractTemplateSlashQuery, renderTemplateContent } from
 import { writeUnreadCounts } from "@/lib/inbox-browser-badge";
 import { parseInboundAdPreviewMessageContent } from "@/lib/inbound-ad-preview";
 import { YCloudTemplateSendModal } from "@/components/inbox/ycloud-template-send-modal";
+import { type GeneratedQuoteAsset, QuoteBuilderPanel } from "@/components/quotes/quote-builder-panel";
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogHeader,
+    DialogTitle,
+} from "@/components/ui/dialog";
 
 const REACTION_EMOJIS = [
     "👍", "👎", "❤️", "🩵", "🔥", "✨", "🎉", "👏",
@@ -1155,7 +1163,6 @@ function WindowTimer({ expiresAt, onWindowChange }: { expiresAt: string | null |
 
 // ──────────── Main Inbox Page ────────────
 export default function InboxPage() {
-    const router = useRouter();
     const searchParams = useSearchParams();
     const { data: session } = useSession();
     const sessionUser = session?.user as { id?: string; role?: string } | undefined;
@@ -1180,6 +1187,7 @@ export default function InboxPage() {
     const [viewerMessageId, setViewerMessageId] = useState<string | null>(null);
     const [isWindowOpen, setIsWindowOpen] = useState(true);
     const [templateModalOpen, setTemplateModalOpen] = useState(false);
+    const [quoteBuilderOpen, setQuoteBuilderOpen] = useState(false);
     // Reply, React & Forward state
     const [replyingTo, setReplyingTo] = useState<Message | null>(null);
     const [emojiPickerMsgId, setEmojiPickerMsgId] = useState<string | null>(null);
@@ -2375,17 +2383,39 @@ export default function InboxPage() {
 
     const openQuoteBuilder = useCallback(() => {
         if (!selectedChat) return;
+        setQuoteBuilderOpen(true);
+    }, [selectedChat]);
 
-        const params = new URLSearchParams();
-        params.set("tab", "quotes");
-        params.set("conversationId", selectedChat.id);
+    const handleQuoteGenerated = useCallback(async (asset: GeneratedQuoteAsset) => {
+        setIsUploading(true);
+        try {
+            const file = new File([asset.blob], asset.fileName, { type: asset.mimeType });
+            const formData = new FormData();
+            formData.append("file", file);
 
-        if (selectedChat.contact?.name) params.set("contactName", selectedChat.contact.name);
-        if (selectedChat.contact?.phone) params.set("phone", selectedChat.contact.phone);
-        if (selectedChat.contact?.company) params.set("company", selectedChat.contact.company);
+            const response = await fetch("/api/upload", { method: "POST", body: formData });
+            const result = await response.json().catch(() => ({}));
 
-        router.push(`/dashboard/templates?${params.toString()}`);
-    }, [router, selectedChat]);
+            if (!response.ok || !result.success) {
+                throw new Error(result.error || "No se pudo generar la cotizacion.");
+            }
+
+            setInputText(asset.caption);
+            setPendingFile({
+                url: result.url,
+                fileName: result.fileName || asset.fileName,
+                mimeType: result.mimeType || asset.mimeType,
+                mediaCategory: result.mediaCategory || asset.mediaCategory,
+                previewUrl: asset.previewUrl,
+            });
+            setReplyingTo(null);
+            setQuoteBuilderOpen(false);
+        } catch (error) {
+            alert(error instanceof Error ? error.message : "No se pudo generar la cotizacion.");
+        } finally {
+            setIsUploading(false);
+        }
+    }, []);
 
     const handleComposerKeyDown = async (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
         if (slashQuery !== null && slashTemplateMatches.length > 0) {
@@ -3501,6 +3531,30 @@ export default function InboxPage() {
                         );
                     }}
                 />
+            )}
+            {selectedChat && (
+                <Dialog open={quoteBuilderOpen} onOpenChange={setQuoteBuilderOpen}>
+                    <DialogContent className="max-h-[92vh] w-[min(96vw,88rem)] max-w-none overflow-hidden p-0">
+                        <DialogHeader className="border-b px-5 py-4">
+                            <DialogTitle>Crear cotizacion</DialogTitle>
+                            <DialogDescription>
+                                Ajusta la cotizacion para {selectedChat.contact?.name || "este contacto"} y genera el contenido listo para enviar.
+                            </DialogDescription>
+                        </DialogHeader>
+                        <div className="p-4">
+                            <QuoteBuilderPanel
+                                mode="compact"
+                                initialContact={{
+                                    name: selectedChat.contact?.name,
+                                    phone: selectedChat.contact?.phone,
+                                    company: selectedChat.contact?.company,
+                                }}
+                                agentName={currentUserName}
+                                onGenerate={handleQuoteGenerated}
+                            />
+                        </div>
+                    </DialogContent>
+                </Dialog>
             )}
             {/* Forward Message Dialog */}
             {forwardMsg && (

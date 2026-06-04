@@ -2,50 +2,47 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import { ChangeEvent, useMemo, useState } from "react";
+import { ChangeEvent, useMemo, useRef, useState } from "react";
 import {
     Building2,
+    Check,
     Copy,
     FolderOpen,
-    ImagePlus,
     Palette,
     Plus,
     ReceiptText,
-    Sparkles,
+    Send,
     Trash2,
     Upload,
 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 
-type QuoteTemplateId = "executive" | "visual" | "minimal";
+type QuoteTemplateId = "executive" | "minimal" | "visual";
+type QuoteOutputFormat = "image" | "pdf";
 
 type QuoteItem = {
     id: string;
     concept: string;
+    description: string;
     quantity: number;
     unitPrice: number;
 };
 
-type QuoteBlock = {
-    id: string;
-    title: string;
-    body: string;
-    imageUrl: string | null;
-    imageName: string | null;
-};
-
-type QuoteBuilderPanelProps = {
-    initialContact?: {
-        name?: string | null;
-        phone?: string | null;
-        company?: string | null;
-    };
-    agentName?: string | null;
+type OptionalFlags = {
+    clientCompany: boolean;
+    iva: boolean;
+    notes: boolean;
+    contactPhone: boolean;
+    website: boolean;
+    social: boolean;
+    address: boolean;
 };
 
 type QuoteVariableValues = {
@@ -63,21 +60,45 @@ type SavedQuoteDraft = {
     logoUrl?: string | null;
     logoName?: string | null;
     companyName?: string;
-    quoteTitle?: string;
+    validUntil?: string;
     clientName?: string;
     clientPhone?: string;
     clientCompany?: string;
-    validUntil?: string;
     variableValues?: QuoteVariableValues;
-    items?: QuoteItem[];
-    blocks?: QuoteBlock[];
+    optionalFlags?: OptionalFlags;
+    ivaPercent?: number;
     notes?: string;
+    contactPhone?: string;
+    website?: string;
+    social?: string;
+    address?: string;
+    items?: QuoteItem[];
     savedAt?: string;
+};
+
+type QuoteBuilderPanelProps = {
+    initialContact?: {
+        name?: string | null;
+        phone?: string | null;
+        company?: string | null;
+    };
+    agentName?: string | null;
+    mode?: "full" | "compact";
+    onGenerate?: (asset: GeneratedQuoteAsset) => void | Promise<void>;
+};
+
+export type GeneratedQuoteAsset = {
+    blob: Blob;
+    fileName: string;
+    mimeType: string;
+    mediaCategory: "image" | "document";
+    previewUrl?: string;
+    caption: string;
 };
 
 const QUOTE_DRAFT_STORAGE_KEY = "zen-crm-quote-draft";
 
-const QUOTE_VARIABLES: Array<{ key: keyof QuoteVariableValues | "piezas" | "total" | "vigencia"; label: string; description: string }> = [
+const QUOTE_VARIABLES: Array<{ key: keyof QuoteVariableValues | "piezas" | "total" | "subtotal" | "iva" | "vigencia"; label: string; description: string }> = [
     { key: "nombre", label: "{{nombre}}", description: "Nombre del contacto" },
     { key: "empresa", label: "{{empresa}}", description: "Empresa del contacto" },
     { key: "telefono", label: "{{telefono}}", description: "Telefono del contacto" },
@@ -86,6 +107,8 @@ const QUOTE_VARIABLES: Array<{ key: keyof QuoteVariableValues | "piezas" | "tota
     { key: "piezas", label: "{{piezas}}", description: "Alias de cantidad" },
     { key: "fecha", label: "{{fecha}}", description: "Fecha o mes del evento" },
     { key: "ciudad", label: "{{ciudad}}", description: "Ciudad del cliente" },
+    { key: "subtotal", label: "{{subtotal}}", description: "Subtotal calculado" },
+    { key: "iva", label: "{{iva}}", description: "IVA calculado" },
     { key: "total", label: "{{total}}", description: "Total calculado" },
     { key: "vigencia", label: "{{vigencia}}", description: "Vigencia de la cotizacion" },
 ];
@@ -95,47 +118,56 @@ const QUOTE_TEMPLATES: Array<{
     name: string;
     description: string;
     accent: string;
-    previewClassName: string;
+    dark: string;
+    soft: string;
+    paperClassName: string;
 }> = [
     {
         id: "executive",
         name: "Ejecutiva",
-        description: "Formal, limpia y enfocada en confianza.",
-        accent: "from-slate-950 to-blue-700",
-        previewClassName: "bg-white text-slate-950",
+        description: "Contraste fuerte, ideal para propuestas formales.",
+        accent: "#ef233c",
+        dark: "#1f2933",
+        soft: "#fff1f2",
+        paperClassName: "bg-white text-slate-950",
+    },
+    {
+        id: "minimal",
+        name: "Minimalista",
+        description: "Limpia, elegante y con mucho aire visual.",
+        accent: "#0f766e",
+        dark: "#0f172a",
+        soft: "#ecfeff",
+        paperClassName: "bg-stone-50 text-stone-950",
     },
     {
         id: "visual",
         name: "Impacto visual",
-        description: "Mas grafica, ideal para productos con fotos.",
-        accent: "from-cyan-500 to-blue-600",
-        previewClassName: "bg-slate-950 text-white",
-    },
-    {
-        id: "minimal",
-        name: "Minimal premium",
-        description: "Espaciosa, elegante y facil de leer.",
-        accent: "from-stone-700 to-amber-500",
-        previewClassName: "bg-stone-50 text-stone-950",
+        description: "Mas energetica, buena para productos con impacto.",
+        accent: "#2563eb",
+        dark: "#111827",
+        soft: "#eff6ff",
+        paperClassName: "bg-white text-slate-950",
     },
 ];
+
+const DEFAULT_FLAGS: OptionalFlags = {
+    clientCompany: false,
+    iva: false,
+    notes: true,
+    contactPhone: true,
+    website: false,
+    social: false,
+    address: false,
+};
 
 const DEFAULT_ITEMS: QuoteItem[] = [
     {
         id: "item-1",
-        concept: "Producto o servicio principal",
+        concept: "Producto o servicio",
+        description: "Descripcion breve del alcance o beneficio.",
         quantity: 1,
         unitPrice: 0,
-    },
-];
-
-const DEFAULT_BLOCKS: QuoteBlock[] = [
-    {
-        id: "block-1",
-        title: "Resumen de la propuesta",
-        body: "Describe aqui el alcance, beneficios principales o condiciones especiales para el cliente.",
-        imageUrl: null,
-        imageName: null,
     },
 ];
 
@@ -167,20 +199,33 @@ function normalizeVariableKey(key: string) {
         .trim();
 }
 
-export function QuoteBuilderPanel({ initialContact, agentName }: QuoteBuilderPanelProps) {
+function safeNumber(value: number) {
+    return Number.isFinite(value) ? value : 0;
+}
+
+export function QuoteBuilderPanel({ initialContact, agentName, mode = "full", onGenerate }: QuoteBuilderPanelProps) {
+    const isCompact = mode === "compact";
+    const quotePageRef = useRef<HTMLDivElement | null>(null);
     const [selectedTemplate, setSelectedTemplate] = useState<QuoteTemplateId>("executive");
+    const [outputFormat, setOutputFormat] = useState<QuoteOutputFormat>("pdf");
     const [logoUrl, setLogoUrl] = useState<string | null>(null);
     const [logoName, setLogoName] = useState<string | null>(null);
     const [companyName, setCompanyName] = useState("Tu empresa");
-    const [quoteTitle, setQuoteTitle] = useState("Cotizacion comercial");
-    const [clientName, setClientName] = useState(initialContact?.name || "");
-    const [clientPhone, setClientPhone] = useState(initialContact?.phone || "");
-    const [clientCompany, setClientCompany] = useState(initialContact?.company || "");
     const [validUntil, setValidUntil] = useState("7 dias");
+    const [clientName, setClientName] = useState("{{nombre}}");
+    const [clientPhone, setClientPhone] = useState("{{telefono}}");
+    const [clientCompany, setClientCompany] = useState("{{empresa}}");
+    const [optionalFlags, setOptionalFlags] = useState<OptionalFlags>(DEFAULT_FLAGS);
+    const [ivaPercent, setIvaPercent] = useState(16);
+    const [notes, setNotes] = useState("Precios sujetos a disponibilidad. Esta cotizacion puede ajustarse segun alcance final.");
+    const [contactPhone, setContactPhone] = useState("");
+    const [website, setWebsite] = useState("");
+    const [social, setSocial] = useState("");
+    const [address, setAddress] = useState("");
     const [items, setItems] = useState<QuoteItem[]>(DEFAULT_ITEMS);
-    const [blocks, setBlocks] = useState<QuoteBlock[]>(DEFAULT_BLOCKS);
-    const [notes, setNotes] = useState("Precios sujetos a disponibilidad. Esta propuesta puede ajustarse segun alcance final.");
     const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
+    const [lastGeneratedAt, setLastGeneratedAt] = useState<string | null>(null);
+    const [isGenerating, setIsGenerating] = useState(false);
     const [variableValues, setVariableValues] = useState<QuoteVariableValues>({
         nombre: initialContact?.name || "",
         empresa: initialContact?.company || "",
@@ -193,33 +238,37 @@ export function QuoteBuilderPanel({ initialContact, agentName }: QuoteBuilderPan
 
     const template = QUOTE_TEMPLATES.find((entry) => entry.id === selectedTemplate) || QUOTE_TEMPLATES[0];
     const subtotal = useMemo(
-        () => items.reduce((sum, item) => sum + Math.max(0, item.quantity || 0) * Math.max(0, item.unitPrice || 0), 0),
+        () => items.reduce((sum, item) => sum + Math.max(0, safeNumber(item.quantity)) * Math.max(0, safeNumber(item.unitPrice)), 0),
         [items],
     );
+    const ivaAmount = optionalFlags.iva ? subtotal * Math.max(0, ivaPercent) / 100 : 0;
+    const total = subtotal + ivaAmount;
+
     const renderedVariables = useMemo(() => {
         const quantityValue = variableValues.cantidad || String(items[0]?.quantity || "");
         return {
-            nombre: variableValues.nombre || initialContact?.name || clientName,
-            empresa: variableValues.empresa || initialContact?.company || clientCompany,
-            telefono: variableValues.telefono || initialContact?.phone || clientPhone,
+            nombre: variableValues.nombre || initialContact?.name || "",
+            empresa: variableValues.empresa || initialContact?.company || "",
+            telefono: variableValues.telefono || initialContact?.phone || "",
             agente: variableValues.agente || agentName || "",
             cantidad: quantityValue,
             piezas: quantityValue,
             fecha: variableValues.fecha,
             ciudad: variableValues.ciudad,
-            total: formatCurrency(subtotal),
+            subtotal: formatCurrency(subtotal),
+            iva: formatCurrency(ivaAmount),
+            total: formatCurrency(total),
             vigencia: validUntil,
         };
     }, [
         agentName,
-        clientCompany,
-        clientName,
-        clientPhone,
         initialContact?.company,
         initialContact?.name,
         initialContact?.phone,
         items,
+        ivaAmount,
         subtotal,
+        total,
         validUntil,
         variableValues,
     ]);
@@ -242,6 +291,7 @@ export function QuoteBuilderPanel({ initialContact, agentName }: QuoteBuilderPan
             {
                 id: `item-${Date.now()}`,
                 concept: "Nuevo concepto",
+                description: "Descripcion breve.",
                 quantity: 1,
                 unitPrice: 0,
             },
@@ -252,47 +302,122 @@ export function QuoteBuilderPanel({ initialContact, agentName }: QuoteBuilderPan
         setItems((current) => current.length > 1 ? current.filter((item) => item.id !== itemId) : current);
     };
 
-    const updateBlock = (blockId: string, patch: Partial<QuoteBlock>) => {
-        setBlocks((current) =>
-            current.map((block) => (block.id === blockId ? { ...block, ...patch } : block)),
-        );
+    const toggleOptional = (key: keyof OptionalFlags) => {
+        setOptionalFlags((current) => ({ ...current, [key]: !current[key] }));
     };
 
-    const addBlock = () => {
-        setBlocks((current) => [
-            ...current,
-            {
-                id: `block-${Date.now()}`,
-                title: "Nuevo bloque visual",
-                body: "Agrega detalles, garantias, pasos siguientes o fotos como si fuera una diapositiva.",
-                imageUrl: null,
-                imageName: null,
-            },
-        ]);
+    const updateVariable = (key: keyof QuoteVariableValues, value: string) => {
+        setVariableValues((current) => ({ ...current, [key]: value }));
     };
 
-    const removeBlock = (blockId: string) => {
-        setBlocks((current) => current.length > 1 ? current.filter((block) => block.id !== blockId) : current);
+    const copyVariable = async (label: string) => {
+        await navigator.clipboard.writeText(label);
+    };
+
+    const buildGeneratedQuoteText = () => {
+        const lines = [
+            "*Cotizacion*",
+            `Cliente: ${renderText(clientName) || "Sin nombre"}`,
+            `Telefono: ${renderText(clientPhone) || "Sin telefono"}`,
+            optionalFlags.clientCompany && renderText(clientCompany)
+                ? `Empresa: ${renderText(clientCompany)}`
+                : null,
+            "",
+            ...items.map((item) => {
+                const quantity = safeNumber(item.quantity);
+                const unitPrice = safeNumber(item.unitPrice);
+                return `- ${renderText(item.concept)}: ${quantity} x ${formatCurrency(unitPrice)} = ${formatCurrency(quantity * unitPrice)}`;
+            }),
+            "",
+            `Subtotal: ${formatCurrency(subtotal)}`,
+            optionalFlags.iva ? `IVA (${ivaPercent}%): ${formatCurrency(ivaAmount)}` : null,
+            `*Total: ${formatCurrency(total)}*`,
+            `Vigencia: ${renderText(validUntil)}`,
+            optionalFlags.notes && renderText(notes) ? `Notas: ${renderText(notes)}` : null,
+        ];
+
+        return lines.filter(Boolean).join("\n");
     };
 
     const copyQuoteSummary = async () => {
-        const summary = [
-            `*${renderText(quoteTitle) || "Cotizacion"}*`,
-            renderText(clientName) ? `Cliente: ${renderText(clientName)}` : null,
-            renderText(clientPhone) ? `Telefono: ${renderText(clientPhone)}` : null,
-            "",
-            ...items.map((item) =>
-                `- ${renderText(item.concept)}: ${item.quantity} x ${formatCurrency(item.unitPrice)} = ${formatCurrency(item.quantity * item.unitPrice)}`,
-            ),
-            "",
-            `*Total estimado: ${formatCurrency(subtotal)}*`,
-            renderText(validUntil) ? `Vigencia: ${renderText(validUntil)}` : null,
-            renderText(notes) ? `Notas: ${renderText(notes)}` : null,
-        ]
-            .filter((line) => line !== null)
-            .join("\n");
+        await navigator.clipboard.writeText(buildGeneratedQuoteText());
+    };
 
-        await navigator.clipboard.writeText(summary);
+    const createQuoteAsset = async (): Promise<GeneratedQuoteAsset> => {
+        if (!quotePageRef.current) {
+            throw new Error("No se encontro la vista previa de la cotizacion.");
+        }
+
+        const { toPng } = await import("html-to-image");
+        const pngDataUrl = await toPng(quotePageRef.current, {
+            cacheBust: true,
+            pixelRatio: 2,
+            backgroundColor: "#ffffff",
+        });
+
+        const clientLabel = (renderText(clientName) || "cliente")
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .replace(/[^a-z0-9]+/gi, "-")
+            .replace(/^-+|-+$/g, "")
+            .toLowerCase()
+            .slice(0, 42) || "cliente";
+        const caption = "Te comparto la cotizacion.";
+
+        if (outputFormat === "image") {
+            const blob = await (await fetch(pngDataUrl)).blob();
+            return {
+                blob,
+                fileName: `cotizacion-${clientLabel}.png`,
+                mimeType: "image/png",
+                mediaCategory: "image",
+                previewUrl: pngDataUrl,
+                caption,
+            };
+        }
+
+        const { jsPDF } = await import("jspdf");
+        const pdf = new jsPDF({
+            orientation: "portrait",
+            unit: "pt",
+            format: "letter",
+            compress: true,
+        });
+        pdf.addImage(pngDataUrl, "PNG", 0, 0, 612, 792, undefined, "FAST");
+
+        return {
+            blob: pdf.output("blob"),
+            fileName: `cotizacion-${clientLabel}.pdf`,
+            mimeType: "application/pdf",
+            mediaCategory: "document",
+            caption,
+        };
+    };
+
+    const downloadAsset = (asset: GeneratedQuoteAsset) => {
+        const url = URL.createObjectURL(asset.blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = asset.fileName;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+    };
+
+    const generateQuote = async () => {
+        setIsGenerating(true);
+        try {
+            const asset = await createQuoteAsset();
+            setLastGeneratedAt(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
+            if (onGenerate) {
+                await onGenerate(asset);
+                return;
+            }
+            downloadAsset(asset);
+        } finally {
+            setIsGenerating(false);
+        }
     };
 
     const saveDraftLocally = () => {
@@ -304,15 +429,19 @@ export function QuoteBuilderPanel({ initialContact, agentName }: QuoteBuilderPan
                 logoUrl,
                 logoName,
                 companyName,
-                quoteTitle,
+                validUntil,
                 clientName,
                 clientPhone,
                 clientCompany,
-                validUntil,
                 variableValues,
-                items,
-                blocks,
+                optionalFlags,
+                ivaPercent,
                 notes,
+                contactPhone,
+                website,
+                social,
+                address,
+                items,
                 savedAt,
             }),
         );
@@ -328,11 +457,10 @@ export function QuoteBuilderPanel({ initialContact, agentName }: QuoteBuilderPan
         setLogoUrl(draft.logoUrl || null);
         setLogoName(draft.logoName || null);
         setCompanyName(draft.companyName || "Tu empresa");
-        setQuoteTitle(draft.quoteTitle || "Cotizacion comercial");
-        setClientName(draft.clientName || "");
-        setClientPhone(draft.clientPhone || "");
-        setClientCompany(draft.clientCompany || "");
         setValidUntil(draft.validUntil || "7 dias");
+        setClientName(draft.clientName || "{{nombre}}");
+        setClientPhone(draft.clientPhone || "{{telefono}}");
+        setClientCompany(draft.clientCompany || "{{empresa}}");
         setVariableValues({
             nombre: draft.variableValues?.nombre || initialContact?.name || "",
             empresa: draft.variableValues?.empresa || initialContact?.company || "",
@@ -342,63 +470,112 @@ export function QuoteBuilderPanel({ initialContact, agentName }: QuoteBuilderPan
             fecha: draft.variableValues?.fecha || "",
             ciudad: draft.variableValues?.ciudad || "",
         });
-        setItems(draft.items?.length ? draft.items : DEFAULT_ITEMS);
-        setBlocks(draft.blocks?.length ? draft.blocks : DEFAULT_BLOCKS);
+        setOptionalFlags({ ...DEFAULT_FLAGS, ...(draft.optionalFlags || {}) });
+        setIvaPercent(draft.ivaPercent ?? 16);
         setNotes(draft.notes || "");
+        setContactPhone(draft.contactPhone || "");
+        setWebsite(draft.website || "");
+        setSocial(draft.social || "");
+        setAddress(draft.address || "");
+        setItems(draft.items?.length ? draft.items : DEFAULT_ITEMS);
         setLastSavedAt(draft.savedAt || null);
     };
 
-    const updateVariable = (key: keyof QuoteVariableValues, value: string) => {
-        setVariableValues((current) => ({ ...current, [key]: value }));
-    };
+    const optionalToggle = (key: keyof OptionalFlags, label: string) => (
+        <button
+            type="button"
+            onClick={() => toggleOptional(key)}
+            className={cn(
+                "flex items-center gap-2 rounded-xl border px-3 py-2 text-left text-sm transition",
+                optionalFlags[key]
+                    ? "border-primary/50 bg-primary/10 text-primary"
+                    : "border-border bg-card text-muted-foreground hover:border-primary/35 hover:text-foreground",
+            )}
+        >
+            <Checkbox
+                checked={optionalFlags[key]}
+                onClick={(event) => event.stopPropagation()}
+                onCheckedChange={(checked) => setOptionalFlags((current) => ({ ...current, [key]: Boolean(checked) }))}
+            />
+            <span>{label}</span>
+        </button>
+    );
 
-    const copyVariable = async (label: string) => {
-        await navigator.clipboard.writeText(label);
-    };
+    const pageBackground =
+        selectedTemplate === "minimal"
+            ? "linear-gradient(135deg, #f8fafc 0%, #ffffff 45%, #ecfeff 100%)"
+            : selectedTemplate === "visual"
+                ? "radial-gradient(circle at 20% 10%, rgba(37,99,235,0.16), transparent 28%), linear-gradient(135deg, #ffffff 0%, #eef6ff 100%)"
+                : "linear-gradient(135deg, #ffffff 0%, #fff7f8 100%)";
+
+    const footerItems = [
+        optionalFlags.contactPhone && contactPhone ? `Telefono: ${renderText(contactPhone)}` : null,
+        optionalFlags.website && website ? `Sitio web: ${renderText(website)}` : null,
+        optionalFlags.social && social ? `Redes: ${renderText(social)}` : null,
+        optionalFlags.address && address ? `Direccion: ${renderText(address)}` : null,
+    ].filter(Boolean);
 
     return (
-        <div className="space-y-4">
-            <div className="overflow-hidden rounded-2xl border bg-card shadow-[0_22px_50px_-38px_rgba(15,23,42,0.45)]">
+        <div className={cn("space-y-4", isCompact && "max-h-[78vh] overflow-y-auto pr-1")}>
+            <div className={cn(
+                "overflow-hidden rounded-2xl border bg-card shadow-[0_22px_50px_-38px_rgba(15,23,42,0.45)]",
+                isCompact && "rounded-xl shadow-none",
+            )}>
                 <div className="flex flex-col gap-4 border-b border-border/60 bg-gradient-to-r from-primary/10 via-background to-card px-5 py-5 lg:flex-row lg:items-center lg:justify-between">
-                    <div>
-                        <div className="flex items-center gap-2.5">
-                            <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/12 text-primary">
-                                <ReceiptText className="h-5 w-5" />
-                            </span>
-                            <div>
-                                <h2 className="text-xl font-semibold tracking-tight">Cotizador visual</h2>
-                                <p className="text-sm text-muted-foreground">
-                                    Arma propuestas tipo presentacion con logo, bloques visuales e imagenes.
-                                </p>
-                            </div>
+                    <div className="flex items-center gap-2.5">
+                        <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/12 text-primary">
+                            <ReceiptText className="h-5 w-5" />
+                        </span>
+                        <div>
+                            <h2 className="text-xl font-semibold tracking-tight">Cotizador visual</h2>
+                            <p className="text-sm text-muted-foreground">
+                                Hoja tamaño carta con variables listas para enviar desde el chat.
+                            </p>
                         </div>
                     </div>
+
                     <div className="flex flex-wrap items-center gap-2">
                         <Button variant="outline" className="rounded-2xl" onClick={copyQuoteSummary}>
                             <Copy className="h-4 w-4" />
-                            Copiar para chat
+                            Copiar
                         </Button>
                         <Button variant="outline" className="rounded-2xl" onClick={loadDraftLocally}>
                             <FolderOpen className="h-4 w-4" />
-                            Cargar plantilla
+                            Cargar
                         </Button>
-                        <Button className="rounded-2xl shadow-[0_18px_34px_-22px_rgba(37,99,235,0.8)]" onClick={saveDraftLocally}>
+                        <Button variant="outline" className="rounded-2xl" onClick={saveDraftLocally}>
                             Guardar plantilla
                         </Button>
+                        <Select value={outputFormat} onValueChange={(value) => setOutputFormat(value as QuoteOutputFormat)}>
+                            <SelectTrigger className="h-10 w-[8.5rem] rounded-2xl bg-background">
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="pdf">PDF</SelectItem>
+                                <SelectItem value="image">Imagen</SelectItem>
+                            </SelectContent>
+                        </Select>
+                        <Button className="rounded-2xl shadow-[0_18px_34px_-22px_rgba(37,99,235,0.8)]" onClick={() => void generateQuote()} disabled={isGenerating}>
+                            {onGenerate ? <Send className="h-4 w-4" /> : <Check className="h-4 w-4" />}
+                            {isGenerating ? "Generando..." : onGenerate ? "Generar para chat" : "Generar"}
+                        </Button>
                     </div>
-                    {lastSavedAt ? (
+                    {lastSavedAt || lastGeneratedAt ? (
                         <p className="text-xs text-muted-foreground lg:text-right">
-                            Borrador guardado localmente a las {lastSavedAt}.
+                            {lastGeneratedAt ? `Generada a las ${lastGeneratedAt}.` : `Plantilla guardada a las ${lastSavedAt}.`}
                         </p>
                     ) : null}
                 </div>
 
-                <div className="grid gap-0 xl:grid-cols-[minmax(0,1fr)_minmax(32rem,0.95fr)]">
+                <div className={cn(
+                    "grid gap-0",
+                    isCompact ? "lg:grid-cols-[minmax(0,0.9fr)_minmax(25rem,1fr)]" : "xl:grid-cols-[minmax(0,1fr)_minmax(34rem,0.92fr)]",
+                )}>
                     <div className="space-y-5 border-b border-border/60 p-5 xl:border-b-0 xl:border-r">
                         <section className="space-y-3">
                             <div className="flex items-center gap-2">
                                 <Palette className="h-4 w-4 text-primary" />
-                                <h3 className="font-semibold">1) Elige estilo</h3>
+                                <h3 className="font-semibold">Plantilla visual</h3>
                             </div>
                             <div className="grid gap-3 md:grid-cols-3">
                                 {QUOTE_TEMPLATES.map((entry) => (
@@ -411,7 +588,10 @@ export function QuoteBuilderPanel({ initialContact, agentName }: QuoteBuilderPan
                                             selectedTemplate === entry.id && "border-primary/70 ring-2 ring-primary/15",
                                         )}
                                     >
-                                        <div className={cn("mb-3 h-16 rounded-xl bg-gradient-to-br", entry.accent)} />
+                                        <div
+                                            className="mb-3 h-16 rounded-xl"
+                                            style={{ background: `linear-gradient(135deg, ${entry.dark}, ${entry.accent})` }}
+                                        />
                                         <p className="font-semibold">{entry.name}</p>
                                         <p className="mt-1 text-xs leading-5 text-muted-foreground">{entry.description}</p>
                                     </button>
@@ -421,7 +601,7 @@ export function QuoteBuilderPanel({ initialContact, agentName }: QuoteBuilderPan
 
                         <section className="grid gap-4 rounded-2xl border bg-background/70 p-4 md:grid-cols-2">
                             <div className="space-y-2">
-                                <Label>Logo de la empresa</Label>
+                                <Label>Subir logo</Label>
                                 <label className="flex cursor-pointer items-center gap-3 rounded-2xl border border-dashed border-border bg-card p-3 transition hover:border-primary/50">
                                     <span className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-xl bg-primary/10 text-primary">
                                         {logoUrl ? (
@@ -431,7 +611,7 @@ export function QuoteBuilderPanel({ initialContact, agentName }: QuoteBuilderPan
                                         )}
                                     </span>
                                     <span className="min-w-0">
-                                        <span className="block text-sm font-medium">Subir logo</span>
+                                        <span className="block text-sm font-medium">Logo de la empresa</span>
                                         <span className="block truncate text-xs text-muted-foreground">{logoName || "PNG, JPG o WEBP"}</span>
                                     </span>
                                     <input
@@ -450,39 +630,61 @@ export function QuoteBuilderPanel({ initialContact, agentName }: QuoteBuilderPan
                                 </label>
                             </div>
                             <div className="space-y-2">
-                                <Label>Nombre de empresa</Label>
+                                <Label>Nombre de la empresa</Label>
                                 <Input value={companyName} onChange={(event) => setCompanyName(event.target.value)} />
                             </div>
                             <div className="space-y-2">
-                                <Label>Titulo de la cotizacion</Label>
-                                <Input value={quoteTitle} onChange={(event) => setQuoteTitle(event.target.value)} />
-                            </div>
-                            <div className="space-y-2">
                                 <Label>Vigencia</Label>
-                                <Input value={validUntil} onChange={(event) => setValidUntil(event.target.value)} />
+                                <Input value={validUntil} onChange={(event) => setValidUntil(event.target.value)} placeholder="Ej. 7 dias" />
                             </div>
                             <div className="space-y-2">
-                                <Label>Cliente</Label>
-                                <Input value={clientName} onChange={(event) => setClientName(event.target.value)} placeholder="Nombre del cliente" />
-                            </div>
-                            <div className="space-y-2">
-                                <Label>Telefono</Label>
-                                <Input value={clientPhone} onChange={(event) => setClientPhone(event.target.value)} placeholder="+52..." />
+                                <Label>Cliente {"{{nombre}}"}</Label>
+                                <Input value={clientName} onChange={(event) => setClientName(event.target.value)} />
                             </div>
                             <div className="space-y-2 md:col-span-2">
-                                <Label>Empresa del cliente</Label>
-                                <Input value={clientCompany} onChange={(event) => setClientCompany(event.target.value)} placeholder="Opcional" />
+                                <Label>Telefono {"{{telefono}}"}</Label>
+                                <Input value={clientPhone} onChange={(event) => setClientPhone(event.target.value)} />
                             </div>
+                        </section>
+
+                        <section className="space-y-3 rounded-2xl border bg-background/70 p-4">
+                            <div>
+                                <h3 className="font-semibold">Opcionales</h3>
+                                <p className="text-sm text-muted-foreground">Activa solo los campos que quieras mostrar en la cotizacion.</p>
+                            </div>
+                            <div className="grid gap-2 md:grid-cols-3">
+                                {optionalToggle("clientCompany", "Empresa del cliente")}
+                                {optionalToggle("iva", "IVA")}
+                                {optionalToggle("notes", "Notas y condiciones")}
+                            </div>
+
+                            {optionalFlags.clientCompany ? (
+                                <div className="space-y-2">
+                                    <Label>Empresa del cliente</Label>
+                                    <Input value={clientCompany} onChange={(event) => setClientCompany(event.target.value)} />
+                                </div>
+                            ) : null}
+                            {optionalFlags.iva ? (
+                                <div className="space-y-2">
+                                    <Label>IVA (%)</Label>
+                                    <Input type="number" min={0} value={ivaPercent} onChange={(event) => setIvaPercent(Number(event.target.value))} />
+                                </div>
+                            ) : null}
+                            {optionalFlags.notes ? (
+                                <div className="space-y-2">
+                                    <Label>Notas y condiciones</Label>
+                                    <Textarea value={notes} onChange={(event) => setNotes(event.target.value)} className="min-h-20" />
+                                </div>
+                            ) : null}
                         </section>
 
                         <section className="space-y-4 rounded-2xl border bg-background/70 p-4">
                             <div>
                                 <h3 className="font-semibold">Variables disponibles</h3>
                                 <p className="text-sm text-muted-foreground">
-                                    Se reemplazan automaticamente en la vista previa y al copiar para chat. Puedes usarlas en titulos, conceptos, slides y notas.
+                                    Se reemplazan automaticamente. Puedes usarlas en cliente, conceptos y notas.
                                 </p>
                             </div>
-
                             <div className="flex flex-wrap gap-2">
                                 {QUOTE_VARIABLES.map((variable) => (
                                     <button
@@ -496,43 +698,30 @@ export function QuoteBuilderPanel({ initialContact, agentName }: QuoteBuilderPan
                                     </button>
                                 ))}
                             </div>
-
                             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                                 <div className="space-y-1.5">
-                                    <Label>Valor de {"{{nombre}}"}</Label>
-                                    <Input value={variableValues.nombre} onChange={(event) => updateVariable("nombre", event.target.value)} placeholder="Nombre del cliente" />
+                                    <Label>{"{{nombre}}"}</Label>
+                                    <Input value={variableValues.nombre} onChange={(event) => updateVariable("nombre", event.target.value)} />
                                 </div>
                                 <div className="space-y-1.5">
-                                    <Label>Valor de {"{{empresa}}"}</Label>
-                                    <Input value={variableValues.empresa} onChange={(event) => updateVariable("empresa", event.target.value)} placeholder="Empresa" />
+                                    <Label>{"{{empresa}}"}</Label>
+                                    <Input value={variableValues.empresa} onChange={(event) => updateVariable("empresa", event.target.value)} />
                                 </div>
                                 <div className="space-y-1.5">
-                                    <Label>Valor de {"{{telefono}}"}</Label>
-                                    <Input value={variableValues.telefono} onChange={(event) => updateVariable("telefono", event.target.value)} placeholder="+52..." />
+                                    <Label>{"{{telefono}}"}</Label>
+                                    <Input value={variableValues.telefono} onChange={(event) => updateVariable("telefono", event.target.value)} />
                                 </div>
                                 <div className="space-y-1.5">
-                                    <Label>Valor de {"{{agente}}"}</Label>
-                                    <Input value={variableValues.agente} onChange={(event) => updateVariable("agente", event.target.value)} placeholder="Agente" />
-                                </div>
-                                <div className="space-y-1.5">
-                                    <Label>Valor de {"{{cantidad}}"}</Label>
+                                    <Label>{"{{cantidad}}"}</Label>
                                     <Input value={variableValues.cantidad} onChange={(event) => updateVariable("cantidad", event.target.value)} placeholder="Ej. 140 piezas" />
                                 </div>
                                 <div className="space-y-1.5">
-                                    <Label>Valor de {"{{fecha}}"}</Label>
-                                    <Input value={variableValues.fecha} onChange={(event) => updateVariable("fecha", event.target.value)} placeholder="Ej. Julio 2026" />
+                                    <Label>{"{{fecha}}"}</Label>
+                                    <Input value={variableValues.fecha} onChange={(event) => updateVariable("fecha", event.target.value)} placeholder="Ej. 04 de Junio 2026" />
                                 </div>
                                 <div className="space-y-1.5">
-                                    <Label>Valor de {"{{ciudad}}"}</Label>
-                                    <Input value={variableValues.ciudad} onChange={(event) => updateVariable("ciudad", event.target.value)} placeholder="Ej. Guadalajara" />
-                                </div>
-                                <div className="space-y-1.5">
-                                    <Label>{"{{total}}"}</Label>
-                                    <Input value={formatCurrency(subtotal)} readOnly className="bg-muted/60" />
-                                </div>
-                                <div className="space-y-1.5">
-                                    <Label>{"{{vigencia}}"}</Label>
-                                    <Input value={validUntil} readOnly className="bg-muted/60" />
+                                    <Label>{"{{ciudad}}"}</Label>
+                                    <Input value={variableValues.ciudad} onChange={(event) => updateVariable("ciudad", event.target.value)} />
                                 </div>
                             </div>
                         </section>
@@ -540,8 +729,8 @@ export function QuoteBuilderPanel({ initialContact, agentName }: QuoteBuilderPan
                         <section className="space-y-3 rounded-2xl border bg-background/70 p-4">
                             <div className="flex items-center justify-between gap-3">
                                 <div>
-                                    <h3 className="font-semibold">2) Conceptos a cotizar</h3>
-                                    <p className="text-sm text-muted-foreground">Agrega productos o servicios como filas editables.</p>
+                                    <h3 className="font-semibold">Conceptos</h3>
+                                    <p className="text-sm text-muted-foreground">Agrega productos o servicios a cotizar.</p>
                                 </div>
                                 <Button variant="outline" size="sm" className="rounded-xl" onClick={addItem}>
                                     <Plus className="h-4 w-4" />
@@ -551,11 +740,18 @@ export function QuoteBuilderPanel({ initialContact, agentName }: QuoteBuilderPan
                             <div className="space-y-2">
                                 {items.map((item) => (
                                     <div key={item.id} className="grid gap-2 rounded-2xl border bg-card p-3 md:grid-cols-[1fr_6rem_9rem_2.5rem]">
-                                        <Input
-                                            value={item.concept}
-                                            onChange={(event) => updateItem(item.id, { concept: event.target.value })}
-                                            placeholder="Concepto"
-                                        />
+                                        <div className="space-y-2">
+                                            <Input
+                                                value={item.concept}
+                                                onChange={(event) => updateItem(item.id, { concept: event.target.value })}
+                                                placeholder="Concepto"
+                                            />
+                                            <Input
+                                                value={item.description}
+                                                onChange={(event) => updateItem(item.id, { description: event.target.value })}
+                                                placeholder="Descripcion breve"
+                                            />
+                                        </div>
                                         <Input
                                             type="number"
                                             min={0}
@@ -579,68 +775,42 @@ export function QuoteBuilderPanel({ initialContact, agentName }: QuoteBuilderPan
                         </section>
 
                         <section className="space-y-3 rounded-2xl border bg-background/70 p-4">
-                            <div className="flex items-center justify-between gap-3">
-                                <div>
-                                    <h3 className="font-semibold">3) Bloques tipo slide</h3>
-                                    <p className="text-sm text-muted-foreground">Usa el boton + para agregar imagenes o secciones visuales.</p>
-                                </div>
-                                <Button variant="outline" size="sm" className="rounded-xl" onClick={addBlock}>
-                                    <Plus className="h-4 w-4" />
-                                    Slide
-                                </Button>
+                            <div>
+                                <h3 className="font-semibold">Datos de contacto al pie</h3>
+                                <p className="text-sm text-muted-foreground">Todos son opcionales y aparecen al final de la hoja.</p>
                             </div>
-                            <div className="space-y-3">
-                                {blocks.map((block, index) => (
-                                    <div key={block.id} className="rounded-2xl border bg-card p-3">
-                                        <div className="mb-3 flex items-center justify-between gap-2">
-                                            <Badge variant="secondary" className="rounded-full">Slide {index + 1}</Badge>
-                                            <Button variant="ghost" size="icon" className="h-8 w-8 rounded-xl text-destructive" onClick={() => removeBlock(block.id)}>
-                                                <Trash2 className="h-4 w-4" />
-                                            </Button>
-                                        </div>
-                                        <div className="grid gap-3 md:grid-cols-[1fr_12rem]">
-                                            <div className="space-y-2">
-                                                <Input value={block.title} onChange={(event) => updateBlock(block.id, { title: event.target.value })} />
-                                                <Textarea
-                                                    value={block.body}
-                                                    onChange={(event) => updateBlock(block.id, { body: event.target.value })}
-                                                    className="min-h-24"
-                                                />
-                                            </div>
-                                            <label className="flex min-h-36 cursor-pointer flex-col items-center justify-center overflow-hidden rounded-2xl border border-dashed border-border bg-background text-center transition hover:border-primary/50">
-                                                {block.imageUrl ? (
-                                                    <img src={block.imageUrl} alt={block.imageName || "Imagen"} className="h-full w-full object-cover" />
-                                                ) : (
-                                                    <>
-                                                        <span className="mb-2 flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
-                                                            <ImagePlus className="h-5 w-5" />
-                                                        </span>
-                                                        <span className="text-sm font-medium">+ Agregar imagen</span>
-                                                        <span className="text-xs text-muted-foreground">Estilo PowerPoint</span>
-                                                    </>
-                                                )}
-                                                <input
-                                                    type="file"
-                                                    accept="image/*"
-                                                    className="hidden"
-                                                    onChange={async (event) => {
-                                                        const input = event.currentTarget;
-                                                        const image = await createLocalImageUrl(event);
-                                                        input.value = "";
-                                                        if (!image) return;
-                                                        updateBlock(block.id, { imageUrl: image.url, imageName: image.name });
-                                                    }}
-                                                />
-                                            </label>
-                                        </div>
+                            <div className="grid gap-2 md:grid-cols-2">
+                                {optionalToggle("contactPhone", "Telefono")}
+                                {optionalToggle("website", "Sitio Web")}
+                                {optionalToggle("social", "Redes Sociales")}
+                                {optionalToggle("address", "Direccion")}
+                            </div>
+                            <div className="grid gap-3 md:grid-cols-2">
+                                {optionalFlags.contactPhone ? (
+                                    <div className="space-y-2">
+                                        <Label>Telefono</Label>
+                                        <Input value={contactPhone} onChange={(event) => setContactPhone(event.target.value)} />
                                     </div>
-                                ))}
+                                ) : null}
+                                {optionalFlags.website ? (
+                                    <div className="space-y-2">
+                                        <Label>Sitio Web</Label>
+                                        <Input value={website} onChange={(event) => setWebsite(event.target.value)} />
+                                    </div>
+                                ) : null}
+                                {optionalFlags.social ? (
+                                    <div className="space-y-2">
+                                        <Label>Redes Sociales</Label>
+                                        <Input value={social} onChange={(event) => setSocial(event.target.value)} />
+                                    </div>
+                                ) : null}
+                                {optionalFlags.address ? (
+                                    <div className="space-y-2">
+                                        <Label>Direccion</Label>
+                                        <Input value={address} onChange={(event) => setAddress(event.target.value)} />
+                                    </div>
+                                ) : null}
                             </div>
-                        </section>
-
-                        <section className="space-y-2">
-                            <Label>Notas y condiciones</Label>
-                            <Textarea value={notes} onChange={(event) => setNotes(event.target.value)} className="min-h-24" />
                         </section>
                     </div>
 
@@ -648,92 +818,159 @@ export function QuoteBuilderPanel({ initialContact, agentName }: QuoteBuilderPan
                         <div className="sticky top-4 space-y-4">
                             <div className="flex items-center justify-between gap-3">
                                 <div>
-                                    <h3 className="font-semibold">Vista previa</h3>
-                                    <p className="text-sm text-muted-foreground">Asi se vera la propuesta antes de enviarla.</p>
+                                    <h3 className="font-semibold">Vista previa premium</h3>
+                                    <p className="text-sm text-muted-foreground">Hoja fija tamaño carta. No se deforma.</p>
                                 </div>
                                 <Badge className="rounded-full bg-primary/10 text-primary hover:bg-primary/10">
                                     {template.name}
                                 </Badge>
                             </div>
 
-                            <div className={cn("overflow-hidden rounded-[2rem] border shadow-[0_30px_70px_-44px_rgba(15,23,42,0.6)]", template.previewClassName)}>
-                                <div className={cn("h-2 bg-gradient-to-r", template.accent)} />
-                                <div className="space-y-6 p-6">
-                                    <div className="flex items-start justify-between gap-4">
-                                        <div>
-                                            <p className="text-xs uppercase tracking-[0.28em] opacity-60">Propuesta comercial</p>
-                                            <h2 className="mt-2 text-3xl font-semibold tracking-tight">{renderText(quoteTitle) || "Cotizacion"}</h2>
-                                            <p className="mt-2 text-sm opacity-70">Vigencia: {renderText(validUntil) || "Por definir"}</p>
-                                        </div>
-                                        <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl border bg-white/80 text-slate-700">
-                                            {logoUrl ? (
-                                                <img src={logoUrl} alt="Logo" className="h-full w-full object-cover" />
-                                            ) : (
-                                                <Building2 className="h-7 w-7" />
-                                            )}
-                                        </div>
+                            <div className="mx-auto w-full max-w-[38rem]">
+                                <div
+                                    ref={quotePageRef}
+                                    className={cn(
+                                        "relative overflow-hidden border bg-white shadow-[0_30px_70px_-44px_rgba(15,23,42,0.6)]",
+                                        template.paperClassName,
+                                    )}
+                                    style={{ aspectRatio: "8.5 / 11", background: pageBackground }}
+                                >
+                                    <div className="absolute inset-0 pointer-events-none">
+                                        <div
+                                            className="absolute -right-20 top-8 h-20 w-[24rem] skew-x-[-28deg]"
+                                            style={{ backgroundColor: template.dark }}
+                                        />
+                                        <div
+                                            className="absolute right-16 top-6 h-24 w-32 skew-x-[-28deg]"
+                                            style={{ backgroundColor: template.accent }}
+                                        />
+                                        <div
+                                            className="absolute -bottom-10 -right-12 h-32 w-28 rotate-45"
+                                            style={{ backgroundColor: template.dark }}
+                                        />
+                                        <div
+                                            className="absolute bottom-16 right-24 h-20 w-16 rotate-45"
+                                            style={{ backgroundColor: template.accent }}
+                                        />
                                     </div>
 
-                                    <div className="grid gap-3 rounded-2xl border bg-white/75 p-4 text-slate-950 md:grid-cols-2">
-                                        <div>
-                                            <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Empresa</p>
-                                            <p className="mt-1 font-semibold">{renderText(companyName) || "Tu empresa"}</p>
-                                        </div>
-                                        <div>
-                                            <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Cliente</p>
-                                            <p className="mt-1 font-semibold">{renderText(clientName) || renderedVariables.nombre || "Cliente sin nombre"}</p>
-                                            <p className="text-sm text-slate-500">{renderText(clientCompany) || renderText(clientPhone) || "Datos pendientes"}</p>
-                                        </div>
-                                    </div>
-
-                                    <div className="overflow-hidden rounded-2xl border bg-white/88 text-slate-950">
-                                        <div className="grid grid-cols-[1fr_5rem_7rem] border-b bg-slate-950/5 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                                            <span>Concepto</span>
-                                            <span className="text-right">Cant.</span>
-                                            <span className="text-right">Importe</span>
-                                        </div>
-                                        {items.map((item) => (
-                                            <div key={item.id} className="grid grid-cols-[1fr_5rem_7rem] gap-3 border-b px-4 py-3 text-sm last:border-b-0">
-                                                <span className="font-medium">{renderText(item.concept) || "Concepto"}</span>
-                                                <span className="text-right text-slate-500">{item.quantity || 0}</span>
-                                                <span className="text-right font-semibold">{formatCurrency((item.quantity || 0) * (item.unitPrice || 0))}</span>
-                                            </div>
-                                        ))}
-                                        <div className="flex items-center justify-between bg-slate-950 px-4 py-4 text-white">
-                                            <span className="text-sm uppercase tracking-[0.2em] text-white/60">Total estimado</span>
-                                            <span className="text-2xl font-semibold">{formatCurrency(subtotal)}</span>
-                                        </div>
-                                    </div>
-
-                                    <div className="grid gap-3">
-                                        {blocks.map((block) => (
-                                            <div key={block.id} className="grid gap-3 rounded-2xl border bg-white/78 p-4 text-slate-950 md:grid-cols-[1fr_10rem]">
-                                                <div>
-                                                    <div className="mb-2 flex items-center gap-2">
-                                                        <Sparkles className="h-4 w-4 text-primary" />
-                                                        <h4 className="font-semibold">{renderText(block.title)}</h4>
-                                                    </div>
-                                                    <p className="whitespace-pre-wrap text-sm leading-6 text-slate-600">{renderText(block.body)}</p>
-                                                </div>
-                                                <div className="flex min-h-28 items-center justify-center overflow-hidden rounded-2xl bg-slate-100">
-                                                    {block.imageUrl ? (
-                                                        <img src={block.imageUrl} alt={block.imageName || block.title} className="h-full w-full object-cover" />
+                                    <div className="relative flex h-full flex-col p-[6%]">
+                                        <header className="grid grid-cols-[1fr_1.3fr] items-start gap-5 border-b pb-5">
+                                            <div>
+                                                <div className="flex h-20 w-44 items-center justify-center overflow-hidden border-2 bg-white text-slate-700" style={{ borderColor: template.accent }}>
+                                                    {logoUrl ? (
+                                                        <img src={logoUrl} alt="Logo" className="h-full w-full object-contain p-2" />
                                                     ) : (
-                                                        <ImagePlus className="h-8 w-8 text-slate-300" />
+                                                        <div className="flex items-center gap-2 text-2xl font-black tracking-wider">
+                                                            <Building2 className="h-7 w-7" />
+                                                            LOGO
+                                                        </div>
                                                     )}
                                                 </div>
                                             </div>
-                                        ))}
-                                    </div>
+                                            <div className="pt-5 text-right">
+                                                <div
+                                                    className="ml-auto inline-flex min-w-64 items-center justify-end px-6 py-3 text-3xl font-black tracking-tight text-white"
+                                                    style={{ backgroundColor: template.dark }}
+                                            >
+                                                Cotizacion
+                                            </div>
+                                            </div>
+                                        </header>
 
-                                    {notes ? (
-                                        <div className="rounded-2xl border bg-white/78 p-4 text-sm leading-6 text-slate-600">
-                                            <p className="mb-1 font-semibold text-slate-950">Notas</p>
-                                            {renderText(notes)}
+                                        <section className="grid grid-cols-[1fr_12rem] gap-8 py-6">
+                                            <div className="space-y-1.5 text-sm">
+                                                <p className="text-xs font-black uppercase tracking-wide text-slate-500">Cliente</p>
+                                                <p className="text-lg font-black">{renderText(clientName) || "Cliente"}</p>
+                                                <p className="font-semibold text-slate-600">{renderText(clientPhone) || "Sin telefono"}</p>
+                                                {optionalFlags.clientCompany && renderText(clientCompany) ? (
+                                                    <p className="text-slate-500">{renderText(clientCompany)}</p>
+                                                ) : null}
+                                            </div>
+                                            <div className="text-right">
+                                                <div className="px-4 py-2 text-center text-sm font-black text-white" style={{ backgroundColor: template.accent }}>
+                                                    FECHA
+                                                </div>
+                                                <p className="mt-3 text-sm font-black">{renderedVariables.fecha || new Date().toLocaleDateString("es-MX", { day: "2-digit", month: "long", year: "numeric" })}</p>
+                                            </div>
+                                        </section>
+
+                                        <section className="overflow-hidden border">
+                                            <div className="grid grid-cols-[1fr_5rem_7rem_7rem] text-xs font-black uppercase text-white" style={{ backgroundColor: template.dark }}>
+                                                <div className="px-4 py-3" style={{ backgroundColor: template.accent }}>Descripcion</div>
+                                                <div className="px-3 py-3 text-right">Cant.</div>
+                                                <div className="px-3 py-3 text-right">Unitario</div>
+                                                <div className="px-3 py-3 text-right">Total</div>
+                                            </div>
+                                            {items.map((item, index) => {
+                                                const quantity = safeNumber(item.quantity);
+                                                const unitPrice = safeNumber(item.unitPrice);
+                                                return (
+                                                    <div
+                                                        key={item.id}
+                                                        className="grid grid-cols-[1fr_5rem_7rem_7rem] text-sm"
+                                                        style={{ backgroundColor: index % 2 === 0 ? "rgba(248,250,252,0.9)" : "rgba(226,232,240,0.62)" }}
+                                                    >
+                                                        <div className="px-4 py-3">
+                                                            <p className="font-bold">{renderText(item.concept) || "Concepto"}</p>
+                                                            <p className="mt-1 text-[10px] leading-4 text-slate-500">{renderText(item.description)}</p>
+                                                        </div>
+                                                        <div className="px-3 py-4 text-right font-semibold">{quantity}</div>
+                                                        <div className="px-3 py-4 text-right">{formatCurrency(unitPrice)}</div>
+                                                        <div className="px-3 py-4 text-right font-semibold">{formatCurrency(quantity * unitPrice)}</div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </section>
+
+                                        <section className="ml-auto mt-5 w-64 space-y-1 text-sm">
+                                            <div className="flex justify-between">
+                                                <span>Subtotal</span>
+                                                <span>{formatCurrency(subtotal)}</span>
+                                            </div>
+                                            {optionalFlags.iva ? (
+                                                <div className="flex justify-between">
+                                                    <span>IVA {ivaPercent}%</span>
+                                                    <span>{formatCurrency(ivaAmount)}</span>
+                                                </div>
+                                            ) : null}
+                                            <div className="mt-2 flex justify-between px-4 py-3 text-base font-black text-white" style={{ backgroundColor: template.accent }}>
+                                                <span>Total</span>
+                                                <span>{formatCurrency(total)}</span>
+                                            </div>
+                                        </section>
+
+                                        <div className="mt-auto grid grid-cols-[1fr_1fr] gap-8 pt-5">
+                                            <div className="space-y-3 text-xs">
+                                                {optionalFlags.notes && renderText(notes) ? (
+                                                    <div>
+                                                        <p className="font-black uppercase tracking-wide">Terminos y condiciones</p>
+                                                        <p className="mt-1 leading-5 text-slate-600">{renderText(notes)}</p>
+                                                    </div>
+                                                ) : null}
+                                                {footerItems.length > 0 ? (
+                                                    <div>
+                                                        <p className="font-black uppercase tracking-wide" style={{ color: template.accent }}>Contacto</p>
+                                                        <div className="mt-1 space-y-0.5 text-slate-700">
+                                                            {footerItems.map((item) => <p key={item}>{item}</p>)}
+                                                        </div>
+                                                    </div>
+                                                ) : null}
+                                            </div>
+                                            <div className="self-end text-right text-xs text-slate-500">
+                                                <div className="ml-auto mb-2 h-px w-44 bg-slate-400" />
+                                                <p className="font-bold text-slate-800">{renderedVariables.agente || companyName}</p>
+                                                <p>Responsable de la cotizacion</p>
+                                                <p className="mt-4">Vigencia: {renderText(validUntil)}</p>
+                                            </div>
                                         </div>
-                                    ) : null}
+                                    </div>
                                 </div>
                             </div>
+
+                            <p className="text-center text-xs text-muted-foreground">
+                                La hoja conserva proporcion carta para que la cotizacion no se estire ni se aplaste.
+                            </p>
                         </div>
                     </div>
                 </div>
