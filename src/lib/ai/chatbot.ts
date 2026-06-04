@@ -124,6 +124,122 @@ function buildKnowledgeLookupQuery(
         .join("\n");
 }
 
+type ConversationFactMessage = {
+    content: string;
+    direction: string;
+    senderType: string | null;
+};
+
+function normalizeFactText(text: string) {
+    return text
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase();
+}
+
+function extractLastMatchedFact(
+    messages: ConversationFactMessage[],
+    matcher: (normalized: string, original: string) => string | null,
+) {
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+        const message = messages[index];
+        if (message.direction !== "inbound") continue;
+
+        const original = message.content?.trim();
+        if (!original) continue;
+
+        const match = matcher(normalizeFactText(original), original);
+        if (match) return match;
+    }
+
+    return null;
+}
+
+function extractConversationBusinessFacts(messages: ConversationFactMessage[]) {
+    const quantity = extractLastMatchedFact(messages, (normalized, original) => {
+        const patterns = [
+            /\b(\d{1,5})\s*(?:pax|personas?|invitad[oa]s?|asistentes?|piezas?|pzs?|pulseras?|unidades?|uds?)\b/i,
+            /\b(?:pax|personas?|invitad[oa]s?|asistentes?|piezas?|pzs?|pulseras?|unidades?|uds?)\s*(?:son|serian|aprox(?:imadamente)?|de)?\s*(\d{1,5})\b/i,
+        ];
+
+        for (const pattern of patterns) {
+            const match = normalized.match(pattern);
+            if (match?.[1]) {
+                return `${match[1]} (${original}) -> tomarlo como cantidad de piezas/pulseras para cotizar`;
+            }
+        }
+
+        return null;
+    });
+
+    const interest = extractLastMatchedFact(messages, (normalized) => {
+        if (/\baudioritmicas?\b/.test(normalized)) return "Audioritmicas";
+        if (/\bglow\s*sync\b|\bglowsync\b|\bcontrol remoto\b/.test(normalized)) {
+            return "GlowSync / control remoto";
+        }
+        return null;
+    });
+
+    const eventDate = extractLastMatchedFact(messages, (normalized, original) => {
+        const monthPattern =
+            /\b(?:enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre)(?:\s+(?:de\s+)?\d{4})?\b/i;
+        const fullDatePattern =
+            /\b\d{1,2}\s*(?:de\s*)?(?:enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre)(?:\s*(?:de\s*)?\d{4})?\b/i;
+
+        if (fullDatePattern.test(normalized) || monthPattern.test(normalized)) {
+            return original;
+        }
+
+        return null;
+    });
+
+    const city = extractLastMatchedFact(messages, (normalized, original) => {
+        const knownCities = [
+            "guadalajara",
+            "zapopan",
+            "tonala",
+            "tlaquepaque",
+            "monterrey",
+            "san pedro",
+            "santa catarina",
+            "apodaca",
+            "escobedo",
+            "guadalupe",
+            "cdmx",
+            "ciudad de mexico",
+            "mexico",
+            "queretaro",
+            "puebla",
+            "leon",
+            "tijuana",
+            "merida",
+            "cancun",
+            "saltillo",
+            "torreon",
+            "chihuahua",
+            "hermosillo",
+            "culiacan",
+            "tepic",
+        ].map(normalizeFactText);
+
+        const compact = normalized.trim();
+        if (knownCities.includes(compact)) return original;
+
+        return null;
+    });
+
+    const lines = [
+        interest ? `- Tipo/interes detectado: ${interest}.` : null,
+        eventDate ? `- Fecha o mes del evento detectado: ${eventDate}.` : null,
+        quantity ? `- Cantidad detectada: ${quantity}. No vuelvas a pedir cantidad.` : null,
+        city ? `- Ciudad detectada: ${city}.` : null,
+    ].filter(Boolean);
+
+    return lines.length > 0
+        ? lines.join("\n")
+        : "- No se detectaron datos comerciales concretos aun.";
+}
+
 export async function generateConversationReply(
     conversationId: string,
     latestUserMessage: string,
@@ -185,6 +301,10 @@ export async function generateConversationReply(
         knowledgeLookupQuery || latestUserMessage,
         settings.knowledgeTopK,
     );
+    const detectedBusinessFacts = extractConversationBusinessFacts([
+        ...dedupedHistory,
+        { content: latestUserMessage, direction: "inbound", senderType: null },
+    ]);
 
     const systemPrompt = `
 ${settings.agentPrompt}
@@ -197,6 +317,9 @@ DATOS DEL CONTACTO
 - Telefono: ${conversation.contact?.phone || "Sin telefono"}
 - Empresa: ${conversation.contact?.company || "No registrada"}
 - Estado: ${conversation.contact?.status || "lead"}
+
+DATOS COMERCIALES YA DICHOS POR EL CLIENTE
+${detectedBusinessFacts}
 
 CONTEXTO TERRITORIAL DETECTADO POR LADA
 - Telefono normalizado: ${ladaContext.normalizedPhone || "No disponible"}
@@ -225,6 +348,9 @@ REGLAS DE RESPUESTA
 - No cambies abruptamente a preguntas genericas si el usuario ya esta hablando de un tema concreto.
 - No repitas muletillas o frases de arranque como "Si, claro que si", salvo que realmente aporten algo.
 - No respondas mas de lo que el cliente pregunto si no hace falta.
+- Si el cliente ya dio una cantidad con palabras como "pax", "invitados", "personas", "asistentes", "piezas", "pzs", "pulseras" o "unidades", tomala como cantidad de piezas/pulseras para cotizar y no la vuelvas a pedir.
+- Para pulseras LED, "140 pax" significa 140 piezas aproximadas salvo que el cliente aclare otra cosa.
+- Si el cliente ya dio tipo de producto, fecha/mes del evento o ciudad en mensajes anteriores del mismo hilo, reutiliza esos datos y pide solo el dato faltante.
 - Si no tienes informacion fiable o suficiente para responder, dilo con honestidad y avisa brevemente que vas a canalizar la conversacion con un asesor humano.
 - Si el usuario quiere una cita, ayuda a concretarla dentro del horario comercial del negocio.
 - Nunca inventes nombres, telefonos ni correos de asesores, ejecutivos o responsables.

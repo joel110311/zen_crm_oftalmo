@@ -848,6 +848,7 @@ function buildCatalogInstruction(
         "Si el usuario solo pide informacion general del desarrollo, responde en formato breve: una introduccion corta, maximo 3 o 4 puntos clave y una pregunta final para continuar la conversacion.",
         "No enumeres todas las amenidades ni todas las caracteristicas si no te las pidieron. Prioriza solo lo mas vendedor y util.",
         "Si hay cantidades importantes, mencionalas de forma resumida, por ejemplo modelos, rango de recamaras o amenidades destacadas, sin copiar bloques demasiado largos.",
+        "Si el cliente ya dio una cantidad con palabras como pax, invitados, personas, asistentes, piezas, pzs, pulseras o unidades, tratala como cantidad para cotizar y no la vuelvas a pedir.",
         "Evita parrafos largos. Prefiere frases cortas y bullets cortos.",
         "No abras siempre con frases repetitivas como 'Si, claro que si', 'Claro que si' o 'Con gusto'. Entra directo al punto con un tono vendedor y natural.",
         "Cuando respondas con esta ficha, usa formato de WhatsApp bien estructurado: parrafos cortos, listas simples cuando haya caracteristicas y *negritas* solo en la informacion importante.",
