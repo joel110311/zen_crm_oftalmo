@@ -3534,14 +3534,14 @@ export default function InboxPage() {
             )}
             {selectedChat && (
                 <Dialog open={quoteBuilderOpen} onOpenChange={setQuoteBuilderOpen}>
-                    <DialogContent className="max-h-[92vh] w-[min(96vw,88rem)] max-w-none overflow-hidden p-0">
+                    <DialogContent className="max-h-[94vh] w-[96vw] max-w-[88rem] overflow-hidden p-0 sm:max-w-[88rem]">
                         <DialogHeader className="border-b px-5 py-4">
                             <DialogTitle>Crear cotizacion</DialogTitle>
                             <DialogDescription>
                                 Ajusta la cotizacion para {selectedChat.contact?.name || "este contacto"} y genera el contenido listo para enviar.
                             </DialogDescription>
                         </DialogHeader>
-                        <div className="p-4">
+                        <div className="max-h-[calc(94vh-6.5rem)] overflow-y-auto p-4">
                             <QuoteBuilderPanel
                                 mode="compact"
                                 initialContact={{

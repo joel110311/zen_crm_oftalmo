@@ -36,6 +36,7 @@ type QuoteItem = {
 };
 
 type OptionalFlags = {
+    companyName: boolean;
     clientCompany: boolean;
     iva: boolean;
     notes: boolean;
@@ -59,6 +60,7 @@ type SavedQuoteDraft = {
     selectedTemplate?: QuoteTemplateId;
     logoUrl?: string | null;
     logoName?: string | null;
+    logoScale?: number;
     companyName?: string;
     validUntil?: string;
     clientName?: string;
@@ -134,10 +136,10 @@ const QUOTE_TEMPLATES: Array<{
     {
         id: "minimal",
         name: "Minimalista",
-        description: "Limpia, elegante y con mucho aire visual.",
-        accent: "#0f766e",
-        dark: "#0f172a",
-        soft: "#ecfeff",
+        description: "Sobria, ejecutiva y con acento champagne.",
+        accent: "#b45309",
+        dark: "#18181b",
+        soft: "#fff7ed",
         paperClassName: "bg-stone-50 text-stone-950",
     },
     {
@@ -152,6 +154,7 @@ const QUOTE_TEMPLATES: Array<{
 ];
 
 const DEFAULT_FLAGS: OptionalFlags = {
+    companyName: true,
     clientCompany: false,
     iva: false,
     notes: true,
@@ -210,6 +213,7 @@ export function QuoteBuilderPanel({ initialContact, agentName, mode = "full", on
     const [outputFormat, setOutputFormat] = useState<QuoteOutputFormat>("pdf");
     const [logoUrl, setLogoUrl] = useState<string | null>(null);
     const [logoName, setLogoName] = useState<string | null>(null);
+    const [logoScale, setLogoScale] = useState(100);
     const [companyName, setCompanyName] = useState("Tu empresa");
     const [validUntil, setValidUntil] = useState("7 dias");
     const [clientName, setClientName] = useState("{{nombre}}");
@@ -317,6 +321,9 @@ export function QuoteBuilderPanel({ initialContact, agentName, mode = "full", on
     const buildGeneratedQuoteText = () => {
         const lines = [
             "*Cotizacion*",
+            optionalFlags.companyName && renderText(companyName)
+                ? `Empresa emisora: ${renderText(companyName)}`
+                : null,
             `Cliente: ${renderText(clientName) || "Sin nombre"}`,
             `Telefono: ${renderText(clientPhone) || "Sin telefono"}`,
             optionalFlags.clientCompany && renderText(clientCompany)
@@ -428,6 +435,7 @@ export function QuoteBuilderPanel({ initialContact, agentName, mode = "full", on
                 selectedTemplate,
                 logoUrl,
                 logoName,
+                logoScale,
                 companyName,
                 validUntil,
                 clientName,
@@ -456,6 +464,7 @@ export function QuoteBuilderPanel({ initialContact, agentName, mode = "full", on
         if (draft.selectedTemplate) setSelectedTemplate(draft.selectedTemplate);
         setLogoUrl(draft.logoUrl || null);
         setLogoName(draft.logoName || null);
+        setLogoScale(Math.min(125, Math.max(75, draft.logoScale || 100)));
         setCompanyName(draft.companyName || "Tu empresa");
         setValidUntil(draft.validUntil || "7 dias");
         setClientName(draft.clientName || "{{nombre}}");
@@ -503,7 +512,7 @@ export function QuoteBuilderPanel({ initialContact, agentName, mode = "full", on
 
     const pageBackground =
         selectedTemplate === "minimal"
-            ? "linear-gradient(135deg, #f8fafc 0%, #ffffff 45%, #ecfeff 100%)"
+            ? "linear-gradient(135deg, #f8fafc 0%, #ffffff 45%, #fff7ed 100%)"
             : selectedTemplate === "visual"
                 ? "radial-gradient(circle at 20% 10%, rgba(37,99,235,0.16), transparent 28%), linear-gradient(135deg, #ffffff 0%, #eef6ff 100%)"
                 : "linear-gradient(135deg, #ffffff 0%, #fff7f8 100%)";
@@ -569,7 +578,7 @@ export function QuoteBuilderPanel({ initialContact, agentName, mode = "full", on
 
                 <div className={cn(
                     "grid gap-0",
-                    isCompact ? "lg:grid-cols-[minmax(0,0.9fr)_minmax(25rem,1fr)]" : "xl:grid-cols-[minmax(0,1fr)_minmax(34rem,0.92fr)]",
+                    isCompact ? "xl:grid-cols-[minmax(26rem,0.95fr)_minmax(30rem,1fr)]" : "xl:grid-cols-[minmax(0,1fr)_minmax(34rem,0.92fr)]",
                 )}>
                     <div className="space-y-5 border-b border-border/60 p-5 xl:border-b-0 xl:border-r">
                         <section className="space-y-3">
@@ -628,10 +637,39 @@ export function QuoteBuilderPanel({ initialContact, agentName, mode = "full", on
                                         }}
                                     />
                                 </label>
+                                <div className="space-y-2 rounded-xl bg-muted/35 px-3 py-2">
+                                    <div className="flex items-center justify-between gap-3 text-xs">
+                                        <span className="font-medium text-muted-foreground">Tamaño del logo</span>
+                                        <span className="rounded-full bg-background px-2 py-0.5 font-semibold text-foreground">{logoScale}%</span>
+                                    </div>
+                                    <input
+                                        type="range"
+                                        min={75}
+                                        max={125}
+                                        step={5}
+                                        value={logoScale}
+                                        onChange={(event) => setLogoScale(Number(event.target.value))}
+                                        className="w-full accent-primary"
+                                    />
+                                </div>
                             </div>
                             <div className="space-y-2">
-                                <Label>Nombre de la empresa</Label>
-                                <Input value={companyName} onChange={(event) => setCompanyName(event.target.value)} />
+                                <div className="flex items-center justify-between gap-3">
+                                    <Label>Nombre de la empresa</Label>
+                                    <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                                        <Checkbox
+                                            checked={optionalFlags.companyName}
+                                            onCheckedChange={(checked) => setOptionalFlags((current) => ({ ...current, companyName: Boolean(checked) }))}
+                                        />
+                                        Mostrar
+                                    </label>
+                                </div>
+                                <Input
+                                    value={companyName}
+                                    onChange={(event) => setCompanyName(event.target.value)}
+                                    disabled={!optionalFlags.companyName}
+                                    className={!optionalFlags.companyName ? "opacity-60" : undefined}
+                                />
                             </div>
                             <div className="space-y-2">
                                 <Label>Vigencia</Label>
@@ -857,16 +895,32 @@ export function QuoteBuilderPanel({ initialContact, agentName, mode = "full", on
                                     <div className="relative flex h-full flex-col p-[6%]">
                                         <header className="grid grid-cols-[1fr_1.3fr] items-start gap-5 border-b pb-5">
                                             <div>
-                                                <div className="flex h-20 w-44 items-center justify-center overflow-hidden bg-white text-slate-700">
+                                                <div className="flex h-20 w-44 items-center justify-center overflow-visible bg-transparent text-slate-700">
                                                     {logoUrl ? (
-                                                        <img src={logoUrl} alt="Logo" className="h-full w-full object-contain p-2" />
+                                                        <img
+                                                            src={logoUrl}
+                                                            alt="Logo"
+                                                            className="max-h-full max-w-full object-contain"
+                                                            style={{ transform: `scale(${logoScale / 100})` }}
+                                                        />
                                                     ) : (
-                                                        <div className="flex items-center gap-2 text-2xl font-black tracking-wider">
+                                                        <div
+                                                            className="flex items-center gap-2 text-2xl font-black tracking-wider"
+                                                            style={{ transform: `scale(${logoScale / 100})` }}
+                                                        >
                                                             <Building2 className="h-7 w-7" />
                                                             LOGO
                                                         </div>
                                                     )}
                                                 </div>
+                                                {optionalFlags.companyName ? (
+                                                    <div className="mt-3 max-w-56">
+                                                        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Empresa</p>
+                                                        <p className="mt-1 text-base font-black leading-tight text-slate-900">
+                                                            {renderText(companyName) || "Nombre de la empresa"}
+                                                        </p>
+                                                    </div>
+                                                ) : null}
                                             </div>
                                             <div className="pt-5 text-right">
                                                 <div
