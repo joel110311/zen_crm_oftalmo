@@ -857,7 +857,7 @@ export function QuoteBuilderPanel({ initialContact, agentName, mode = "full", on
                                     <div className="relative flex h-full flex-col p-[6%]">
                                         <header className="grid grid-cols-[1fr_1.3fr] items-start gap-5 border-b pb-5">
                                             <div>
-                                                <div className="flex h-20 w-44 items-center justify-center overflow-hidden border-2 bg-white text-slate-700" style={{ borderColor: template.accent }}>
+                                                <div className="flex h-20 w-44 items-center justify-center overflow-hidden bg-white text-slate-700">
                                                     {logoUrl ? (
                                                         <img src={logoUrl} alt="Logo" className="h-full w-full object-contain p-2" />
                                                     ) : (
@@ -948,6 +948,10 @@ export function QuoteBuilderPanel({ initialContact, agentName, mode = "full", on
                                                         <p className="mt-1 leading-5 text-slate-600">{renderText(notes)}</p>
                                                     </div>
                                                 ) : null}
+                                                <div>
+                                                    <p className="font-black uppercase tracking-wide">Vigencia</p>
+                                                    <p className="mt-1 leading-5 text-slate-600">{renderText(validUntil) || "Por definir"}</p>
+                                                </div>
                                                 {footerItems.length > 0 ? (
                                                     <div>
                                                         <p className="font-black uppercase tracking-wide" style={{ color: template.accent }}>Contacto</p>
@@ -961,7 +965,6 @@ export function QuoteBuilderPanel({ initialContact, agentName, mode = "full", on
                                                 <div className="ml-auto mb-2 h-px w-44 bg-slate-400" />
                                                 <p className="font-bold text-slate-800">{renderedVariables.agente || companyName}</p>
                                                 <p>Responsable de la cotizacion</p>
-                                                <p className="mt-4">Vigencia: {renderText(validUntil)}</p>
                                             </div>
                                         </div>
                                     </div>
