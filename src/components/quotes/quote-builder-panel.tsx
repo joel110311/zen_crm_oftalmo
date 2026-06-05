@@ -145,11 +145,11 @@ const QUOTE_TEMPLATES: Array<{
     },
     {
         id: "visual",
-        name: "Azul rey",
-        description: "Elegante, sobria y con azul profundo.",
-        accent: "#1d4ed8",
-        dark: "#0b173d",
-        soft: "#eff6ff",
+        name: "Consultoria premium",
+        description: "Limpia, profesional y estilo propuesta corporativa.",
+        accent: "#155f9f",
+        dark: "#111827",
+        soft: "#f8fafc",
         paperClassName: "bg-white text-slate-950",
     },
 ];
@@ -543,8 +543,10 @@ export function QuoteBuilderPanel({ initialContact, agentName, mode = "full", on
         optionalFlags.website && website ? `Sitio web: ${renderText(website)}` : null,
         optionalFlags.social && social ? `Redes: ${renderText(social)}` : null,
         optionalFlags.address && address ? `Direccion: ${renderText(address)}` : null,
-    ].filter(Boolean);
+    ].filter((item): item is string => Boolean(item));
     const displayedClientPhone = formatClientPhoneForQuote(renderText(clientPhone));
+    const quoteDateLabel = renderedVariables.fecha || new Date().toLocaleDateString("es-MX", { day: "2-digit", month: "long", year: "numeric" });
+    const companyLabel = renderText(companyName) || "Nombre de la empresa";
 
     return (
         <div className={cn("space-y-4", isCompact && "max-h-[78vh] overflow-y-auto pr-1")}>
@@ -902,7 +904,7 @@ export function QuoteBuilderPanel({ initialContact, agentName, mode = "full", on
                                                 <div className="absolute bottom-0 left-[34%] h-5 w-[66%]" style={{ backgroundColor: template.dark }} />
                                                 <div className="absolute bottom-0 left-[31%] h-5 w-12 skew-x-[36deg]" style={{ backgroundColor: template.accent }} />
                                             </>
-                                        ) : (
+                                        ) : selectedTemplate === "executive" ? (
                                             <>
                                                 <div
                                                     className="absolute -right-20 top-8 h-20 w-[24rem] skew-x-[-28deg]"
@@ -921,9 +923,141 @@ export function QuoteBuilderPanel({ initialContact, agentName, mode = "full", on
                                                     style={{ backgroundColor: template.accent }}
                                                 />
                                             </>
-                                        )}
+                                        ) : null}
                                     </div>
 
+                                    {selectedTemplate === "visual" ? (
+                                    <div
+                                        className="relative flex h-full flex-col px-[5.4%] py-[5.8%] text-slate-900"
+                                        style={{ fontFamily: "Montserrat, Avenir Next, Segoe UI, Arial, sans-serif" }}
+                                    >
+                                        <header className="grid grid-cols-[1fr_1fr] items-start gap-8">
+                                            <div>
+                                                <div className="flex h-24 w-48 items-center justify-start overflow-visible bg-transparent text-slate-700">
+                                                    {logoUrl ? (
+                                                        <img
+                                                            src={logoUrl}
+                                                            alt="Logo"
+                                                            className="max-h-full max-w-full object-contain"
+                                                            style={{ transform: `scale(${logoScale / 100})`, transformOrigin: "left center" }}
+                                                        />
+                                                    ) : (
+                                                        <div
+                                                            className="flex items-center gap-2 text-2xl font-black tracking-[0.14em]"
+                                                            style={{ transform: `scale(${logoScale / 100})`, transformOrigin: "left center" }}
+                                                        >
+                                                            <Building2 className="h-7 w-7" style={{ color: template.accent }} />
+                                                            LOGO
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                            <div className="text-right">
+                                                <h2 className="text-[2.35rem] font-black uppercase leading-none tracking-[0.08em]" style={{ color: template.dark }}>
+                                                    Cotizacion
+                                                </h2>
+                                                <p className="mt-3 text-sm font-bold text-slate-500">
+                                                    Fecha: <span className="text-slate-600">{quoteDateLabel}</span>
+                                                </p>
+                                            </div>
+                                        </header>
+
+                                        <div className="mt-7 h-px w-full bg-slate-200" />
+
+                                        <section className="grid grid-cols-2 gap-10 py-5 text-sm">
+                                            <div className="space-y-1.5">
+                                                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">De:</p>
+                                                {optionalFlags.companyName ? (
+                                                    <p className="text-base font-black leading-tight text-slate-700">{companyLabel}</p>
+                                                ) : null}
+                                                {footerItems.length > 0 ? (
+                                                    <div className="space-y-1 text-slate-500">
+                                                        {footerItems.map((item) => <p key={item}>{item.replace(/^(Telefono|Sitio web|Redes|Direccion):\s*/i, "")}</p>)}
+                                                    </div>
+                                                ) : null}
+                                            </div>
+                                            <div className="space-y-1.5 text-right">
+                                                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Cotizado para:</p>
+                                                <p className="text-base font-black leading-tight text-slate-900">{renderText(clientName) || "Cliente"}</p>
+                                                {optionalFlags.clientCompany && renderText(clientCompany) ? (
+                                                    <p className="font-semibold text-slate-500">{renderText(clientCompany)}</p>
+                                                ) : null}
+                                                {displayedClientPhone ? (
+                                                    <p className="text-slate-500">{displayedClientPhone}</p>
+                                                ) : null}
+                                                {renderedVariables.ciudad ? (
+                                                    <p className="text-slate-500">{renderedVariables.ciudad}</p>
+                                                ) : null}
+                                            </div>
+                                        </section>
+
+                                        <section className="mt-4">
+                                            <div className="grid grid-cols-[1fr_4.5rem_8rem_8rem] border-b border-slate-200 pb-2 text-[0.7rem] font-black uppercase tracking-[0.08em] text-slate-400">
+                                                <div>Descripcion</div>
+                                                <div className="text-right">Cant.</div>
+                                                <div className="text-right">Precio unitario</div>
+                                                <div className="text-right">Total</div>
+                                            </div>
+                                            {items.map((item) => {
+                                                const quantity = safeNumber(item.quantity);
+                                                const unitPrice = safeNumber(item.unitPrice);
+                                                return (
+                                                    <div key={item.id} className="grid grid-cols-[1fr_4.5rem_8rem_8rem] border-b border-slate-100 py-3 text-sm">
+                                                        <div className="pr-4">
+                                                            <p className="font-semibold leading-tight text-slate-900">{renderText(item.concept) || "Concepto"}</p>
+                                                            {renderText(item.description) ? (
+                                                                <p className="mt-1 text-xs leading-4 text-slate-500">{renderText(item.description)}</p>
+                                                            ) : null}
+                                                        </div>
+                                                        <div className="text-right font-semibold">{quantity}</div>
+                                                        <div className="text-right">{formatCurrency(unitPrice)}</div>
+                                                        <div className="text-right font-black">{formatCurrency(quantity * unitPrice)}</div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </section>
+
+                                        <section className="ml-auto mt-5 w-[17rem] space-y-2 text-sm">
+                                            <div className="flex justify-between text-slate-600">
+                                                <span>Subtotal</span>
+                                                <span>{formatCurrency(subtotal)}</span>
+                                            </div>
+                                            {optionalFlags.iva ? (
+                                                <div className="flex justify-between text-slate-600">
+                                                    <span>IVA {ivaPercent}%</span>
+                                                    <span>{formatCurrency(ivaAmount)}</span>
+                                                </div>
+                                            ) : null}
+                                            <div className="h-px bg-slate-900" />
+                                            <div className="flex justify-between text-lg font-black uppercase text-slate-950">
+                                                <span>Total</span>
+                                                <span>{formatCurrency(total)}</span>
+                                            </div>
+                                        </section>
+
+                                        <div className="mt-auto border-t border-slate-100 pt-5">
+                                            <div className="grid grid-cols-[1.2fr_0.8fr] gap-10">
+                                                <div className="space-y-3 text-xs leading-5 text-slate-600">
+                                                    {optionalFlags.notes && renderText(notes) ? (
+                                                        <div>
+                                                            <p className="font-black uppercase tracking-[0.08em] text-slate-400">Terminos y notas</p>
+                                                            <p className="mt-1 whitespace-pre-line">{renderText(notes)}</p>
+                                                        </div>
+                                                    ) : null}
+                                                    <div>
+                                                        <p className="font-black uppercase tracking-[0.08em] text-slate-400">Vigencia</p>
+                                                        <p className="mt-1">{renderText(validUntil) || "Por definir"}</p>
+                                                    </div>
+                                                </div>
+                                                <div className="self-end pb-2 text-center text-xs text-slate-500">
+                                                    <div className="mx-auto mb-3 h-px w-48 bg-slate-400" />
+                                                    <p className="font-black text-slate-800">{renderedVariables.agente || companyLabel}</p>
+                                                    <p>Responsable de la cotizacion</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    ) : (
                                     <div className="relative flex h-full flex-col p-[6%]">
                                         <header className={cn(
                                             "grid items-start gap-5 border-b pb-5",
@@ -1078,6 +1212,7 @@ export function QuoteBuilderPanel({ initialContact, agentName, mode = "full", on
                                             </div>
                                         </div>
                                     </div>
+                                    )}
                                 </div>
                             </div>
 
