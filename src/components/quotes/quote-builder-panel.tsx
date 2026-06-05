@@ -24,7 +24,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 
-type QuoteTemplateId = "executive" | "minimal" | "visual";
+type QuoteTemplateId = "corporate" | "executive" | "visual";
 type QuoteOutputFormat = "image" | "pdf";
 
 type QuoteItem = {
@@ -57,7 +57,7 @@ type QuoteVariableValues = {
 };
 
 type SavedQuoteDraft = {
-    selectedTemplate?: QuoteTemplateId;
+    selectedTemplate?: QuoteTemplateId | "minimal";
     logoUrl?: string | null;
     logoName?: string | null;
     logoScale?: number;
@@ -125,8 +125,17 @@ const QUOTE_TEMPLATES: Array<{
     paperClassName: string;
 }> = [
     {
+        id: "corporate",
+        name: "Corporativa",
+        description: "Limpia, formal y parecida a una factura ejecutiva.",
+        accent: "#169bd5",
+        dark: "#171717",
+        soft: "#e0f2fe",
+        paperClassName: "bg-white text-slate-950",
+    },
+    {
         id: "executive",
-        name: "Ejecutiva",
+        name: "Ejecutiva roja",
         description: "Contraste fuerte, ideal para propuestas formales.",
         accent: "#ef233c",
         dark: "#1f2933",
@@ -134,20 +143,11 @@ const QUOTE_TEMPLATES: Array<{
         paperClassName: "bg-white text-slate-950",
     },
     {
-        id: "minimal",
-        name: "Minimalista",
-        description: "Sobria, ejecutiva y con acento champagne.",
-        accent: "#b45309",
-        dark: "#18181b",
-        soft: "#fff7ed",
-        paperClassName: "bg-stone-50 text-stone-950",
-    },
-    {
         id: "visual",
-        name: "Impacto visual",
-        description: "Mas energetica, buena para productos con impacto.",
-        accent: "#2563eb",
-        dark: "#111827",
+        name: "Azul rey",
+        description: "Elegante, sobria y con azul profundo.",
+        accent: "#1d4ed8",
+        dark: "#0b173d",
         soft: "#eff6ff",
         paperClassName: "bg-white text-slate-950",
     },
@@ -209,7 +209,7 @@ function safeNumber(value: number) {
 export function QuoteBuilderPanel({ initialContact, agentName, mode = "full", onGenerate }: QuoteBuilderPanelProps) {
     const isCompact = mode === "compact";
     const quotePageRef = useRef<HTMLDivElement | null>(null);
-    const [selectedTemplate, setSelectedTemplate] = useState<QuoteTemplateId>("executive");
+    const [selectedTemplate, setSelectedTemplate] = useState<QuoteTemplateId>("corporate");
     const [outputFormat, setOutputFormat] = useState<QuoteOutputFormat>("pdf");
     const [logoUrl, setLogoUrl] = useState<string | null>(null);
     const [logoName, setLogoName] = useState<string | null>(null);
@@ -461,7 +461,9 @@ export function QuoteBuilderPanel({ initialContact, agentName, mode = "full", on
         if (!rawDraft) return;
 
         const draft = JSON.parse(rawDraft) as SavedQuoteDraft;
-        if (draft.selectedTemplate) setSelectedTemplate(draft.selectedTemplate);
+        if (draft.selectedTemplate) {
+            setSelectedTemplate(draft.selectedTemplate === "minimal" ? "corporate" : draft.selectedTemplate);
+        }
         setLogoUrl(draft.logoUrl || null);
         setLogoName(draft.logoName || null);
         setLogoScale(Math.min(125, Math.max(75, draft.logoScale || 100)));
@@ -510,12 +512,7 @@ export function QuoteBuilderPanel({ initialContact, agentName, mode = "full", on
         </button>
     );
 
-    const pageBackground =
-        selectedTemplate === "minimal"
-            ? "linear-gradient(135deg, #f8fafc 0%, #ffffff 45%, #fff7ed 100%)"
-            : selectedTemplate === "visual"
-                ? "radial-gradient(circle at 20% 10%, rgba(37,99,235,0.16), transparent 28%), linear-gradient(135deg, #ffffff 0%, #eef6ff 100%)"
-                : "linear-gradient(135deg, #ffffff 0%, #fff7f8 100%)";
+    const pageBackground = "#ffffff";
 
     const footerItems = [
         optionalFlags.contactPhone && contactPhone ? `Telefono: ${renderText(contactPhone)}` : null,
@@ -874,26 +871,39 @@ export function QuoteBuilderPanel({ initialContact, agentName, mode = "full", on
                                     style={{ aspectRatio: "8.5 / 11", background: pageBackground }}
                                 >
                                     <div className="absolute inset-0 pointer-events-none">
-                                        <div
-                                            className="absolute -right-20 top-8 h-20 w-[24rem] skew-x-[-28deg]"
-                                            style={{ backgroundColor: template.dark }}
-                                        />
-                                        <div
-                                            className="absolute right-16 top-6 h-24 w-32 skew-x-[-28deg]"
-                                            style={{ backgroundColor: template.accent }}
-                                        />
-                                        <div
-                                            className="absolute -bottom-10 -right-12 h-32 w-28 rotate-45"
-                                            style={{ backgroundColor: template.dark }}
-                                        />
-                                        <div
-                                            className="absolute bottom-16 right-24 h-20 w-16 rotate-45"
-                                            style={{ backgroundColor: template.accent }}
-                                        />
+                                        {selectedTemplate === "corporate" ? (
+                                            <>
+                                                <div className="absolute bottom-0 left-0 h-5 w-[36%]" style={{ backgroundColor: template.accent }} />
+                                                <div className="absolute bottom-0 left-[34%] h-5 w-[66%]" style={{ backgroundColor: template.dark }} />
+                                                <div className="absolute bottom-0 left-[31%] h-5 w-12 skew-x-[36deg]" style={{ backgroundColor: template.accent }} />
+                                            </>
+                                        ) : (
+                                            <>
+                                                <div
+                                                    className="absolute -right-20 top-8 h-20 w-[24rem] skew-x-[-28deg]"
+                                                    style={{ backgroundColor: template.dark }}
+                                                />
+                                                <div
+                                                    className="absolute right-16 top-6 h-24 w-32 skew-x-[-28deg]"
+                                                    style={{ backgroundColor: template.accent }}
+                                                />
+                                                <div
+                                                    className="absolute -bottom-20 -right-16 h-36 w-32 rotate-45"
+                                                    style={{ backgroundColor: template.dark }}
+                                                />
+                                                <div
+                                                    className="absolute bottom-12 right-28 h-16 w-14 rotate-45"
+                                                    style={{ backgroundColor: template.accent }}
+                                                />
+                                            </>
+                                        )}
                                     </div>
 
                                     <div className="relative flex h-full flex-col p-[6%]">
-                                        <header className="grid grid-cols-[1fr_1.3fr] items-start gap-5 border-b pb-5">
+                                        <header className={cn(
+                                            "grid items-start gap-5 border-b pb-5",
+                                            selectedTemplate === "corporate" ? "grid-cols-[1fr_1.45fr]" : "grid-cols-[1fr_1.3fr]",
+                                        )}>
                                             <div>
                                                 <div className="flex h-20 w-44 items-center justify-center overflow-visible bg-transparent text-slate-700">
                                                     {logoUrl ? (
@@ -922,38 +932,63 @@ export function QuoteBuilderPanel({ initialContact, agentName, mode = "full", on
                                                     </div>
                                                 ) : null}
                                             </div>
-                                            <div className="pt-5 text-right">
-                                                <div
-                                                    className="ml-auto inline-flex min-w-64 items-center justify-end px-6 py-3 text-3xl font-black tracking-tight text-white"
-                                                    style={{ backgroundColor: template.dark }}
-                                            >
-                                                Cotizacion
-                                            </div>
+                                            <div className={cn("text-right", selectedTemplate === "corporate" ? "pt-1" : "pt-5")}>
+                                                {selectedTemplate === "corporate" ? (
+                                                    <>
+                                                        <h2 className="text-5xl font-black uppercase leading-none tracking-tight" style={{ color: template.accent }}>
+                                                            Cotizacion
+                                                        </h2>
+                                                        <div className="ml-auto mt-4 h-1 w-56" style={{ backgroundColor: template.accent }} />
+                                                        <p className="mt-3 text-xs font-semibold text-slate-600">
+                                                            Fecha: {renderedVariables.fecha || new Date().toLocaleDateString("es-MX", { day: "2-digit", month: "long", year: "numeric" })}
+                                                        </p>
+                                                    </>
+                                                ) : (
+                                                    <div
+                                                        className="ml-auto inline-flex min-w-64 items-center justify-end px-6 py-3 text-3xl font-black tracking-tight text-white"
+                                                        style={{ backgroundColor: template.dark }}
+                                                    >
+                                                        Cotizacion
+                                                    </div>
+                                                )}
                                             </div>
                                         </header>
 
-                                        <section className="grid grid-cols-[1fr_12rem] gap-8 py-6">
+                                        <section className={cn(
+                                            "grid gap-8 py-6",
+                                            selectedTemplate === "corporate" ? "grid-cols-[0.78fr_1.22fr]" : "grid-cols-[1fr_12rem]",
+                                        )}>
                                             <div className="space-y-1.5 text-sm">
-                                                <p className="text-xs font-black uppercase tracking-wide text-slate-500">Cliente</p>
+                                                <p className="text-xs font-black uppercase tracking-wide" style={{ color: template.accent }}>Cliente</p>
                                                 <p className="text-lg font-black">{renderText(clientName) || "Cliente"}</p>
                                                 <p className="font-semibold text-slate-600">{renderText(clientPhone) || "Sin telefono"}</p>
                                                 {optionalFlags.clientCompany && renderText(clientCompany) ? (
                                                     <p className="text-slate-500">{renderText(clientCompany)}</p>
                                                 ) : null}
                                             </div>
-                                            <div className="text-right">
-                                                <div className="px-4 py-2 text-center text-sm font-black text-white" style={{ backgroundColor: template.accent }}>
-                                                    FECHA
+                                            {selectedTemplate === "corporate" ? (
+                                                <div className="text-sm leading-6 text-slate-600">
+                                                    <p className="font-semibold text-slate-900">Detalle de la propuesta</p>
+                                                    <p>
+                                                        Esta cotizacion resume los conceptos solicitados y conserva las variables para generar PDF o imagen lista para enviar.
+                                                    </p>
                                                 </div>
-                                                <p className="mt-3 text-sm font-black">{renderedVariables.fecha || new Date().toLocaleDateString("es-MX", { day: "2-digit", month: "long", year: "numeric" })}</p>
-                                            </div>
+                                            ) : (
+                                                <div className="text-right">
+                                                    <div className="px-4 py-2 text-center text-sm font-black text-white" style={{ backgroundColor: template.accent }}>
+                                                        FECHA
+                                                    </div>
+                                                    <p className="mt-3 text-sm font-black">{renderedVariables.fecha || new Date().toLocaleDateString("es-MX", { day: "2-digit", month: "long", year: "numeric" })}</p>
+                                                </div>
+                                            )}
                                         </section>
 
                                         <section className="overflow-hidden border">
-                                            <div className="grid grid-cols-[1fr_5rem_7rem_7rem] text-xs font-black uppercase text-white" style={{ backgroundColor: template.dark }}>
+                                            <div className="grid grid-cols-[3rem_1fr_5rem_7rem_7rem] text-xs font-black uppercase text-white" style={{ backgroundColor: template.dark }}>
+                                                <div className="px-4 py-3" style={{ backgroundColor: template.accent }}>No.</div>
                                                 <div className="px-4 py-3" style={{ backgroundColor: template.accent }}>Descripcion</div>
-                                                <div className="px-3 py-3 text-right">Cant.</div>
                                                 <div className="px-3 py-3 text-right">Unitario</div>
+                                                <div className="px-3 py-3 text-right">Cant.</div>
                                                 <div className="px-3 py-3 text-right">Total</div>
                                             </div>
                                             {items.map((item, index) => {
@@ -962,15 +997,16 @@ export function QuoteBuilderPanel({ initialContact, agentName, mode = "full", on
                                                 return (
                                                     <div
                                                         key={item.id}
-                                                        className="grid grid-cols-[1fr_5rem_7rem_7rem] text-sm"
-                                                        style={{ backgroundColor: index % 2 === 0 ? "rgba(248,250,252,0.9)" : "rgba(226,232,240,0.62)" }}
+                                                        className="grid grid-cols-[3rem_1fr_5rem_7rem_7rem] border-b text-sm last:border-b-0"
+                                                        style={{ backgroundColor: "#ffffff" }}
                                                     >
+                                                        <div className="px-4 py-4 text-xs font-semibold text-slate-700">{String(index + 1).padStart(2, "0")}</div>
                                                         <div className="px-4 py-3">
                                                             <p className="font-bold">{renderText(item.concept) || "Concepto"}</p>
                                                             <p className="mt-1 text-[10px] leading-4 text-slate-500">{renderText(item.description)}</p>
                                                         </div>
-                                                        <div className="px-3 py-4 text-right font-semibold">{quantity}</div>
                                                         <div className="px-3 py-4 text-right">{formatCurrency(unitPrice)}</div>
+                                                        <div className="px-3 py-4 text-right font-semibold">{quantity}</div>
                                                         <div className="px-3 py-4 text-right font-semibold">{formatCurrency(quantity * unitPrice)}</div>
                                                     </div>
                                                 );
@@ -1015,8 +1051,8 @@ export function QuoteBuilderPanel({ initialContact, agentName, mode = "full", on
                                                     </div>
                                                 ) : null}
                                             </div>
-                                            <div className="self-end text-right text-xs text-slate-500">
-                                                <div className="ml-auto mb-2 h-px w-44 bg-slate-400" />
+                                            <div className="self-start justify-self-center pt-8 pr-10 text-center text-xs text-slate-500">
+                                                <div className="mx-auto mb-2 h-px w-44 bg-slate-400" />
                                                 <p className="font-bold text-slate-800">{renderedVariables.agente || companyName}</p>
                                                 <p>Responsable de la cotizacion</p>
                                             </div>
