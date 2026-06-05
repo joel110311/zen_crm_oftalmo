@@ -124,6 +124,96 @@ function buildKnowledgeLookupQuery(
         .join("\n");
 }
 
+function normalizeAmbiguousNumericToken(token: string) {
+    return token.replace(/[oO]/g, "0");
+}
+
+function extractRecentQuantityFact(messages: string[]) {
+    for (const message of [...messages].reverse()) {
+        const normalized = message.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+        const candidates = normalized.match(/\b[0-9o]{2,5}\b/g) || [];
+
+        for (const candidate of candidates) {
+            if (!/\d/.test(candidate)) continue;
+
+            const parsed = Number.parseInt(normalizeAmbiguousNumericToken(candidate), 10);
+            if (!Number.isFinite(parsed) || parsed <= 0 || parsed > 10000) continue;
+
+            const hasQuantityContext =
+                /\b(piezas?|pulseras?|invitados?|personas?|pax|cantidad|aprox|aproximadamente)\b/.test(normalized) ||
+                normalized.trim() === candidate ||
+                /\b(el|las|los)\s+[0-9o]{2,5}\b/.test(normalized);
+
+            if (hasQuantityContext) {
+                return {
+                    value: parsed,
+                    raw: message.trim(),
+                };
+            }
+        }
+    }
+
+    return null;
+}
+
+function extractRecentEventDateFact(messages: string[]) {
+    for (const message of [...messages].reverse()) {
+        const normalized = message.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+        const monthMatch = normalized.match(/\b(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre)\b/);
+        if (!monthMatch) continue;
+
+        return {
+            value: monthMatch[1],
+            isTentative: /\b(no\s+esta\s+fija|no\s+es\s+fija|tentativa|aprox|aproximada|por\s+definir)\b/.test(normalized),
+            raw: message.trim(),
+        };
+    }
+
+    return null;
+}
+
+function buildRecentSalesFactsInstruction(
+    history: Array<{
+        content: string;
+        direction: string;
+        senderType: string | null;
+    }>,
+    latestUserMessage: string,
+) {
+    const recentInboundMessages = [
+        ...history
+            .filter((message) => message.direction === "inbound" && message.content?.trim())
+            .slice(-6)
+            .map((message) => message.content.trim()),
+        latestUserMessage.trim(),
+    ].filter(Boolean);
+
+    const quantityFact = extractRecentQuantityFact(recentInboundMessages);
+    const eventDateFact = extractRecentEventDateFact(recentInboundMessages);
+    const lines: string[] = [];
+
+    if (quantityFact) {
+        lines.push(`- Cantidad detectada: ${quantityFact.value} piezas. Mensaje origen: "${quantityFact.raw}".`);
+    }
+
+    if (eventDateFact) {
+        lines.push(`- Fecha/mes de evento detectado: ${eventDateFact.value}${eventDateFact.isTentative ? " (tentativa/no fija)" : ""}. Mensaje origen: "${eventDateFact.raw}".`);
+    }
+
+    if (lines.length === 0) {
+        return null;
+    }
+
+    return [
+        "DATOS COMERCIALES RECIENTES DETECTADOS",
+        ...lines,
+        "Reglas:",
+        "- Si ya hay cantidad detectada, no vuelvas a preguntar cuantas piezas/invitados necesita; usala para cotizar o avanzar.",
+        "- Si la fecha del evento es tentativa o no fija, no bloquees la cotizacion; aclara que puede ajustarse cuando confirme fecha.",
+        "- Si el usuario escribe una cantidad con letras parecidas a numeros, por ejemplo 1oo, interpretala como 100 cuando el contexto sea piezas, invitados o cotizacion.",
+    ].join("\n");
+}
+
 export async function generateConversationReply(
     conversationId: string,
     latestUserMessage: string,
@@ -181,6 +271,7 @@ export async function generateConversationReply(
         })),
     );
     const knowledgeLookupQuery = buildKnowledgeLookupQuery(dedupedHistory, latestUserMessage);
+    const recentSalesFactsInstruction = buildRecentSalesFactsInstruction(dedupedHistory, latestUserMessage);
     const { context, chunks } = await buildKnowledgeContext(
         knowledgeLookupQuery || latestUserMessage,
         settings.knowledgeTopK,
@@ -248,7 +339,7 @@ FUENTES ENCONTRADAS
 ${chunks.length > 0 ? chunks.map((chunk) => `- ${chunk.sourceTitle}${chunk.sourceUri ? ` -> ${chunk.sourceUri}` : ""}`).join("\n") : "- Ninguna"}
 
 INSTRUCCION OPERATIVA ACTUAL
-${automationInstruction || "Ninguna. Responde de forma normal."}
+${[automationInstruction, recentSalesFactsInstruction].filter(Boolean).join("\n\n") || "Ninguna. Responde de forma normal."}
     `.trim();
 
     const response = await generateCompletion(

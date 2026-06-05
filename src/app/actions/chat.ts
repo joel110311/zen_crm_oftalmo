@@ -1529,6 +1529,7 @@ async function maybeHandleCatalogAssetReply(params: {
             settings: params.settings,
             conversationId: params.conversationId,
             inboundMessageId: params.inboundMessageId,
+            cancelIfNewerInbound: false,
         });
 
     if (intent.negative && isOfferActive) {
@@ -1722,6 +1723,7 @@ async function maybeSendAutomatedReply(
                     settings,
                     conversationId,
                     inboundMessageId,
+                    cancelIfNewerInbound: false,
                 });
                 if (!canSendAfterPacing) return;
 
@@ -1990,6 +1992,7 @@ async function maybeSendAutomatedReply(
             settings,
             conversationId,
             inboundMessageId,
+            cancelIfNewerInbound: false,
         });
         if (!canSendAfterPacing) return;
 
@@ -2106,10 +2109,15 @@ async function waitForBotReplyPacing(params: {
     settings: AppSystemSettings;
     conversationId: string;
     inboundMessageId: string;
+    cancelIfNewerInbound?: boolean;
 }) {
     const delayMs = resolveRandomBotReplyDelayMs(params.settings);
     if (delayMs > 0) {
         await sleep(delayMs);
+    }
+
+    if (params.cancelIfNewerInbound === false) {
+        return true;
     }
 
     const latestInbound = await prisma.message.findFirst({
