@@ -3,6 +3,7 @@
 /* eslint-disable @next/next/no-img-element */
 
 import { ChangeEvent, useMemo, useRef, useState } from "react";
+import { parsePhoneNumberFromString } from "libphonenumber-js/min";
 import {
     Building2,
     Check,
@@ -206,6 +207,28 @@ function safeNumber(value: number) {
     return Number.isFinite(value) ? value : 0;
 }
 
+function formatClientPhoneForQuote(value: string | null | undefined) {
+    const rawValue = (value || "").trim();
+    if (!rawValue) return "";
+
+    const digits = rawValue.replace(/\D/g, "");
+    if (!digits) return rawValue;
+    if (digits.length <= 10) return digits;
+
+    const phoneNumber = parsePhoneNumberFromString(rawValue.startsWith("+") ? rawValue : `+${digits}`);
+    if (phoneNumber?.isValid()) {
+        return phoneNumber.nationalNumber;
+    }
+
+    const knownWhatsappPrefixes = ["521", "541", "549"];
+    const matchingPrefix = knownWhatsappPrefixes.find((prefix) => digits.startsWith(prefix) && digits.length > prefix.length);
+    if (matchingPrefix) {
+        return digits.slice(matchingPrefix.length);
+    }
+
+    return digits;
+}
+
 export function QuoteBuilderPanel({ initialContact, agentName, mode = "full", onGenerate }: QuoteBuilderPanelProps) {
     const isCompact = mode === "compact";
     const quotePageRef = useRef<HTMLDivElement | null>(null);
@@ -319,13 +342,14 @@ export function QuoteBuilderPanel({ initialContact, agentName, mode = "full", on
     };
 
     const buildGeneratedQuoteText = () => {
+        const renderedClientPhone = formatClientPhoneForQuote(renderText(clientPhone));
         const lines = [
             "*Cotizacion*",
             optionalFlags.companyName && renderText(companyName)
                 ? `Empresa emisora: ${renderText(companyName)}`
                 : null,
             `Cliente: ${renderText(clientName) || "Sin nombre"}`,
-            `Telefono: ${renderText(clientPhone) || "Sin telefono"}`,
+            renderedClientPhone ? `Telefono: ${renderedClientPhone}` : null,
             optionalFlags.clientCompany && renderText(clientCompany)
                 ? `Empresa: ${renderText(clientCompany)}`
                 : null,
@@ -520,6 +544,7 @@ export function QuoteBuilderPanel({ initialContact, agentName, mode = "full", on
         optionalFlags.social && social ? `Redes: ${renderText(social)}` : null,
         optionalFlags.address && address ? `Direccion: ${renderText(address)}` : null,
     ].filter(Boolean);
+    const displayedClientPhone = formatClientPhoneForQuote(renderText(clientPhone));
 
     return (
         <div className={cn("space-y-4", isCompact && "max-h-[78vh] overflow-y-auto pr-1")}>
@@ -955,32 +980,27 @@ export function QuoteBuilderPanel({ initialContact, agentName, mode = "full", on
                                         </header>
 
                                         <section className={cn(
-                                            "grid gap-8 py-6",
-                                            selectedTemplate === "corporate" ? "grid-cols-[0.78fr_1.22fr]" : "grid-cols-[1fr_12rem]",
+                                            "py-6",
+                                            selectedTemplate !== "corporate" ? "grid grid-cols-[1fr_12rem] gap-8" : null,
                                         )}>
                                             <div className="space-y-1.5 text-sm">
                                                 <p className="text-xs font-black uppercase tracking-wide" style={{ color: template.accent }}>Cliente</p>
                                                 <p className="text-lg font-black">{renderText(clientName) || "Cliente"}</p>
-                                                <p className="font-semibold text-slate-600">{renderText(clientPhone) || "Sin telefono"}</p>
+                                                {displayedClientPhone ? (
+                                                    <p className="font-semibold text-slate-600">{displayedClientPhone}</p>
+                                                ) : null}
                                                 {optionalFlags.clientCompany && renderText(clientCompany) ? (
                                                     <p className="text-slate-500">{renderText(clientCompany)}</p>
                                                 ) : null}
                                             </div>
-                                            {selectedTemplate === "corporate" ? (
-                                                <div className="text-sm leading-6 text-slate-600">
-                                                    <p className="font-semibold text-slate-900">Detalle de la propuesta</p>
-                                                    <p>
-                                                        Esta cotizacion resume los conceptos solicitados y conserva las variables para generar PDF o imagen lista para enviar.
-                                                    </p>
-                                                </div>
-                                            ) : (
+                                            {selectedTemplate !== "corporate" ? (
                                                 <div className="text-right">
                                                     <div className="px-4 py-2 text-center text-sm font-black text-white" style={{ backgroundColor: template.accent }}>
                                                         FECHA
                                                     </div>
                                                     <p className="mt-3 text-sm font-black">{renderedVariables.fecha || new Date().toLocaleDateString("es-MX", { day: "2-digit", month: "long", year: "numeric" })}</p>
                                                 </div>
-                                            )}
+                                            ) : null}
                                         </section>
 
                                         <section className="overflow-hidden border">
