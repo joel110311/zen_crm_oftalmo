@@ -305,6 +305,36 @@ type WhatsAppSessionStatus = {
     error?: string;
 };
 
+function readOptionalBoolean(payload: unknown, keys: string[]) {
+    if (!payload || typeof payload !== "object") return undefined;
+    const record = payload as Record<string, unknown>;
+
+    for (const key of keys) {
+        const value = record[key];
+        if (typeof value === "boolean") return value;
+        if (typeof value === "string") {
+            const normalized = value.trim().toLowerCase();
+            if (["true", "1", "yes", "connected", "loggedin"].includes(normalized)) return true;
+            if (["false", "0", "no", "disconnected", "loggedout"].includes(normalized)) return false;
+        }
+        if (typeof value === "number") return value === 1;
+    }
+
+    return undefined;
+}
+
+function readOptionalString(payload: unknown, keys: string[]) {
+    if (!payload || typeof payload !== "object") return null;
+    const record = payload as Record<string, unknown>;
+
+    for (const key of keys) {
+        const value = record[key];
+        if (typeof value === "string" && value.trim()) return value.trim();
+    }
+
+    return null;
+}
+
 function parseStoredInboxDraft(raw: string | null): InboxDraftPayload | null {
     if (!raw) return null;
 
@@ -1240,8 +1270,7 @@ export default function InboxPage() {
     const isWuzapiTransportReady = Boolean(
         whatsAppSession?.configured &&
         whatsAppSession?.connected &&
-        whatsAppSession?.loggedIn &&
-        whatsAppSession?.jid,
+        whatsAppSession?.loggedIn !== false,
     );
     const isYCloudTransportReady = Boolean(whatsAppSession?.ycloudConfigured);
     const isWhatsAppTransportReady = outboundSourceType === "ycloud"
@@ -1259,10 +1288,10 @@ export default function InboxPage() {
     const whatsAppWarningText = useMemo(() => {
         if (outboundSourceType === "ycloud") {
             if (!whatsAppSession?.ycloudConfigured) {
-                return "Configura YCloud API Key y Phone Number ID en Configuracion para responder desde este chat.";
+                return "Configura YCloud API Key y Phone Number ID en Configuración para responder desde este chat.";
             }
 
-            return "YCloud esta configurado, pero no se pudo validar el estado del canal en este momento.";
+            return "YCloud está configurado, pero no se pudo validar el estado del canal en este momento.";
         }
 
         if (whatsAppSession?.error) {
@@ -1270,14 +1299,18 @@ export default function InboxPage() {
         }
 
         if (!whatsAppSession?.configured) {
-            return "Configura el canal en Configuracion para poder enviar y recibir mensajes desde el inbox.";
+            return "Configura el canal en Configuración para poder enviar y recibir mensajes desde el inbox.";
         }
 
         if (whatsAppSession?.loggedIn && !whatsAppSession?.connected) {
-            return "Hay un numero vinculado, pero el canal esta pausado. Reconectalo antes de responder desde Chats.";
+            return "Hay un número vinculado, pero el canal está pausado. Reconéctalo antes de responder desde Chats.";
         }
 
-        return "No hay un numero de WhatsApp vinculado al CRM. Conectalo en Configuracion para enviar mensajes, usar plantillas y adjuntar archivos.";
+        if (whatsAppSession?.connected && whatsAppSession?.loggedIn === false) {
+            return "El canal de WhatsApp está activo, pero la sesión todavía no aparece vinculada. Revisa el QR en Configuración.";
+        }
+
+        return "No hay un número de WhatsApp vinculado al CRM. Conéctalo en Configuración para enviar mensajes, usar plantillas y adjuntar archivos.";
     }, [outboundSourceType, whatsAppSession]);
 
     const refreshConversationsAndSelect = useCallback(async (conversationId: string) => {
@@ -1590,12 +1623,12 @@ export default function InboxPage() {
 
                 setWhatsAppSession({
                     configured: Boolean(payload?.configured),
-                    connected: payload?.connected ?? false,
-                    loggedIn: payload?.loggedIn ?? false,
-                    jid: payload?.jid || null,
-                    qrCode: payload?.qrCode || null,
+                    connected: readOptionalBoolean(payload, ["connected", "Connected"]) ?? false,
+                    loggedIn: readOptionalBoolean(payload, ["loggedIn", "LoggedIn", "logged_in", "isLoggedIn"]),
+                    jid: readOptionalString(payload, ["jid", "JID", "Jid", "userJid", "UserJID"]),
+                    qrCode: readOptionalString(payload, ["qrCode", "QRCode", "qrcode"]) || null,
                     ycloudConfigured: Boolean(payload?.ycloudConfigured),
-                    ycloudPhoneId: payload?.ycloudPhoneId || null,
+                    ycloudPhoneId: readOptionalString(payload, ["ycloudPhoneId"]) || null,
                     error: payload?.error || undefined,
                 });
             } catch (error) {
@@ -3452,7 +3485,7 @@ export default function InboxPage() {
                                             <div className="flex items-start gap-3">
                                                 <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
                                                 <div>
-                                                    <p className="text-sm font-semibold">No puedes responder todavia desde este chat</p>
+                                                    <p className="text-sm font-semibold">No puedes responder todavía desde este chat</p>
                                                     <p className="mt-1 text-xs leading-relaxed text-amber-900/80">
                                                         {whatsAppWarningText}
                                                     </p>
@@ -3554,7 +3587,7 @@ export default function InboxPage() {
                                                 <Textarea
                                                     ref={composerTextareaRef}
                                                     rows={1}
-                                                    placeholder={isWhatsAppTransportReady ? (pendingFile ? "Agregar descripción..." : "Escribe un mensaje...") : "Conecta un numero de WhatsApp para responder desde este chat..."}
+                                                    placeholder={isWhatsAppTransportReady ? (pendingFile ? "Agregar descripción..." : "Escribe un mensaje...") : "Conecta un número de WhatsApp para responder desde este chat..."}
                                                     className="min-h-[44px] max-h-32 resize-none border-0 bg-transparent px-3 py-3 text-base shadow-none focus-visible:ring-0"
                                                     disabled={!isWhatsAppTransportReady}
                                                     value={inputText}
