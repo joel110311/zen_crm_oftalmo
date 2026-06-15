@@ -1,6 +1,6 @@
 services:
   zen-crm:
-    image: ghcr.io/joel110311/zen_crm_go:latest
+    image: ghcr.io/joel110311/zen_crm_oftalmo:latest
     environment:
       - DATABASE_URL=postgresql://zencrm:${POSTGRES_PASSWORD}@${CRM_DB_HOST:-zen-crm-db}:5432/${POSTGRES_DB}
       - WHATSAPP_GATEWAY_URL=http://whatsapp-gateway:8080
@@ -63,7 +63,7 @@ services:
         - "traefik.docker.network=${TRAEFIK_NETWORK:-SociosNet}"
 
   whatsapp-gateway:
-    image: asternic/wuzapi:sha-4a20674
+    image: asternic/wuzapi:sha-e6d58f8
     environment:
       - WUZAPI_ADMIN_TOKEN=${WUZAPI_ADMIN_TOKEN}
       - WUZAPI_GLOBAL_ENCRYPTION_KEY=${WUZAPI_GLOBAL_ENCRYPTION_KEY}
@@ -117,7 +117,7 @@ services:
         condition: on-failure
 
   zen-crm-db:
-    image: ghcr.io/joel110311/zen_crm_go_db:latest
+    image: ghcr.io/joel110311/zen_crm_oftalmo_db:latest
     environment:
       - POSTGRES_USER=zencrm
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}

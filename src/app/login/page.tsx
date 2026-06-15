@@ -1,16 +1,35 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ZenLogo } from "@/components/icons/zen-logo";
+import { BrandLogo } from "@/components/brand/brand-logo";
+import { resolveBranding, type BrandingSettings } from "@/lib/branding";
 import { Loader2, Eye, EyeOff } from "lucide-react";
 import { loginAction } from "./actions";
 
 export default function LoginPage() {
     const [errorMessage, formAction, isPending] = useActionState(loginAction, undefined);
     const [showPassword, setShowPassword] = useState(false);
+    const [branding, setBranding] = useState<BrandingSettings>(() => resolveBranding(null));
+
+    useEffect(() => {
+        let ignore = false;
+
+        fetch("/api/branding", { cache: "no-store" })
+            .then((response) => response.json())
+            .then((data) => {
+                if (!ignore) setBranding(resolveBranding(data));
+            })
+            .catch(() => {
+                if (!ignore) setBranding(resolveBranding(null));
+            });
+
+        return () => {
+            ignore = true;
+        };
+    }, []);
 
     return (
         <div className="min-h-screen flex items-center justify-center bg-background relative overflow-hidden px-4">
@@ -24,10 +43,14 @@ export default function LoginPage() {
                 {/* Logo and branding */}
                 <div className="text-center mb-8 sm:mb-10">
                     <div className="flex justify-center mb-5">
-                        <ZenLogo className="h-20 w-20 sm:h-28 sm:w-28 text-foreground" />
+                        <BrandLogo
+                            brandName={branding.brandName}
+                            logoUrl={branding.brandLogoUrl}
+                            className="h-20 w-20 text-foreground sm:h-28 sm:w-28"
+                        />
                     </div>
                     <h1 className="text-2xl sm:text-3xl font-bold text-foreground tracking-tight">
-                        Zen CRM
+                        {branding.brandName}
                     </h1>
                     <p className="text-sm sm:text-base text-muted-foreground mt-1">
                         Gestión inteligente de clientes con IA
@@ -107,7 +130,7 @@ export default function LoginPage() {
 
                 {/* Footer */}
                 <p className="text-center text-xs text-muted-foreground mt-6 sm:mt-8">
-                    v1.0 · © 2026 Zen CRM
+                    v1.0 · © 2026 {branding.brandName}
                 </p>
             </div>
         </div>

@@ -1,29 +1,33 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useState, type ChangeEvent, type ComponentType } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
+    BookOpen,
     CalendarDays,
-    Check,
+    Globe2,
+    Image as ImageIcon,
     Loader2,
-    MessageSquare,
     Palette,
-    Pencil,
+    Percent,
     Play,
-    Plus,
+    ReceiptText,
     Save,
     Settings,
     Sparkles,
+    Stethoscope,
     Trash2,
+    Upload,
     Users,
     Volume2,
-    X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { ThemeCustomizer } from "@/components/theme-customizer";
 import { useToast } from "@/components/ui/use-toast";
@@ -34,32 +38,39 @@ import {
     saveNotificationPrefs,
     type NotificationPrefs,
 } from "@/lib/notificationSounds";
-import { createUser, deleteUser, getUsers, updateUser } from "@/app/actions/users";
 import { WhatsAppGatewayPanel } from "@/components/settings/whatsapp-gateway-panel";
 import { GoogleCalendarPanel } from "@/components/settings/google-calendar-panel";
+import { AppointmentReminderSettingsPanel } from "@/components/settings/appointment-reminder-settings-panel";
+import { SpecialistManagerPanel } from "@/components/settings/specialist-manager-panel";
+import { PortalContentPanel } from "@/components/settings/portal-content-panel";
+import { UserAccessPanel } from "@/components/settings/user-access-panel";
+import { PhonePrefixInput } from "@/components/shared/phone-prefix-input";
 import { Slider } from "@/components/ui/slider";
+import { WhatsAppIcon } from "@/components/icons/whatsapp-icon";
+import { hasPermission, type PermissionKey } from "@/lib/permissions";
+import { OPERATION_COUNTRIES, getOperationCountry, normalizeCurrencyList } from "@/lib/operation-context";
+import { DEFAULT_BRAND_FAVICON_URL, DEFAULT_BRAND_NAME } from "@/lib/branding";
+import { BrandLogo } from "@/components/brand/brand-logo";
 
-type SectionId = "theme" | "users" | "ai" | "whatsapp" | "calendar" | "chats";
-
-type UserRow = {
-    id: string;
-    name: string | null;
-    email: string;
-    role: string;
-};
+type SectionId = "theme" | "brand" | "operation" | "users" | "ai" | "whatsapp" | "calendar" | "specialists" | "portal" | "chats";
 
 const SECTIONS: Array<{
     id: SectionId;
     label: string;
     description: string;
-    icon: typeof Palette;
-    superadminOnly?: boolean;
+    icon: ComponentType<{ className?: string }>;
+    permission?: PermissionKey;
+    permissions?: PermissionKey[];
 }> = [
     { id: "theme", label: "Apariencia", description: "Tema y estilo general del CRM", icon: Palette },
-    { id: "users", label: "Usuarios", description: "Accesos, roles y permisos", icon: Users, superadminOnly: true },
-    { id: "ai", label: "Cerebro IA", description: "Claves y servicios de inteligencia", icon: Sparkles, superadminOnly: true },
-    { id: "whatsapp", label: "Canal WhatsApp", description: "Credenciales YCloud, QR y sincronizacion del numero", icon: MessageSquare, superadminOnly: true },
-    { id: "calendar", label: "Google Calendar", description: "Conexion y calendarios de agenda", icon: CalendarDays, superadminOnly: true },
+    { id: "brand", label: "Marca blanca", description: "Nombre, logo y favicon del CRM", icon: ImageIcon, permission: "settings.manage" },
+    { id: "operation", label: "Operacion", description: "Pais, telefono, moneda y zona horaria", icon: Globe2, permission: "settings.manage" },
+    { id: "users", label: "Usuarios", description: "Accesos, roles y permisos", icon: Users, permission: "users.manage" },
+    { id: "ai", label: "Cerebro IA", description: "Claves y servicios de inteligencia", icon: Sparkles, permission: "ai.manage" },
+    { id: "whatsapp", label: "Canal WhatsApp", description: "Credenciales YCloud, QR y sincronizacion del numero", icon: WhatsAppIcon, permission: "integrations.manage" },
+    { id: "calendar", label: "Calendario", description: "Google Calendar y recordatorios de citas", icon: CalendarDays, permissions: ["calendar.manage", "integrations.manage"] },
+    { id: "specialists", label: "Especialistas", description: "Agendas clinicas, portal y bloqueos", icon: Stethoscope, permission: "specialists.manage" },
+    { id: "portal", label: "Portal", description: "Autogestion, pagos y articulos", icon: BookOpen, permission: "portal.manage" },
     { id: "chats", label: "Notificaciones", description: "Sonidos y preferencias del inbox", icon: Volume2 },
 ];
 
@@ -75,14 +86,41 @@ export default function SettingsPage() {
     const [whatsappInstanceName, setWhatsappInstanceName] = useState("zen-crm");
     const [whatsappProxyEnabled, setWhatsappProxyEnabled] = useState(false);
     const [whatsappProxyUrl, setWhatsappProxyUrl] = useState("");
+    const [operationCountry, setOperationCountry] = useState("MX");
+    const [phoneDefaultCountry, setPhoneDefaultCountry] = useState("MX");
+    const [businessTimeZone, setBusinessTimeZone] = useState("America/Mexico_City");
+    const [paymentDefaultCurrency, setPaymentDefaultCurrency] = useState("MXN");
+    const [paymentEnabledCurrencies, setPaymentEnabledCurrencies] = useState<string[]>(["MXN"]);
+    const [brandName, setBrandName] = useState(DEFAULT_BRAND_NAME);
+    const [brandLogoUrl, setBrandLogoUrl] = useState("");
+    const [brandFaviconUrl, setBrandFaviconUrl] = useState(DEFAULT_BRAND_FAVICON_URL);
+    const [clinicName, setClinicName] = useState("Zen CRM Oftalmo");
+    const [clinicSubtitle, setClinicSubtitle] = useState("Clinica oftalmologica");
+    const [clinicAddress, setClinicAddress] = useState("Direccion de la clinica");
+    const [clinicLogoUrl, setClinicLogoUrl] = useState("");
+    const [clinicLogoScale, setClinicLogoScale] = useState(100);
+    const [posTaxEnabled, setPosTaxEnabled] = useState(false);
+    const [posTaxRate, setPosTaxRate] = useState(16);
+    const [posTicketEnabled, setPosTicketEnabled] = useState(true);
+    const [posTicketShowUnitPrice, setPosTicketShowUnitPrice] = useState(true);
+    const [posTicketFullDescription, setPosTicketFullDescription] = useState(false);
+    const [posTicketHeader, setPosTicketHeader] = useState("Zen CRM Oftalmo\nClinica oftalmologica\nDireccion de la clinica");
+    const [posTicketFooter, setPosTicketFooter] = useState("Gracias por su compra\nRegrese pronto");
     const [googleClientId, setGoogleClientId] = useState("");
     const [googleClientSecret, setGoogleClientSecret] = useState("");
+    const [reminderWhatsAppEnabled, setReminderWhatsAppEnabled] = useState(true);
+    const [appointmentRemindersEnabled, setAppointmentRemindersEnabled] = useState(true);
+    const [appointmentReminderOffsets, setAppointmentReminderOffsets] = useState<number[]>([1440, 240]);
+    const [appointmentReminderProvider, setAppointmentReminderProvider] = useState<"wuzapi" | "ycloud">("wuzapi");
+    const [appointmentReminderSendOnlyConfirmed, setAppointmentReminderSendOnlyConfirmed] = useState(true);
+    const [appointmentReminderWuzapiTemplate, setAppointmentReminderWuzapiTemplate] = useState("");
+    const [appointmentReminderYcloudTemplate24h, setAppointmentReminderYcloudTemplate24h] = useState("");
+    const [appointmentReminderYcloudTemplate4h, setAppointmentReminderYcloudTemplate4h] = useState("");
+    const [appointmentReminderYcloudLanguage, setAppointmentReminderYcloudLanguage] = useState("es");
     const [isSaving, setIsSaving] = useState(false);
-    const [users, setUsers] = useState<UserRow[]>([]);
-    const [showAddForm, setShowAddForm] = useState(false);
-    const [editingUserId, setEditingUserId] = useState<string | null>(null);
-    const [newUser, setNewUser] = useState({ name: "", email: "", password: "", role: "ADMIN" as "ADMIN" | "SUPERADMIN" });
-    const [editUser, setEditUser] = useState({ name: "", email: "", password: "", role: "ADMIN" as "ADMIN" | "SUPERADMIN" });
+    const [isUploadingBrandLogo, setIsUploadingBrandLogo] = useState(false);
+    const [isUploadingBrandFavicon, setIsUploadingBrandFavicon] = useState(false);
+    const [isUploadingClinicLogo, setIsUploadingClinicLogo] = useState(false);
     const [notifPrefs, setNotifPrefs] = useState<NotificationPrefs>({
         enabled: true,
         soundType: "gentle",
@@ -93,15 +131,14 @@ export default function SettingsPage() {
         soundType: "gentle",
         volume: 0.5,
     });
-    const [isUserPending, startUserTransition] = useTransition();
 
     const { toast } = useToast();
     const router = useRouter();
     const searchParams = useSearchParams();
     const { data: session, status } = useSession();
-    const sessionUser = session?.user as { id?: string; role?: string } | undefined;
+    const sessionUser = session?.user as { id?: string; role?: string; permissions?: unknown } | undefined;
     const currentUserId = sessionUser?.id;
-    const isSuperadmin = status !== "loading" && sessionUser?.role === "SUPERADMIN";
+    const canAccess = (permission: PermissionKey) => status !== "loading" && hasPermission(sessionUser, permission);
 
     useEffect(() => {
         const load = async () => {
@@ -119,8 +156,49 @@ export default function SettingsPage() {
                 setWhatsappInstanceName(settings.whatsappInstanceName || "zen-crm");
                 setWhatsappProxyEnabled(Boolean(settings.whatsappProxyEnabled));
                 setWhatsappProxyUrl(settings.whatsappProxyUrl || "");
+                const country = getOperationCountry(settings.operationCountry || "MX");
+                setOperationCountry(country.code);
+                setPhoneDefaultCountry(settings.phoneDefaultCountry || country.code);
+                setBusinessTimeZone(settings.businessTimeZone || country.timeZone);
+                const currencies = normalizeCurrencyList(settings.paymentEnabledCurrencies, country.code);
+                setPaymentEnabledCurrencies(currencies);
+                setPaymentDefaultCurrency(
+                    currencies.includes(settings.paymentDefaultCurrency)
+                        ? settings.paymentDefaultCurrency
+                        : country.defaultCurrency,
+                );
+                setBrandName(settings.brandName || DEFAULT_BRAND_NAME);
+                setBrandLogoUrl(settings.brandLogoUrl || "");
+                setBrandFaviconUrl(settings.brandFaviconUrl || DEFAULT_BRAND_FAVICON_URL);
+                setClinicName(settings.clinicName || "Zen CRM Oftalmo");
+                setClinicSubtitle(settings.clinicSubtitle || "Clinica oftalmologica");
+                setClinicAddress(settings.clinicAddress || "Direccion de la clinica");
+                setClinicLogoUrl(settings.clinicLogoUrl || "");
+                setClinicLogoScale(Number(settings.clinicLogoScale || 100));
+                setPosTaxEnabled(Boolean(settings.posTaxEnabled));
+                setPosTaxRate(Number(settings.posTaxRate || 16));
+                setPosTicketEnabled(settings.posTicketEnabled !== false);
+                setPosTicketShowUnitPrice(settings.posTicketShowUnitPrice !== false);
+                setPosTicketFullDescription(Boolean(settings.posTicketFullDescription));
+                setPosTicketHeader(settings.posTicketHeader || "Zen CRM Oftalmo\nClinica oftalmologica\nDireccion de la clinica");
+                setPosTicketFooter(settings.posTicketFooter || "Gracias por su compra\nRegrese pronto");
                 setGoogleClientId(settings.googleClientId || "");
                 setGoogleClientSecret(settings.googleClientSecret || "");
+                setReminderWhatsAppEnabled(settings.reminderWhatsAppEnabled !== false);
+                setAppointmentRemindersEnabled(settings.appointmentRemindersEnabled !== false);
+                setAppointmentReminderOffsets(
+                    Array.isArray(settings.appointmentReminderOffsets)
+                        ? settings.appointmentReminderOffsets
+                            .map((value: unknown) => Number(value))
+                            .filter((value: number) => Number.isFinite(value) && value > 0)
+                        : [1440, 240],
+                );
+                setAppointmentReminderProvider(settings.appointmentReminderProvider === "ycloud" ? "ycloud" : "wuzapi");
+                setAppointmentReminderSendOnlyConfirmed(settings.appointmentReminderSendOnlyConfirmed !== false);
+                setAppointmentReminderWuzapiTemplate(settings.appointmentReminderWuzapiTemplate || "");
+                setAppointmentReminderYcloudTemplate24h(settings.appointmentReminderYcloudTemplate24h || "");
+                setAppointmentReminderYcloudTemplate4h(settings.appointmentReminderYcloudTemplate4h || "");
+                setAppointmentReminderYcloudLanguage(settings.appointmentReminderYcloudLanguage || "es");
             } catch (error) {
                 console.error("Failed to load settings:", error);
             }
@@ -139,8 +217,8 @@ export default function SettingsPage() {
             return;
         }
 
-        if (requestedSection === "calendar") {
-            setActiveSection("calendar");
+        if (requestedSection && SECTIONS.some((section) => section.id === requestedSection)) {
+            setActiveSection(requestedSection as SectionId);
         }
 
         const googleState = searchParams.get("google");
@@ -158,39 +236,78 @@ export default function SettingsPage() {
         }
     }, [router, searchParams, toast]);
 
-    useEffect(() => {
-        if (!isSuperadmin) return;
-
-        startUserTransition(async () => {
-            try {
-                const data = await getUsers();
-                setUsers(data as UserRow[]);
-            } catch (error) {
-                console.error("Failed to load users:", error);
-            }
-        });
-    }, [isSuperadmin]);
-
     const handleSave = async () => {
         setIsSaving(true);
         try {
+            const settingsPayload =
+                activeSection === "ai"
+                    ? {
+                          openaiApiKey: openaiKey,
+                          geminiApiKey: geminiKey,
+                      }
+                    : activeSection === "brand"
+                        ? {
+                              brandName: brandName.trim() || DEFAULT_BRAND_NAME,
+                              brandLogoUrl,
+                              brandFaviconUrl: brandFaviconUrl || DEFAULT_BRAND_FAVICON_URL,
+                          }
+                    : activeSection === "operation"
+                        ? {
+                              operationCountry,
+                              phoneDefaultCountry,
+                              paymentDefaultCurrency,
+                              paymentEnabledCurrencies,
+                              businessTimeZone,
+                              clinicName,
+                              clinicSubtitle,
+                              clinicAddress,
+                              clinicLogoUrl,
+                              clinicLogoScale,
+                              posTaxEnabled,
+                              posTaxRate,
+                              posTicketEnabled,
+                              posTicketShowUnitPrice,
+                              posTicketFullDescription,
+                              posTicketHeader,
+                              posTicketFooter,
+                          }
+                    : activeSection === "calendar"
+                        ? {
+                              ...(canAccess("integrations.manage")
+                                  ? {
+                                        googleClientId,
+                                        googleClientSecret,
+                                    }
+                                  : {}),
+                              ...(canAccess("calendar.manage")
+                                  ? {
+                                        reminderWhatsAppEnabled,
+                                        appointmentRemindersEnabled,
+                                        appointmentReminderOffsets,
+                                        appointmentReminderProvider,
+                                        appointmentReminderSendOnlyConfirmed,
+                                        appointmentReminderWuzapiTemplate,
+                                        appointmentReminderYcloudTemplate24h,
+                                        appointmentReminderYcloudTemplate4h,
+                                        appointmentReminderYcloudLanguage,
+                                    }
+                                  : {}),
+                          }
+                        : {
+                              ycloudApiKey,
+                              ycloudPhoneId,
+                              whatsappBaseUrl,
+                              whatsappAdminToken,
+                              whatsappUserToken,
+                              whatsappInstanceName,
+                              whatsappProxyEnabled,
+                              whatsappProxyUrl,
+                          };
+
             const response = await fetch("/api/settings", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    openaiApiKey: openaiKey,
-                    geminiApiKey: geminiKey,
-                    ycloudApiKey,
-                    ycloudPhoneId,
-                    whatsappBaseUrl,
-                    whatsappAdminToken,
-                    whatsappUserToken,
-                    whatsappInstanceName,
-                    whatsappProxyEnabled,
-                    whatsappProxyUrl,
-                    googleClientId,
-                    googleClientSecret,
-                }),
+                body: JSON.stringify(settingsPayload),
             });
             if (!response.ok) throw new Error("No se pudo guardar la configuracion");
             toast({ title: "Configuracion guardada" });
@@ -207,11 +324,57 @@ export default function SettingsPage() {
         }
     };
 
-    const refreshUsers = () => {
-        startUserTransition(async () => {
-            const data = await getUsers();
-            setUsers(data as UserRow[]);
-        });
+    const uploadImageAsset = async (file: File) => {
+        const formData = new FormData();
+        formData.append("file", file);
+        const response = await fetch("/api/upload", { method: "POST", body: formData });
+        const result = await response.json();
+        if (!response.ok || !result?.success || !result.url || result.mediaCategory !== "image") {
+            throw new Error(result?.error || "El archivo debe ser una imagen valida.");
+        }
+        return result.url as string;
+    };
+
+    const handleBrandLogoUpload = async (event: ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        event.target.value = "";
+        if (!file) return;
+
+        setIsUploadingBrandLogo(true);
+        try {
+            const url = await uploadImageAsset(file);
+            setBrandLogoUrl(url);
+            toast({ title: "Logo del CRM cargado" });
+        } catch (error) {
+            toast({
+                title: "No se pudo cargar el logo",
+                description: error instanceof Error ? error.message : "Intentalo de nuevo.",
+                variant: "destructive",
+            });
+        } finally {
+            setIsUploadingBrandLogo(false);
+        }
+    };
+
+    const handleBrandFaviconUpload = async (event: ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        event.target.value = "";
+        if (!file) return;
+
+        setIsUploadingBrandFavicon(true);
+        try {
+            const url = await uploadImageAsset(file);
+            setBrandFaviconUrl(url);
+            toast({ title: "Favicon cargado" });
+        } catch (error) {
+            toast({
+                title: "No se pudo cargar el favicon",
+                description: error instanceof Error ? error.message : "Intentalo de nuevo.",
+                variant: "destructive",
+            });
+        } finally {
+            setIsUploadingBrandFavicon(false);
+        }
     };
 
     const hasNotifChanges =
@@ -232,69 +395,49 @@ export default function SettingsPage() {
         setNotifPrefs(savedNotifPrefs);
     };
 
-    const handleCreateUser = () => {
-        if (!newUser.name.trim() || !newUser.email.trim() || !newUser.password.trim()) return;
-        startUserTransition(async () => {
-            const result = await createUser({
-                name: newUser.name.trim(),
-                email: newUser.email.trim(),
-                password: newUser.password,
-                role: newUser.role,
+    const selectedOperationCountry = getOperationCountry(operationCountry);
+    const phoneCountry = getOperationCountry(phoneDefaultCountry);
+
+    const handleOperationCountryChange = (countryCode: string) => {
+        const country = getOperationCountry(countryCode);
+        setOperationCountry(country.code);
+        setPhoneDefaultCountry(country.code);
+        setBusinessTimeZone(country.timeZone);
+        setPaymentEnabledCurrencies(country.currencies);
+        setPaymentDefaultCurrency(country.defaultCurrency);
+    };
+
+    const handleClinicLogoUpload = async (event: ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        event.target.value = "";
+        if (!file) return;
+
+        setIsUploadingClinicLogo(true);
+        try {
+            const formData = new FormData();
+            formData.append("file", file);
+            const response = await fetch("/api/upload", { method: "POST", body: formData });
+            const result = await response.json();
+            if (!response.ok || !result?.success || !result.url) {
+                throw new Error(result?.error || "No se pudo subir el logotipo.");
+            }
+            setClinicLogoUrl(result.url);
+            toast({ title: "Logotipo cargado" });
+        } catch (error) {
+            toast({
+                title: "No se pudo cargar el logotipo",
+                description: error instanceof Error ? error.message : "Intentalo de nuevo.",
+                variant: "destructive",
             });
-            if (!result.success) {
-                toast({ title: "Error", description: result.error, variant: "destructive" });
-                return;
-            }
-            setNewUser({ name: "", email: "", password: "", role: "ADMIN" });
-            setShowAddForm(false);
-            refreshUsers();
-            toast({ title: "Usuario creado" });
-        });
+        } finally {
+            setIsUploadingClinicLogo(false);
+        }
     };
 
-    const handleStartEdit = (user: UserRow) => {
-        setEditingUserId(user.id);
-        setEditUser({
-            name: user.name || "",
-            email: user.email,
-            password: "",
-            role: user.role as "ADMIN" | "SUPERADMIN",
-        });
-    };
-
-    const handleUpdateUser = (userId: string) => {
-        startUserTransition(async () => {
-            const result = await updateUser(userId, {
-                name: editUser.name.trim(),
-                email: editUser.email.trim(),
-                role: editUser.role,
-                password: editUser.password || undefined,
-            });
-            if (!result.success) {
-                toast({ title: "Error", description: result.error, variant: "destructive" });
-                return;
-            }
-            setEditingUserId(null);
-            setEditUser({ name: "", email: "", password: "", role: "ADMIN" });
-            refreshUsers();
-            toast({ title: "Usuario actualizado" });
-        });
-    };
-
-    const handleDeleteUser = (userId: string, name: string | null) => {
-        if (!confirm(`Eliminar a ${name || "este usuario"}?`)) return;
-        startUserTransition(async () => {
-            const result = await deleteUser(userId);
-            if (!result.success) {
-                toast({ title: "Error", description: result.error, variant: "destructive" });
-                return;
-            }
-            refreshUsers();
-            toast({ title: "Usuario eliminado" });
-        });
-    };
-
-    const visibleSections = SECTIONS.filter((section) => !section.superadminOnly || isSuperadmin);
+    const visibleSections = SECTIONS.filter((section) =>
+        (!section.permission || canAccess(section.permission)) &&
+        (!section.permissions || section.permissions.some((permission) => canAccess(permission))),
+    );
 
     return (
         <div className="mx-auto max-w-6xl space-y-6">
@@ -358,7 +501,446 @@ export default function SettingsPage() {
                     </div>
                 )}
 
-                {activeSection === "ai" && isSuperadmin && (
+                {activeSection === "brand" && canAccess("settings.manage") && (
+                    <div className="max-w-5xl space-y-5">
+                        <div>
+                            <h2 className="font-semibold">Marca blanca del CRM</h2>
+                            <p className="text-sm text-muted-foreground">
+                                Personaliza la identidad visible del sistema sin modificar los datos clínicos ni el membrete de recetas.
+                            </p>
+                        </div>
+
+                        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
+                            <div className="space-y-5">
+                                <div className="rounded-2xl border bg-muted/10 p-4">
+                                    <div className="space-y-2">
+                                        <Label>Nombre del CRM</Label>
+                                        <Input
+                                            value={brandName}
+                                            onChange={(event) => setBrandName(event.target.value)}
+                                            placeholder={DEFAULT_BRAND_NAME}
+                                        />
+                                        <p className="text-xs text-muted-foreground">
+                                            Se mostrará en sidebar, login y título del navegador.
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div className="grid gap-4 md:grid-cols-2">
+                                    <div className="rounded-2xl border bg-background p-4">
+                                        <div className="flex items-start justify-between gap-3">
+                                            <div>
+                                                <Label>Logo del CRM</Label>
+                                                <p className="mt-1 text-xs text-muted-foreground">
+                                                    Ideal PNG, WEBP o SVG con fondo transparente.
+                                                </p>
+                                            </div>
+                                            {brandLogoUrl ? (
+                                                <Button
+                                                    type="button"
+                                                    variant="outline"
+                                                    size="icon"
+                                                    className="rounded-full text-destructive"
+                                                    onClick={() => setBrandLogoUrl("")}
+                                                >
+                                                    <Trash2 className="h-4 w-4" />
+                                                </Button>
+                                            ) : null}
+                                        </div>
+                                        <div className="mt-4 flex min-h-28 items-center justify-center rounded-2xl border bg-muted/25 p-4">
+                                            <BrandLogo
+                                                brandName={brandName || DEFAULT_BRAND_NAME}
+                                                logoUrl={brandLogoUrl}
+                                                className="h-20 w-20 text-primary"
+                                            />
+                                        </div>
+                                        <label className="mt-3 flex h-10 cursor-pointer items-center justify-center gap-2 rounded-full border bg-background text-sm font-medium transition hover:bg-muted/50">
+                                            {isUploadingBrandLogo ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                                            Subir logo
+                                            <input
+                                                type="file"
+                                                accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                                                className="hidden"
+                                                onChange={handleBrandLogoUpload}
+                                                disabled={isUploadingBrandLogo}
+                                            />
+                                        </label>
+                                    </div>
+
+                                    <div className="rounded-2xl border bg-background p-4">
+                                        <div className="flex items-start justify-between gap-3">
+                                            <div>
+                                                <Label>Favicon</Label>
+                                                <p className="mt-1 text-xs text-muted-foreground">
+                                                    Icono de la pestaña del navegador.
+                                                </p>
+                                            </div>
+                                            {brandFaviconUrl && brandFaviconUrl !== DEFAULT_BRAND_FAVICON_URL ? (
+                                                <Button
+                                                    type="button"
+                                                    variant="outline"
+                                                    size="icon"
+                                                    className="rounded-full text-destructive"
+                                                    onClick={() => setBrandFaviconUrl(DEFAULT_BRAND_FAVICON_URL)}
+                                                >
+                                                    <Trash2 className="h-4 w-4" />
+                                                </Button>
+                                            ) : null}
+                                        </div>
+                                        <div className="mt-4 flex min-h-28 items-center justify-center rounded-2xl border bg-muted/25 p-4">
+                                            <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-2xl border bg-background p-2 shadow-sm">
+                                                <img
+                                                    src={brandFaviconUrl || DEFAULT_BRAND_FAVICON_URL}
+                                                    alt="Favicon del CRM"
+                                                    className="h-full w-full object-contain"
+                                                />
+                                            </div>
+                                        </div>
+                                        <label className="mt-3 flex h-10 cursor-pointer items-center justify-center gap-2 rounded-full border bg-background text-sm font-medium transition hover:bg-muted/50">
+                                            {isUploadingBrandFavicon ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                                            Subir favicon
+                                            <input
+                                                type="file"
+                                                accept="image/png,image/svg+xml,image/x-icon,image/vnd.microsoft.icon,.ico"
+                                                className="hidden"
+                                                onChange={handleBrandFaviconUpload}
+                                                disabled={isUploadingBrandFavicon}
+                                            />
+                                        </label>
+                                    </div>
+                                </div>
+
+                                <Button onClick={handleSave} disabled={isSaving}>
+                                    {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                                    Guardar marca blanca
+                                </Button>
+                            </div>
+
+                            <div className="space-y-4">
+                                <div className="rounded-2xl border bg-background p-4">
+                                    <p className="text-sm font-semibold">Vista previa</p>
+                                    <div className="mt-4 overflow-hidden rounded-2xl border bg-sidebar text-sidebar-foreground shadow-sm">
+                                        <div className="flex items-center gap-3 border-b border-white/8 bg-white/6 px-4 py-4">
+                                            <BrandLogo
+                                                brandName={brandName || DEFAULT_BRAND_NAME}
+                                                logoUrl={brandLogoUrl}
+                                                className="h-9 w-9 text-white"
+                                            />
+                                            <div className="min-w-0">
+                                                <p className="truncate text-sm font-semibold text-white">
+                                                    {brandName || DEFAULT_BRAND_NAME}
+                                                </p>
+                                                <p className="text-xs text-sidebar-foreground/50">Workspace operativo</p>
+                                            </div>
+                                        </div>
+                                        <div className="space-y-2 p-4">
+                                            <div className="h-9 rounded-xl bg-white/8" />
+                                            <div className="h-9 rounded-xl bg-primary/25" />
+                                            <div className="h-9 rounded-xl bg-white/8" />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="rounded-2xl border bg-muted/15 p-4">
+                                    <p className="text-sm font-semibold">Pestaña del navegador</p>
+                                    <div className="mt-3 flex items-center gap-3 rounded-full border bg-background px-4 py-3 shadow-sm">
+                                        <img
+                                            src={brandFaviconUrl || DEFAULT_BRAND_FAVICON_URL}
+                                            alt=""
+                                            className="h-5 w-5 object-contain"
+                                        />
+                                        <span className="truncate text-sm font-medium">
+                                            {brandName || DEFAULT_BRAND_NAME}
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {activeSection === "operation" && canAccess("settings.manage") && (
+                    <div className="max-w-4xl space-y-5">
+                        <div>
+                            <h2 className="font-semibold">Pais de operacion</h2>
+                            <p className="text-sm text-muted-foreground">
+                                Define defaults de telefono, moneda, zona horaria, calendario y recordatorios automaticos.
+                            </p>
+                        </div>
+
+                        <div className="grid gap-4 md:grid-cols-2">
+                            <div className="space-y-2">
+                                <Label>Pais principal</Label>
+                                <Select value={operationCountry} onValueChange={handleOperationCountryChange}>
+                                    <SelectTrigger className="h-11 bg-background">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {OPERATION_COUNTRIES.map((country) => (
+                                            <SelectItem key={country.code} value={country.code}>
+                                                {country.name} ({country.code})
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label>Prefijo telefonico default</Label>
+                                <Select value={phoneDefaultCountry} onValueChange={setPhoneDefaultCountry}>
+                                    <SelectTrigger className="h-11 bg-background">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {[selectedOperationCountry, ...OPERATION_COUNTRIES.filter((country) => country.code !== selectedOperationCountry.code)].map((country) => (
+                                            <SelectItem key={country.code} value={country.code}>
+                                                {country.name} {country.callingCode}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                                <p className="text-xs text-muted-foreground">
+                                    En telefonos nuevos aparecera primero {phoneCountry.name} {phoneCountry.callingCode}.
+                                </p>
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label>Zona horaria</Label>
+                                <Input value={businessTimeZone} onChange={(event) => setBusinessTimeZone(event.target.value)} />
+                                <p className="text-xs text-muted-foreground">
+                                    Se usa en calendario, disponibilidad del portal, IA de agenda y recordatorios.
+                                </p>
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label>Moneda default</Label>
+                                <Select value={paymentDefaultCurrency} onValueChange={setPaymentDefaultCurrency}>
+                                    <SelectTrigger className="h-11 bg-background">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {paymentEnabledCurrencies.map((currency) => (
+                                            <SelectItem key={currency} value={currency}>
+                                                {currency}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                                <p className="text-xs text-muted-foreground">
+                                    Monedas habilitadas: {paymentEnabledCurrencies.join(", ")}.
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="rounded-2xl border bg-muted/20 p-4 text-sm text-muted-foreground">
+                            Para {selectedOperationCountry.name}, los cobros permiten {paymentEnabledCurrencies.join(" / ")} y los telefonos usan {phoneCountry.callingCode} por defecto.
+                        </div>
+
+                        <div className="rounded-2xl border bg-muted/10 p-4">
+                            <div>
+                                <h2 className="font-semibold">Datos de clinica y recetas</h2>
+                                <p className="text-sm text-muted-foreground">
+                                    Membrete usado en receta medica, receta optica, historia clinica e impresiones.
+                                </p>
+                            </div>
+
+                            <div className="mt-4 grid gap-5 lg:grid-cols-[220px_minmax(0,1fr)]">
+                                <div className="rounded-2xl border bg-background p-4">
+                                    <Label>Logotipo</Label>
+                                    <div className="mt-3 flex flex-col items-center gap-3">
+                                        <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-2xl border bg-muted/35">
+                                            {clinicLogoUrl ? (
+                                                <img
+                                                    src={clinicLogoUrl}
+                                                    alt="Logotipo de la clinica"
+                                                    className="object-contain"
+                                                    style={{
+                                                        width: `${Math.max(50, Math.min(180, clinicLogoScale))}%`,
+                                                        height: `${Math.max(50, Math.min(180, clinicLogoScale))}%`,
+                                                    }}
+                                                />
+                                            ) : (
+                                                <ImageIcon className="h-8 w-8 text-muted-foreground" />
+                                            )}
+                                        </div>
+                                        <div className="flex w-full gap-2">
+                                            <label className="flex h-10 flex-1 cursor-pointer items-center justify-center gap-2 rounded-full border bg-background text-sm font-medium transition hover:bg-muted/50">
+                                                {isUploadingClinicLogo ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                                                Subir
+                                                <input type="file" accept="image/*" className="hidden" onChange={handleClinicLogoUpload} disabled={isUploadingClinicLogo} />
+                                            </label>
+                                            {clinicLogoUrl ? (
+                                                <Button type="button" variant="outline" size="icon" className="rounded-full text-destructive" onClick={() => setClinicLogoUrl("")}>
+                                                    <Trash2 className="h-4 w-4" />
+                                                </Button>
+                                            ) : null}
+                                        </div>
+                                        <div className="w-full space-y-2">
+                                            <div className="flex items-center justify-between text-xs text-muted-foreground">
+                                                <span>Tamano</span>
+                                                <span>{clinicLogoScale}%</span>
+                                            </div>
+                                            <Slider
+                                                value={[clinicLogoScale]}
+                                                min={60}
+                                                max={160}
+                                                step={5}
+                                                onValueChange={(value) => setClinicLogoScale(value[0] ?? 100)}
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="grid gap-4 md:grid-cols-2">
+                                    <div className="space-y-2">
+                                        <Label>Nombre comercial</Label>
+                                        <Input value={clinicName} onChange={(event) => setClinicName(event.target.value)} placeholder="Zen CRM Oftalmo" />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label>Subtitulo / especialidad</Label>
+                                        <Input value={clinicSubtitle} onChange={(event) => setClinicSubtitle(event.target.value)} placeholder="Clinica oftalmologica" />
+                                    </div>
+                                    <div className="space-y-2 md:col-span-2">
+                                        <Label>Direccion de la clinica</Label>
+                                        <Input value={clinicAddress} onChange={(event) => setClinicAddress(event.target.value)} placeholder="Direccion, telefono, ciudad..." />
+                                    </div>
+                                    <div className="rounded-2xl border bg-primary/5 p-4 text-sm text-muted-foreground md:col-span-2">
+                                        Los datos del profesional, titulo, cedula y foto se editan en la seccion Especialistas. Operacion solo define los datos generales de la clinica.
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="rounded-2xl border bg-muted/10 p-4">
+                            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                <div>
+                                    <h2 className="flex items-center gap-2 font-semibold">
+                                        <ReceiptText className="h-4 w-4 text-primary" />
+                                        Caja, IVA y ticket
+                                    </h2>
+                                    <p className="text-sm text-muted-foreground">
+                                        Define impuestos de productos y el formato base del ticket de punto de venta.
+                                    </p>
+                                </div>
+                                <div className="flex items-center gap-2 rounded-full border bg-background px-3 py-2">
+                                    <Switch checked={posTicketEnabled} onCheckedChange={setPosTicketEnabled} />
+                                    <span className="text-sm font-medium">Ticket activo</span>
+                                </div>
+                            </div>
+
+                            <div className="mt-4 grid gap-5 lg:grid-cols-[minmax(0,1fr)_300px]">
+                                <div className="space-y-4">
+                                    <div className="rounded-2xl border bg-background p-4">
+                                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                                            <div>
+                                                <Label className="flex items-center gap-2 text-base">
+                                                    <Percent className="h-4 w-4 text-primary" />
+                                                    Productos con IVA
+                                                </Label>
+                                                <p className="mt-1 text-sm text-muted-foreground">
+                                                    Cuando esta activo, presupuestos y tickets muestran subtotal, IVA y total.
+                                                </p>
+                                            </div>
+                                            <Switch checked={posTaxEnabled} onCheckedChange={setPosTaxEnabled} />
+                                        </div>
+                                        {posTaxEnabled ? (
+                                            <div className="mt-4 max-w-[180px] space-y-2">
+                                                <Label>IVA (%)</Label>
+                                                <Input
+                                                    type="number"
+                                                    min="0"
+                                                    max="100"
+                                                    step="0.01"
+                                                    value={posTaxRate}
+                                                    onChange={(event) => setPosTaxRate(Number(event.target.value || 0))}
+                                                />
+                                            </div>
+                                        ) : null}
+                                    </div>
+
+                                    <div className="grid gap-4 md:grid-cols-2">
+                                        <div className="space-y-2">
+                                            <Label>Encabezado del ticket</Label>
+                                            <Textarea
+                                                rows={5}
+                                                value={posTicketHeader}
+                                                onChange={(event) => setPosTicketHeader(event.target.value)}
+                                                placeholder="Nombre del negocio&#10;Direccion&#10;Telefono"
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label>Pie del ticket</Label>
+                                            <Textarea
+                                                rows={5}
+                                                value={posTicketFooter}
+                                                onChange={(event) => setPosTicketFooter(event.target.value)}
+                                                placeholder="Gracias por su compra&#10;Regrese pronto"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="grid gap-3 md:grid-cols-2">
+                                        <label className="flex items-center gap-3 rounded-2xl border bg-background p-4 text-sm">
+                                            <Switch checked={posTicketShowUnitPrice} onCheckedChange={setPosTicketShowUnitPrice} />
+                                            Incluir precio unitario
+                                        </label>
+                                        <label className="flex items-center gap-3 rounded-2xl border bg-background p-4 text-sm">
+                                            <Switch checked={posTicketFullDescription} onCheckedChange={setPosTicketFullDescription} />
+                                            Imprimir descripcion completa
+                                        </label>
+                                    </div>
+                                </div>
+
+                                <div className="rounded-2xl border bg-background p-4">
+                                    <p className="mb-3 text-sm font-semibold">Vista previa</p>
+                                    <div className="mx-auto max-w-[240px] rounded-lg border bg-white p-3 font-mono text-[11px] leading-5 text-slate-950 shadow-sm">
+                                        {(posTicketHeader || "Zen CRM Oftalmo").split("\n").filter(Boolean).map((line, index) => (
+                                            <p key={`header-${index}`} className={index === 0 ? "text-center font-bold uppercase" : "text-center"}>
+                                                {line}
+                                            </p>
+                                        ))}
+                                        <div className="my-2 border-t border-dashed" />
+                                        <div className="flex justify-between">
+                                            <span>1 Consulta</span>
+                                            <span>$900.00</span>
+                                        </div>
+                                        {posTicketShowUnitPrice ? (
+                                            <p className="text-slate-500">P.U. $900.00</p>
+                                        ) : null}
+                                        {posTaxEnabled ? (
+                                            <>
+                                                <div className="mt-2 flex justify-between">
+                                                    <span>Subtotal</span>
+                                                    <span>$900.00</span>
+                                                </div>
+                                                <div className="flex justify-between">
+                                                    <span>IVA {posTaxRate || 0}%</span>
+                                                    <span>${(900 * ((Number(posTaxRate) || 0) / 100)).toFixed(2)}</span>
+                                                </div>
+                                            </>
+                                        ) : null}
+                                        <div className="my-2 border-t border-dashed" />
+                                        <div className="flex justify-between text-sm font-bold">
+                                            <span>Total</span>
+                                            <span>${(900 * (1 + (posTaxEnabled ? (Number(posTaxRate) || 0) / 100 : 0))).toFixed(2)}</span>
+                                        </div>
+                                        <div className="my-2 border-t border-dashed" />
+                                        {(posTicketFooter || "Gracias").split("\n").filter(Boolean).map((line, index) => (
+                                            <p key={`footer-${index}`} className="text-center">{line}</p>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <Button onClick={handleSave} disabled={isSaving}>
+                            {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                            Guardar operacion
+                        </Button>
+                    </div>
+                )}
+
+                {activeSection === "ai" && canAccess("ai.manage") && (
                     <div className="max-w-xl space-y-4">
                         <div>
                             <h2 className="font-semibold">Inteligencia artificial</h2>
@@ -379,7 +961,7 @@ export default function SettingsPage() {
                     </div>
                 )}
 
-                {activeSection === "whatsapp" && isSuperadmin && (
+                {activeSection === "whatsapp" && canAccess("integrations.manage") && (
                     <div className="space-y-6">
                         <div className="max-w-3xl space-y-4 rounded-2xl border bg-muted/15 p-5">
                             <div>
@@ -405,11 +987,11 @@ export default function SettingsPage() {
 
                             <div className="space-y-2">
                                 <Label htmlFor="ycloud-phone-id">YCloud Phone Number ID</Label>
-                                <Input
-                                    id="ycloud-phone-id"
+                                <PhonePrefixInput
                                     value={ycloudPhoneId}
-                                    onChange={(event) => setYcloudPhoneId(event.target.value)}
-                                    placeholder="+524771075025"
+                                    onChange={setYcloudPhoneId}
+                                    defaultCountry={phoneDefaultCountry}
+                                    placeholder="Telefono YCloud"
                                 />
                                 <p className="text-xs text-muted-foreground">
                                     Se usa para envio oficial por API y como source_id del feed YCloud.
@@ -447,109 +1029,59 @@ export default function SettingsPage() {
                     </div>
                 )}
 
-                {activeSection === "calendar" && isSuperadmin && (
-                    <GoogleCalendarPanel
-                        googleClientId={googleClientId}
-                        googleClientSecret={googleClientSecret}
-                        onChange={(field, value) => {
-                            if (field === "googleClientId") setGoogleClientId(value);
-                            if (field === "googleClientSecret") setGoogleClientSecret(value);
-                        }}
-                        onSave={handleSave}
-                        isSaving={isSaving}
-                    />
+                {activeSection === "calendar" && (
+                    <div className="space-y-6">
+                        {canAccess("calendar.manage") ? (
+                            <AppointmentReminderSettingsPanel
+                                enabled={appointmentRemindersEnabled && reminderWhatsAppEnabled}
+                                offsets={appointmentReminderOffsets}
+                                provider={appointmentReminderProvider}
+                                sendOnlyConfirmed={appointmentReminderSendOnlyConfirmed}
+                                wuzapiTemplate={appointmentReminderWuzapiTemplate}
+                                ycloudTemplate24h={appointmentReminderYcloudTemplate24h}
+                                ycloudTemplate4h={appointmentReminderYcloudTemplate4h}
+                                ycloudLanguage={appointmentReminderYcloudLanguage}
+                                onEnabledChange={(value) => {
+                                    setAppointmentRemindersEnabled(value);
+                                    setReminderWhatsAppEnabled(value);
+                                }}
+                                onOffsetsChange={setAppointmentReminderOffsets}
+                                onProviderChange={setAppointmentReminderProvider}
+                                onSendOnlyConfirmedChange={setAppointmentReminderSendOnlyConfirmed}
+                                onWuzapiTemplateChange={setAppointmentReminderWuzapiTemplate}
+                                onYcloudTemplate24hChange={setAppointmentReminderYcloudTemplate24h}
+                                onYcloudTemplate4hChange={setAppointmentReminderYcloudTemplate4h}
+                                onYcloudLanguageChange={setAppointmentReminderYcloudLanguage}
+                                onSave={handleSave}
+                                isSaving={isSaving}
+                            />
+                        ) : null}
+
+                        {canAccess("integrations.manage") ? (
+                            <GoogleCalendarPanel
+                                googleClientId={googleClientId}
+                                googleClientSecret={googleClientSecret}
+                                onChange={(field, value) => {
+                                    if (field === "googleClientId") setGoogleClientId(value);
+                                    if (field === "googleClientSecret") setGoogleClientSecret(value);
+                                }}
+                                onSave={handleSave}
+                                isSaving={isSaving}
+                            />
+                        ) : null}
+                    </div>
                 )}
 
-                {activeSection === "users" && isSuperadmin && (
-                    <div className="space-y-4">
-                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                            <div>
-                                <h2 className="font-semibold">Usuarios</h2>
-                                <p className="text-sm text-muted-foreground">{users.length} registrados</p>
-                            </div>
-                            <Button variant="outline" onClick={() => setShowAddForm((current) => !current)} className="w-full sm:w-auto">
-                                {showAddForm ? <X className="mr-2 h-4 w-4" /> : <Plus className="mr-2 h-4 w-4" />}
-                                {showAddForm ? "Cancelar" : "Agregar"}
-                            </Button>
-                        </div>
+                {activeSection === "specialists" && canAccess("specialists.manage") && (
+                    <SpecialistManagerPanel />
+                )}
 
-                        {showAddForm && (
-                            <div className="grid gap-3 rounded-xl border bg-muted/20 p-4 md:grid-cols-2">
-                                <Input placeholder="Nombre" value={newUser.name} onChange={(event) => setNewUser((current) => ({ ...current, name: event.target.value }))} />
-                                <Input placeholder="Email" type="email" value={newUser.email} onChange={(event) => setNewUser((current) => ({ ...current, email: event.target.value }))} />
-                                <Input placeholder="Contrasena" type="password" value={newUser.password} onChange={(event) => setNewUser((current) => ({ ...current, password: event.target.value }))} />
-                                <select
-                                    value={newUser.role}
-                                    onChange={(event) => setNewUser((current) => ({ ...current, role: event.target.value as "ADMIN" | "SUPERADMIN" }))}
-                                    className="h-10 rounded-md border border-input bg-background px-3 text-sm"
-                                >
-                                    <option value="ADMIN">Operador</option>
-                                    <option value="SUPERADMIN">Super Admin</option>
-                                </select>
-                                <div className="md:col-span-2">
-                                    <Button onClick={handleCreateUser} disabled={isUserPending} className="w-full sm:w-auto">
-                                        {isUserPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />}
-                                        Crear usuario
-                                    </Button>
-                                </div>
-                            </div>
-                        )}
+                {activeSection === "portal" && canAccess("portal.manage") && (
+                    <PortalContentPanel />
+                )}
 
-                        <div className="space-y-3">
-                            {users.map((user) => {
-                                const isEditing = editingUserId === user.id;
-                                return (
-                                    <div key={user.id} className="rounded-xl border p-4">
-                                        {isEditing ? (
-                                            <div className="grid gap-3 md:grid-cols-2">
-                                                <Input value={editUser.name} onChange={(event) => setEditUser((current) => ({ ...current, name: event.target.value }))} />
-                                                <Input type="email" value={editUser.email} onChange={(event) => setEditUser((current) => ({ ...current, email: event.target.value }))} />
-                                                <Input type="password" placeholder="Nueva contrasena" value={editUser.password} onChange={(event) => setEditUser((current) => ({ ...current, password: event.target.value }))} />
-                                                <select
-                                                    value={editUser.role}
-                                                    onChange={(event) => setEditUser((current) => ({ ...current, role: event.target.value as "ADMIN" | "SUPERADMIN" }))}
-                                                    className="h-10 rounded-md border border-input bg-background px-3 text-sm"
-                                                >
-                                                    <option value="ADMIN">Operador</option>
-                                                    <option value="SUPERADMIN">Super Admin</option>
-                                                </select>
-                                                <div className="flex flex-col gap-2 md:col-span-2 sm:flex-row">
-                                                    <Button onClick={() => handleUpdateUser(user.id)} disabled={isUserPending} className="w-full sm:w-auto">
-                                                        {isUserPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />}
-                                                        Guardar
-                                                    </Button>
-                                                    <Button variant="ghost" onClick={() => setEditingUserId(null)} className="w-full sm:w-auto">Cancelar</Button>
-                                                </div>
-                                            </div>
-                                        ) : (
-                                            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                                                <div>
-                                                    <p className="font-medium">
-                                                        {user.name || user.email}
-                                                        {user.id === currentUserId ? <span className="ml-2 text-xs text-muted-foreground">(Tu)</span> : null}
-                                                    </p>
-                                                    <p className="text-sm text-muted-foreground">{user.email}</p>
-                                                    <p className="text-xs text-muted-foreground">{user.role}</p>
-                                                </div>
-                                                <div className="flex flex-col gap-2 sm:flex-row">
-                                                    <Button variant="outline" size="sm" onClick={() => handleStartEdit(user)} className="w-full sm:w-auto">
-                                                        <Pencil className="mr-2 h-4 w-4" />
-                                                        Editar
-                                                    </Button>
-                                                    {user.id !== currentUserId ? (
-                                                        <Button variant="ghost" size="sm" className="w-full text-destructive sm:w-auto" onClick={() => handleDeleteUser(user.id, user.name)}>
-                                                            <Trash2 className="mr-2 h-4 w-4" />
-                                                            Eliminar
-                                                        </Button>
-                                                    ) : null}
-                                                </div>
-                                            </div>
-                                        )}
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    </div>
+                {activeSection === "users" && canAccess("users.manage") && (
+                    <UserAccessPanel currentUserId={currentUserId} />
                 )}
 
                 {activeSection === "chats" && (

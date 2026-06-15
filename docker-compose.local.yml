@@ -1,3 +1,5 @@
+name: zen-crm-oftalmo
+
 services:
   zen-crm:
     build:
@@ -11,44 +13,74 @@ services:
       - WHATSAPP_GATEWAY_URL=http://whatsapp-gateway:8080
       - WUZAPI_ADMIN_TOKEN=${WUZAPI_ADMIN_TOKEN:-zencrm-local-admin-token}
       - WUZAPI_USER_TOKEN=${WUZAPI_USER_TOKEN:-zencrm-local-user-token}
-      - WHATSAPP_INSTANCE_NAME=${WHATSAPP_INSTANCE_NAME:-zen-crm-local}
+      - WHATSAPP_INSTANCE_NAME=${WHATSAPP_INSTANCE_NAME:-zen-crm-oftalmo-local}
+      - WUZAPI_GLOBAL_ENCRYPTION_KEY=${WUZAPI_GLOBAL_ENCRYPTION_KEY:-zencrm_local_encrypt_key_32abcde}
+      - WUZAPI_GLOBAL_HMAC_KEY=${WUZAPI_GLOBAL_HMAC_KEY:-zencrm_local_hmac_key_32abcdefghi}
       - INITIAL_ADMIN_EMAIL=${INITIAL_ADMIN_EMAIL:-superadmin@zencrm.local}
       - INITIAL_ADMIN_PASSWORD=${INITIAL_ADMIN_PASSWORD:-super123}
       - INITIAL_ADMIN_NAME=${INITIAL_ADMIN_NAME:-Super Admin}
       - AUTH_SECRET=${AUTH_SECRET:-zencrm_local_auth_secret_2026}
-      - AUTH_URL=${AUTH_URL:-http://localhost:3001}
-      - APP_BASE_URL=${APP_BASE_URL:-http://localhost:3001}
-      - WHATSAPP_WEBHOOK_BASE_URL=${WHATSAPP_WEBHOOK_BASE_URL:-http://host.docker.internal:3001}
+      - AUTH_URL=${AUTH_URL:-http://localhost:3006}
+      - APP_BASE_URL=${APP_BASE_URL:-http://localhost:3006}
+      - WHATSAPP_WEBHOOK_BASE_URL=${WHATSAPP_WEBHOOK_BASE_URL:-http://host.docker.internal:3006}
       - PORT=3000
       - HOSTNAME=0.0.0.0
       - TZ=${TZ:-America/Mexico_City}
     ports:
-      - "3001:3000"
+      - "3006:3000"
     volumes:
       - zen_crm_uploads:/app/public/uploads
     depends_on:
-      - zen-crm-db
-      - whatsapp-gateway
+      zen-crm-db:
+        condition: service_healthy
+        restart: true
+      whatsapp-gateway:
+        condition: service_started
+        restart: true
     networks:
       - zen-crm-local
     restart: unless-stopped
 
   whatsapp-gateway:
-    image: asternic/wuzapi:latest
+    image: asternic/wuzapi:sha-e6d58f8
     environment:
       - WUZAPI_ADMIN_TOKEN=${WUZAPI_ADMIN_TOKEN:-zencrm-local-admin-token}
       - WUZAPI_GLOBAL_ENCRYPTION_KEY=${WUZAPI_GLOBAL_ENCRYPTION_KEY:-zencrm_local_encrypt_key_32abcde}
-      - DB_USER=zencrm
-      - DB_PASSWORD=950b719a13e682e057b42c7b11dd2213
-      - DB_NAME=zencrm
-      - DB_HOST=zen-crm-db
+      - WUZAPI_GLOBAL_HMAC_KEY=${WUZAPI_GLOBAL_HMAC_KEY:-zencrm_local_hmac_key_32abcdefghi}
+      - DB_USER=wuzapi
+      - DB_PASSWORD=${WUZAPI_DB_PASSWORD:-zencrm_wuzapi_local_password}
+      - DB_NAME=wuzapi
+      - DB_HOST=whatsapp-db
       - DB_PORT=5432
       - DB_SSLMODE=false
       - WEBHOOK_FORMAT=json
-      - SESSION_DEVICE_NAME=${SESSION_DEVICE_NAME:-Zen CRM Local}
+      - SESSION_DEVICE_NAME=${SESSION_DEVICE_NAME:-Zen CRM Oftalmo Local}
       - TZ=${TZ:-America/Mexico_City}
     ports:
-      - "8080:8080"
+      - "8086:8080"
+    depends_on:
+      whatsapp-db:
+        condition: service_healthy
+        restart: true
+    networks:
+      - zen-crm-local
+    restart: unless-stopped
+
+  whatsapp-db:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=wuzapi
+      - POSTGRES_PASSWORD=${WUZAPI_DB_PASSWORD:-zencrm_wuzapi_local_password}
+      - POSTGRES_DB=wuzapi
+      - TZ=${TZ:-America/Mexico_City}
+    volumes:
+      - wuzapi_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U wuzapi -d wuzapi"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
     networks:
       - zen-crm-local
     restart: unless-stopped
@@ -57,7 +89,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.db
-    image: ghcr.io/joel110311/zen_crm_go_db:latest
+    image: ghcr.io/joel110311/zen_crm_oftalmo_db:latest
     environment:
       - POSTGRES_USER=zencrm
       - POSTGRES_PASSWORD=950b719a13e682e057b42c7b11dd2213
@@ -65,6 +97,14 @@ services:
       - TZ=${TZ:-America/Mexico_City}
     volumes:
       - zen_crm_db_data:/var/lib/postgresql/data
+    ports:
+      - "8006:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U zencrm -d zencrm"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
     networks:
       - zen-crm-local
     restart: unless-stopped
@@ -72,6 +112,7 @@ services:
 volumes:
   zen_crm_db_data:
   zen_crm_uploads:
+  wuzapi_db_data:
 
 networks:
   zen-crm-local:

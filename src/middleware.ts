@@ -1,12 +1,25 @@
 import { getToken } from "next-auth/jwt";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { hasPermission, type PermissionKey } from "@/lib/permissions";
+
+const protectedRoutes: Array<{ prefix: string; permission: PermissionKey }> = [
+    { prefix: "/dashboard/contacts", permission: "contacts.manage" },
+    { prefix: "/dashboard/patients", permission: "patients.manage" },
+    { prefix: "/dashboard/reception", permission: "reception.manage" },
+    { prefix: "/dashboard/billing", permission: "billing.manage" },
+    { prefix: "/dashboard/reports", permission: "reports.view" },
+    { prefix: "/dashboard/inbox", permission: "chats.manage" },
+    { prefix: "/dashboard/templates", permission: "templates.manage" },
+    { prefix: "/dashboard/calendar", permission: "calendar.manage" },
+    { prefix: "/dashboard/brain", permission: "ai.manage" },
+];
 
 export async function middleware(req: NextRequest) {
     const { pathname } = req.nextUrl;
 
     // Public paths that don't require authentication
-    const publicPaths = ["/login", "/api/auth", "/api/webhook", "/api/webhooks", "/api/bot-message", "/api/health"];
+    const publicPaths = ["/login", "/portal", "/api/auth", "/api/branding", "/api/webhook", "/api/webhooks", "/api/bot-message", "/api/health", "/api/operation-context"];
     const isPublicPath = publicPaths.some((path) => pathname.startsWith(path));
 
     if (isPublicPath) {
@@ -37,8 +50,21 @@ export async function middleware(req: NextRequest) {
         return NextResponse.redirect(loginUrl);
     }
 
-    // ADMIN users cannot access /dashboard/brain
-    if (token.role === "ADMIN" && pathname.startsWith("/dashboard/brain")) {
+    if (pathname.startsWith("/dashboard/pipeline")) {
+        return NextResponse.redirect(new URL("/dashboard/patients", req.url));
+    }
+
+    const matchedRoute = protectedRoutes.find((route) => pathname.startsWith(route.prefix));
+    if (
+        matchedRoute &&
+        !hasPermission(
+            {
+                role: typeof token.role === "string" ? token.role : undefined,
+                permissions: token.permissions,
+            },
+            matchedRoute.permission,
+        )
+    ) {
         return NextResponse.redirect(new URL("/dashboard", req.url));
     }
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { FileImage, FileText, Loader2, Plus, RefreshCw, Trash2, Upload, WandSparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,6 +18,7 @@ import { WhatsAppTemplatePreview } from "@/components/templates/whatsapp-templat
 import { getSafeMediaUrl } from "@/lib/media-url";
 import { renderTemplateContent, TEMPLATE_VARIABLES } from "@/lib/templates";
 import { cn } from "@/lib/utils";
+import { useOperationContext } from "@/components/shared/use-operation-context";
 import type {
     CampaignFormState,
     CampaignVariantFormState,
@@ -41,14 +42,7 @@ type YCloudTemplateVariableSlot = {
 };
 
 const YCloudTemplateValueDefaults = ["{{nombre}}", "{{empresa}}", "{{agente}}", "{{telefono}}"];
-const TEMPLATE_PREVIEW_CONTEXT = {
-    contact: {
-        name: "Karen",
-        company: "Zen Estates",
-        phone: "9991234567",
-    },
-    agentName: "Joel",
-};
+type TemplatePreviewContext = Parameters<typeof renderTemplateContent>[1];
 
 function normalizeYCloudTemplateItem(value: unknown): YCloudTemplateListItem | null {
     if (!value || typeof value !== "object") return null;
@@ -126,6 +120,7 @@ function getYCloudTemplateComponentText(components: YCloudCampaignTemplateCompon
 function renderYCloudTemplateText(
     components: YCloudCampaignTemplateComponent[],
     variableValues: Record<string, string>,
+    previewContext: TemplatePreviewContext,
 ) {
     const renderComponent = (componentType: "HEADER" | "BODY" | "FOOTER") => {
         const source = getYCloudTemplateComponentText(components, componentType);
@@ -133,7 +128,7 @@ function renderYCloudTemplateText(
             const value = variableValues[getYCloudTemplateVariableKey(componentType, variableIndex)]
                 || variableValues[variableIndex]
                 || `{{${variableIndex}}}`;
-            return renderTemplateContent(value, TEMPLATE_PREVIEW_CONTEXT).trim() || `{{${variableIndex}}}`;
+            return renderTemplateContent(value, previewContext).trim() || `{{${variableIndex}}}`;
         }).trim();
     };
 
@@ -185,6 +180,7 @@ export function BulkCampaignMessageTab({
     onAddVariant,
     onRemoveVariant,
 }: BulkCampaignMessageTabProps) {
+    const operationContext = useOperationContext();
     const variantLayoutRef = useRef<HTMLDivElement | null>(null);
     const [variantLayoutWidth, setVariantLayoutWidth] = useState(0);
     const [ycloudTemplates, setYCloudTemplates] = useState<YCloudTemplateListItem[]>([]);
@@ -198,9 +194,18 @@ export function BulkCampaignMessageTab({
         template.name === form.ycloudTemplateName && template.language === form.ycloudTemplateLanguage,
     ) || null;
     const ycloudVariableSlots = listYCloudTemplateVariableSlots(form.ycloudTemplateComponents);
+    const templatePreviewContext = useMemo<TemplatePreviewContext>(() => ({
+        contact: {
+            name: "Karen",
+            company: "Zen Estates",
+            phone: operationContext.phoneExample,
+        },
+        agentName: "Joel",
+    }), [operationContext.phoneExample]);
     const ycloudPreviewContent = renderYCloudTemplateText(
         form.ycloudTemplateComponents,
         form.ycloudTemplateVariableValues,
+        templatePreviewContext,
     );
 
     useEffect(() => {
@@ -274,7 +279,7 @@ export function BulkCampaignMessageTab({
         if (!template) return;
 
         const variableValues = buildDefaultYCloudTemplateVariableValues(template.components);
-        const content = renderYCloudTemplateText(template.components, variableValues);
+        const content = renderYCloudTemplateText(template.components, variableValues, templatePreviewContext);
 
         onActiveVariantIndexChange(0);
         onFormChange((current) => ({
@@ -307,7 +312,7 @@ export function BulkCampaignMessageTab({
                 ...current.ycloudTemplateVariableValues,
                 [slot.key]: value,
             };
-            const content = renderYCloudTemplateText(current.ycloudTemplateComponents, variableValues);
+            const content = renderYCloudTemplateText(current.ycloudTemplateComponents, variableValues, templatePreviewContext);
 
             return {
                 ...current,
@@ -435,7 +440,7 @@ export function BulkCampaignMessageTab({
                                 </div>
                             ) : (
                                 <div className="rounded-xl border border-dashed bg-background/70 p-4 text-sm leading-6 text-muted-foreground">
-                                    Selecciona una plantilla aprobada para habilitar la vista previa y guardar la campana.
+                                    Selecciona una plantilla aprobada para habilitar la vista previa y guardar la campaña.
                                 </div>
                             )}
                         </div>
@@ -539,7 +544,7 @@ export function BulkCampaignMessageTab({
                             )
                         ) : (
                             <div className="rounded-2xl border border-dashed p-4 text-sm text-muted-foreground">
-                                Esta campana aun no tiene archivo adjunto.
+                                Esta campaña aun no tiene archivo adjunto.
                             </div>
                         )}
                     </div>
@@ -738,12 +743,12 @@ export function BulkCampaignMessageTab({
                             </div>
                             <div className="rounded-xl border bg-background/80 p-3 leading-6">
                                 {form.followUpCount > 0
-                                    ? `Si no responde, la campana puede enviar hasta ${form.followUpCount} seguimientos adicionales por contacto.`
+                                    ? `Si no responde, la campaña puede enviar hasta ${form.followUpCount} seguimientos adicionales por contacto.`
                                     : "Esta ola enviara un solo toque por contacto; no habra seguimientos extra."}
                             </div>
                             <div className="rounded-xl border bg-background/80 p-3 leading-6">
                                 {form.stopOnReply
-                                    ? "Si el lead responde cualquier cosa, la secuencia de esa campana se cierra. Si escribe algo como 'detener', tambien queda bloqueado de futuros masivos y pasa a Cerrado Perdido."
+                                    ? "Si el lead responde cualquier cosa, la secuencia de esa campaña se cierra. Si escribe algo como 'detener', tambien queda bloqueado de futuros masivos y pasa a Cerrado Perdido."
                                     : "Con respuestas neutrales la secuencia puede seguir activa. Si escribe 'detener' se bloquean futuros masivos, y si muestra interes el bot toma la conversacion para vender."}
                             </div>
                         </div>

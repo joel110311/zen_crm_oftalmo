@@ -13,7 +13,7 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { KnowledgeBase } from "@/components/brain/knowledge-base";
-import { CatalogBase } from "@/components/brain/catalog-base";
+import { PhonePrefixInput } from "@/components/shared/phone-prefix-input";
 import { getSystemSettings, updateSystemSettings } from "@/app/actions/settings";
 import { useToast } from "@/components/ui/use-toast";
 import { normalizeChatModelSelection, resolveChatModelSelection, SUPPORTED_CHAT_MODELS } from "@/lib/ai/models";
@@ -49,11 +49,6 @@ export default function BrainConfigPage() {
     const [leadInterestThreshold, setLeadInterestThreshold] = useState([45]);
     const [escalationEnabled, setEscalationEnabled] = useState(false);
     const [escalationPhone, setEscalationPhone] = useState("");
-    const [catalogOfferImages, setCatalogOfferImages] = useState(true);
-    const [catalogOfferPdf, setCatalogOfferPdf] = useState(true);
-    const [catalogAskBeforeSending, setCatalogAskBeforeSending] = useState(true);
-    const [catalogMaxImagesToSend, setCatalogMaxImagesToSend] = useState([10]);
-    const [catalogIncludeLink, setCatalogIncludeLink] = useState(true);
     const { toast } = useToast();
 
     useEffect(() => {
@@ -66,7 +61,7 @@ export default function BrainConfigPage() {
                     setAgentName(settings.agentName || "Asistente Zen");
                     setAgentPrompt(
                         settings.agentPrompt ||
-                            "Eres un asistente comercial y de soporte que responde por WhatsApp desde un CRM. Responde en espanol, con claridad y sin inventar informacion.",
+                            "Eres un asistente comercial y de soporte que responde por WhatsApp desde un CRM. Responde en español, con claridad y sin inventar informacion.",
                     );
                     setWelcomeMessage(
                         settings.welcomeMessage ||
@@ -88,11 +83,6 @@ export default function BrainConfigPage() {
                     setLeadInterestThreshold([settings.leadInterestThreshold || 45]);
                     setEscalationEnabled(settings.escalationEnabled ?? false);
                     setEscalationPhone(settings.escalationPhone || "");
-                    setCatalogOfferImages(settings.catalogOfferImages ?? true);
-                    setCatalogOfferPdf(settings.catalogOfferPdf ?? true);
-                    setCatalogAskBeforeSending(settings.catalogAskBeforeSending ?? true);
-                    setCatalogMaxImagesToSend([Math.max(1, Math.min(10, settings.catalogMaxImagesToSend || 10))]);
-                    setCatalogIncludeLink(settings.catalogIncludeLink ?? true);
                 }
             } catch (error) {
                 console.error("Failed to load brain settings:", error);
@@ -148,11 +138,11 @@ export default function BrainConfigPage() {
                 leadInterestThreshold: leadInterestThreshold[0] || 45,
                 escalationEnabled,
                 escalationPhone,
-                catalogOfferImages,
-                catalogOfferPdf,
-                catalogAskBeforeSending,
-                catalogMaxImagesToSend: catalogMaxImagesToSend[0] || 10,
-                catalogIncludeLink,
+                catalogOfferImages: false,
+                catalogOfferPdf: false,
+                catalogAskBeforeSending: false,
+                catalogMaxImagesToSend: 1,
+                catalogIncludeLink: false,
             });
 
             if (!result.success) {
@@ -188,23 +178,6 @@ export default function BrainConfigPage() {
         appointmentDurationMinutes: Number(appointmentDurationMinutes) || 30,
         businessWeeklySchedule,
     });
-    const catalogAssistantEnabled = catalogOfferImages || catalogOfferPdf || catalogIncludeLink;
-
-    const handleCatalogAssistantToggle = (enabled: boolean) => {
-        if (!enabled) {
-            setCatalogOfferImages(false);
-            setCatalogOfferPdf(false);
-            setCatalogIncludeLink(false);
-            return;
-        }
-
-        if (!catalogOfferImages && !catalogOfferPdf && !catalogIncludeLink) {
-            setCatalogOfferImages(true);
-            setCatalogOfferPdf(true);
-            setCatalogIncludeLink(true);
-        }
-    };
-
     return (
         <div className="mx-auto flex h-full max-w-[1280px] flex-col gap-4">
             <div className="flex flex-col gap-4 rounded-xl border bg-card px-5 py-4 shadow-[0_12px_28px_-22px_rgba(15,23,42,0.25)] lg:flex-row lg:items-center lg:justify-between">
@@ -227,10 +200,9 @@ export default function BrainConfigPage() {
             </div>
 
             <Tabs defaultValue="config" className="flex-1">
-                <TabsList className="grid h-auto w-full max-w-[560px] grid-cols-3 gap-2 rounded-xl border bg-card p-1.5 shadow-[0_12px_24px_-20px_rgba(15,23,42,0.22)]">
+                <TabsList className="grid h-auto w-full max-w-[380px] grid-cols-2 gap-2 rounded-xl border bg-card p-1.5 shadow-[0_12px_24px_-20px_rgba(15,23,42,0.22)]">
                     <TabsTrigger value="config" className="min-w-0 h-10 rounded-lg border border-transparent bg-background px-2 text-[13px] font-semibold leading-tight text-foreground/75 data-[state=active]:border-primary/30 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-[0_14px_28px_-18px_rgba(37,99,235,0.72)] sm:h-11 sm:px-4 sm:text-sm">Configuracion</TabsTrigger>
                     <TabsTrigger value="knowledge" className="min-w-0 h-10 rounded-lg border border-transparent bg-background px-2 text-[13px] font-semibold leading-tight text-foreground/75 data-[state=active]:border-primary/30 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-[0_14px_28px_-18px_rgba(37,99,235,0.72)] sm:h-11 sm:px-4 sm:text-sm">Conocimiento</TabsTrigger>
-                    <TabsTrigger value="catalog" className="min-w-0 h-10 rounded-lg border border-transparent bg-background px-2 text-[13px] font-semibold leading-tight text-foreground/75 data-[state=active]:border-primary/30 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-[0_14px_28px_-18px_rgba(37,99,235,0.72)] sm:h-11 sm:px-4 sm:text-sm">Catalogo</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="config" className="mt-4 space-y-5 sm:mt-5">
@@ -456,13 +428,13 @@ export default function BrainConfigPage() {
 
                             <div className="space-y-2">
                                 <Label>Numero de WhatsApp para escalar</Label>
-                                <Input
+                                <PhonePrefixInput
                                     value={escalationPhone}
-                                    onChange={(event) => setEscalationPhone(event.target.value)}
-                                    placeholder="5219991234567"
+                                    onChange={setEscalationPhone}
+                                    placeholder="Numero local"
                                 />
                                 <p className="text-xs text-muted-foreground">
-                                    Usa el numero que recibira la alerta interna. Ejemplo: 5219991234567 o +52 1 999 123 4567.
+                                    Usa el numero que recibira la alerta interna. El prefijo se toma del pais de operacion por defecto.
                                 </p>
                             </div>
                         </CardContent>
@@ -637,7 +609,7 @@ export default function BrainConfigPage() {
                                         placeholder="America/Mexico_City"
                                     />
                                     <p className="text-xs text-muted-foreground">
-                                        Se usa para interpretar frases como &quot;manana a las 3&quot; y para confirmar la hora exacta de la cita.
+                                        Se usa para interpretar frases como &quot;mañana a las 3&quot; y para confirmar la hora exacta de la cita.
                                     </p>
                                 </div>
                             </div>
@@ -674,133 +646,10 @@ export default function BrainConfigPage() {
                         </CardContent>
                     </Card>
 
-                    <Card>
-                        <CardHeader className="space-y-4 sm:flex sm:flex-row sm:items-start sm:justify-between sm:space-y-0">
-                            <div className="space-y-1">
-                                <CardTitle>Catalogo con imagenes y PDF</CardTitle>
-                                <CardDescription>
-                                    Controla si el agente ofrece fotos, catalogos en PDF y la liga del desarrollo cuando detecta una ficha del catalogo estructurado.
-                                </CardDescription>
-                            </div>
-                            <div className="flex items-center justify-between gap-4 rounded-xl border border-border/60 bg-background px-4 py-3 sm:min-w-[260px]">
-                                <div className="space-y-0.5">
-                                    <p className="text-sm font-medium">Asistente de catalogo</p>
-                                    <p className="text-xs text-muted-foreground">
-                                        Apaga todo el flujo de catalogo cuando no se necesite.
-                                    </p>
-                                </div>
-                                <Switch
-                                    checked={catalogAssistantEnabled}
-                                    onCheckedChange={handleCatalogAssistantToggle}
-                                />
-                            </div>
-                        </CardHeader>
-                        <CardContent className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-                            <div className="space-y-4">
-                                <label className="flex items-start gap-3 rounded-xl border border-border/60 bg-background px-4 py-4 transition-colors hover:bg-muted/30">
-                                    <Checkbox
-                                        checked={catalogOfferImages}
-                                        onCheckedChange={(checked) => setCatalogOfferImages(Boolean(checked))}
-                                        disabled={!catalogAssistantEnabled}
-                                        className="mt-0.5"
-                                    />
-                                    <div className="space-y-1">
-                                        <span className="text-sm font-medium leading-none">Ofrecer imagenes del desarrollo</span>
-                                        <p className="text-xs text-muted-foreground">
-                                            Si la ficha trae imagenes, el bot puede decirle al cliente que se las comparte.
-                                        </p>
-                                    </div>
-                                </label>
-
-                                <label className="flex items-start gap-3 rounded-xl border border-border/60 bg-background px-4 py-4 transition-colors hover:bg-muted/30">
-                                    <Checkbox
-                                        checked={catalogOfferPdf}
-                                        onCheckedChange={(checked) => setCatalogOfferPdf(Boolean(checked))}
-                                        disabled={!catalogAssistantEnabled}
-                                        className="mt-0.5"
-                                    />
-                                    <div className="space-y-1">
-                                        <span className="text-sm font-medium leading-none">Ofrecer catalogo PDF</span>
-                                        <p className="text-xs text-muted-foreground">
-                                            Si la ficha trae PDF, el bot puede ofrecerlo sin asumir que siempre existe.
-                                        </p>
-                                    </div>
-                                </label>
-
-                                <label className="flex items-start gap-3 rounded-xl border border-border/60 bg-background px-4 py-4 transition-colors hover:bg-muted/30">
-                                    <Checkbox
-                                        checked={catalogIncludeLink}
-                                        onCheckedChange={(checked) => setCatalogIncludeLink(Boolean(checked))}
-                                        disabled={!catalogAssistantEnabled}
-                                        className="mt-0.5"
-                                    />
-                                    <div className="space-y-1">
-                                        <span className="text-sm font-medium leading-none">Incluir liga del desarrollo</span>
-                                        <p className="text-xs text-muted-foreground">
-                                            Si la ficha trae URL, el bot la comparte junto con los assets cuando corresponda.
-                                        </p>
-                                    </div>
-                                </label>
-                            </div>
-
-                            <div className="space-y-4">
-                                <div className="rounded-xl border bg-background px-4 py-4">
-                                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                                        <Label>Preguntar antes de enviar archivos</Label>
-                                        <Switch
-                                            checked={catalogAskBeforeSending}
-                                            onCheckedChange={setCatalogAskBeforeSending}
-                                            disabled={!catalogAssistantEnabled}
-                                        />
-                                    </div>
-                                    <p className="mt-2 text-xs text-muted-foreground">
-                                        Recomendado activado. El bot primero informa y luego pregunta si el cliente desea fotos o el PDF.
-                                    </p>
-                                </div>
-
-                                <div className="rounded-xl border bg-background px-4 py-4">
-                                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                                        <Label>Maximo de imagenes por envio</Label>
-                                        <span className="text-sm font-semibold text-foreground">
-                                            {catalogMaxImagesToSend[0]}
-                                        </span>
-                                    </div>
-                                    <div className="mt-4">
-                                        <Slider
-                                            value={catalogMaxImagesToSend}
-                                            onValueChange={setCatalogMaxImagesToSend}
-                                            min={1}
-                                            max={10}
-                                            step={1}
-                                            disabled={!catalogAssistantEnabled}
-                                        />
-                                    </div>
-                                    <p className="mt-3 text-xs text-muted-foreground">
-                                        El bot puede mandar hasta 10 imagenes del desarrollo, pero solo las que existan y solo si el cliente las acepta.
-                                    </p>
-                                </div>
-
-                                <div className="rounded-xl border bg-muted/30 p-4 text-sm text-muted-foreground space-y-2">
-                                    <p className="font-medium text-foreground">Comportamiento esperado</p>
-                                    <p>Si una ficha no tiene imagenes o PDF, el agente no los ofrecera.</p>
-                                    <p>Si el cliente responde que si, el CRM enviara los assets disponibles de forma secuencial por WhatsApp.</p>
-                                    {!catalogAssistantEnabled ? (
-                                        <p className="text-foreground">
-                                            El asistente de catalogo esta apagado: el bot ignorara fichas y no ofrecera assets automaticamente.
-                                        </p>
-                                    ) : null}
-                                </div>
-                            </div>
-                        </CardContent>
-                    </Card>
                 </TabsContent>
 
                 <TabsContent value="knowledge" className="mt-4 sm:mt-6">
                     <KnowledgeBase />
-                </TabsContent>
-
-                <TabsContent value="catalog" className="mt-4 sm:mt-6">
-                    <CatalogBase />
                 </TabsContent>
             </Tabs>
         </div>

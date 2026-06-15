@@ -1,398 +1,715 @@
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Users, MessageSquare, TrendingUp, Calendar, ArrowRight, Wallet, Plus, BarChart3 } from "lucide-react";
-import { prisma } from "@/lib/db";
 import Link from "next/link";
+import type { ComponentType } from "react";
+import type { Prisma } from "@prisma/client";
+import {
+    ArrowRight,
+    CalendarCheck2,
+    CalendarX2,
+    Clock,
+    CreditCard,
+    Search,
+    Stethoscope,
+    Users,
+    WalletCards,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { DirectChatUnreadBadge } from "@/components/dashboard/direct-chat-unread-badge";
+import { WhatsAppIcon } from "@/components/icons/whatsapp-icon";
+import { prisma } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { getContactFullName } from "@/lib/contact-name";
+import { DEFAULT_OPHTHALMOLOGIST_IMAGE } from "@/lib/specialist-profile";
+import { getSystemSettingsOrDefaults } from "@/lib/system-settings";
+import { buildOperationContext } from "@/lib/operation-context";
+import { businessDayBounds } from "@/lib/calendar/business-hours";
 
-async function getDashboardStats() {
-    const [
-        totalContacts,
-        activeConversations,
-        totalDeals,
-        dealsByStage,
-        recentDeals,
-        upcomingAppointments,
-    ] = await Promise.all([
-        prisma.contact.count(),
-        prisma.conversation.count({ where: { status: "active" } }),
-        prisma.deal.count(),
-        prisma.pipelineStage.findMany({
-            orderBy: { order: "asc" },
-            include: {
-                _count: { select: { deals: true } },
-                deals: { select: { value: true } },
-            },
-        }),
-        prisma.deal.findMany({
-            take: 5,
-            orderBy: { createdAt: "desc" },
-            include: {
-                contact: { select: { name: true, lastName: true, phone: true } },
-                stage: { select: { name: true, color: true } },
-            },
-        }),
-        prisma.appointment.findMany({
-            where: { startTime: { gte: new Date() } },
-            take: 5,
-            orderBy: { startTime: "asc" },
-            include: { contact: { select: { name: true, lastName: true } } },
-        }),
-    ]);
+export const dynamic = "force-dynamic";
 
-    const pipelineValue = dealsByStage
-        .filter(s => !s.isClosedLost)
-        .reduce((sum, s) => sum + s.deals.reduce((v, d) => v + d.value, 0), 0);
+type DashboardSearchParams = {
+    tab?: string | string[];
+    query?: string | string[];
+};
 
-    const closedWonValue = dealsByStage
-        .filter(s => s.isClosedWon)
-        .reduce((sum, s) => sum + s.deals.reduce((v, d) => v + d.value, 0), 0);
+type AppointmentTab = "upcoming" | "today";
+type DashboardOperationContext = ReturnType<typeof buildOperationContext>;
 
+function pickParam(value?: string | string[]) {
+    return Array.isArray(value) ? value[0] || "" : value || "";
+}
+
+function getPatientName(patient?: { firstName?: string | null; lastName?: string | null } | null) {
+    return [patient?.firstName, patient?.lastName].filter(Boolean).join(" ").trim() || "Paciente";
+}
+
+function getInitials(name: string) {
+    return name
+        .split(/\s+/)
+        .filter(Boolean)
+        .slice(0, 2)
+        .map((part) => part[0]?.toUpperCase())
+        .join("") || "DR";
+}
+
+function getTodayRange(timeZone: string) {
+    const now = new Date();
+    const { start, end } = businessDayBounds(now, timeZone);
+    return { now, start, end };
+}
+
+function formatDate(date: Date | null | undefined, operationContext: DashboardOperationContext, options?: Intl.DateTimeFormatOptions) {
+    if (!date) return "-";
+    return new Intl.DateTimeFormat(operationContext.locale, {
+        timeZone: operationContext.timeZone,
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        ...options,
+    }).format(date);
+}
+
+function formatTime(date: Date, operationContext: DashboardOperationContext) {
+    return new Intl.DateTimeFormat(operationContext.locale, {
+        timeZone: operationContext.timeZone,
+        hour: "2-digit",
+        minute: "2-digit",
+    }).format(date);
+}
+
+function formatCurrency(value: number | null | undefined, operationContext: DashboardOperationContext) {
+    return new Intl.NumberFormat(operationContext.locale, {
+        style: "currency",
+        currency: operationContext.defaultCurrency,
+        maximumFractionDigits: 0,
+    }).format(value || 0);
+}
+
+function buildSearchWhere(query: string): Prisma.AppointmentWhereInput | undefined {
+    const value = query.trim();
+    if (!value) return undefined;
+
+    const contains = { contains: value, mode: "insensitive" as const };
     return {
-        totalContacts,
-        activeConversations,
-        totalDeals,
-        pipelineValue,
-        closedWonValue,
-        dealsByStage,
-        recentDeals,
-        upcomingAppointments,
+        OR: [
+            { title: contains },
+            { notes: contains },
+            { appointmentType: contains },
+            { patient: { is: { OR: [{ firstName: contains }, { lastName: contains }, { phone: contains }, { patientNumber: contains }] } } },
+            { contact: { is: { OR: [{ name: contains }, { lastName: contains }, { phone: contains }] } } },
+            { specialist: { is: { OR: [{ name: contains }, { displayName: contains }, { specialty: contains }, { room: contains }] } } },
+        ],
     };
 }
 
-export default async function DashboardPage() {
-    const [stats, session] = await Promise.all([getDashboardStats(), auth()]);
-    const userName = session?.user?.name || "Usuario";
+async function getPreferredSpecialist(userId?: string, userEmail?: string | null) {
+    const select = {
+        id: true,
+        name: true,
+        displayName: true,
+        specialty: true,
+        email: true,
+        phone: true,
+        color: true,
+        room: true,
+        bio: true,
+        photoUrl: true,
+        defaultDurationMinutes: true,
+        googleCalendarSource: {
+            select: {
+                summary: true,
+                calendarId: true,
+            },
+        },
+        _count: {
+            select: {
+                appointments: true,
+                cashMovements: true,
+            },
+        },
+    } satisfies Prisma.SpecialistSelect;
 
-    // Prepare stage data for charts
-    const stageData = stats.dealsByStage.map((stage) => ({
-        id: stage.id,
-        name: stage.name,
-        color: stage.color,
-        value: stage.deals.reduce((v, d) => v + d.value, 0),
-        count: stage._count.deals,
-    }));
-    const maxValue = Math.max(...stageData.map(s => s.value), 1);
-    const magnitude = Math.pow(10, Math.floor(Math.log10(maxValue || 1)));
-    const niceMax = Math.ceil(maxValue / magnitude) * magnitude || 100;
-    const yTicks = Array.from({ length: 5 }, (_, i) => Math.round((niceMax / 4) * (4 - i)));
+    const preferredWhere: Prisma.SpecialistWhereInput[] = [];
+    if (userId) preferredWhere.push({ userId });
+    if (userEmail) preferredWhere.push({ email: userEmail });
 
-    // Donut data - total deals by stage
-    const totalDealsForDonut = stageData.reduce((sum, s) => sum + s.count, 0) || 1;
+    if (preferredWhere.length > 0) {
+        const linked = await prisma.specialist.findFirst({
+            where: { isActive: true, OR: preferredWhere },
+            orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+            select,
+        });
+        if (linked) return linked;
+    }
+
+    return prisma.specialist.findFirst({
+        where: { isActive: true },
+        orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+        select,
+    });
+}
+
+async function getDashboardData(params: {
+    appointmentTab: AppointmentTab;
+    query: string;
+    userId?: string;
+    userEmail?: string | null;
+    operationContext: DashboardOperationContext;
+}) {
+    const { now, start, end } = getTodayRange(params.operationContext.timeZone);
+    const searchWhere = buildSearchWhere(params.query);
+    const appointmentWhere: Prisma.AppointmentWhereInput = {
+        status: { not: "cancelled" },
+        startTime: params.appointmentTab === "today" ? { gte: start, lt: end } : { gte: now },
+        ...(searchWhere || {}),
+    };
+
+    const [
+        specialist,
+        totalPatients,
+        visitsToday,
+        appointmentsFromToday,
+        canceledAppointments,
+        incomeToday,
+        budgetTotal,
+        directChats,
+        appointmentRows,
+    ] = await Promise.all([
+        getPreferredSpecialist(params.userId, params.userEmail),
+        prisma.patient.count(),
+        prisma.patientConsultation.count({ where: { createdAt: { gte: start, lt: end } } }),
+        prisma.appointment.count({
+            where: {
+                status: { not: "cancelled" },
+                startTime: { gte: start },
+            },
+        }),
+        prisma.appointment.count({
+            where: {
+                OR: [{ status: "cancelled" }, { cancelledAt: { not: null } }],
+            },
+        }),
+        prisma.cashMovement.aggregate({
+            where: {
+                type: "income",
+                status: "confirmed",
+                occurredAt: { gte: start, lt: end },
+            },
+            _sum: { amount: true },
+        }),
+        prisma.patientBudget.aggregate({
+            where: { status: { not: "cancelled" } },
+            _sum: { total: true },
+        }),
+        prisma.conversation.findMany({
+            where: { status: "active", isGroup: false },
+            take: 6,
+            orderBy: { updatedAt: "desc" },
+            include: {
+                contact: {
+                    select: {
+                        name: true,
+                        lastName: true,
+                        phone: true,
+                        whatsappAvatarUrl: true,
+                    },
+                },
+                messages: {
+                    take: 1,
+                    orderBy: { createdAt: "desc" },
+                    select: {
+                        content: true,
+                        direction: true,
+                        createdAt: true,
+                    },
+                },
+            },
+        }),
+        prisma.appointment.findMany({
+            where: appointmentWhere,
+            take: 12,
+            orderBy: { startTime: "asc" },
+            include: {
+                patient: {
+                    select: {
+                        id: true,
+                        patientNumber: true,
+                        firstName: true,
+                        lastName: true,
+                        phone: true,
+                        _count: { select: { consultations: true, appointments: true } },
+                    },
+                },
+                contact: {
+                    select: {
+                        name: true,
+                        lastName: true,
+                        phone: true,
+                    },
+                },
+                specialist: {
+                    select: {
+                        name: true,
+                        displayName: true,
+                        color: true,
+                        room: true,
+                    },
+                },
+                cashMovements: {
+                    where: { status: { not: "cancelled" } },
+                    select: {
+                        amount: true,
+                        type: true,
+                        status: true,
+                    },
+                },
+            },
+        }),
+    ]);
+
+    const appointmentsWithNext = await Promise.all(
+        appointmentRows.map(async (appointment) => {
+            const nextAppointment = appointment.patientId
+                ? await prisma.appointment.findFirst({
+                    where: {
+                        id: { not: appointment.id },
+                        patientId: appointment.patientId,
+                        status: { not: "cancelled" },
+                        startTime: { gt: appointment.startTime },
+                    },
+                    orderBy: { startTime: "asc" },
+                    select: { startTime: true },
+                })
+                : null;
+
+            const paidAmount = appointment.cashMovements
+                .filter((movement) => movement.type === "income" && movement.status === "confirmed")
+                .reduce((sum, movement) => sum + movement.amount, 0);
+
+            return { ...appointment, nextAppointment, paidAmount };
+        }),
+    );
+
+    return {
+        specialist,
+        directChats,
+        appointments: appointmentsWithNext,
+        stats: {
+            totalPatients,
+            visitsToday,
+            appointmentsFromToday,
+            canceledAppointments,
+            incomeToday: incomeToday._sum.amount || 0,
+            budgetTotal: budgetTotal._sum.total || 0,
+        },
+    };
+}
+
+export default async function DashboardPage({
+    searchParams,
+}: {
+    searchParams?: Promise<DashboardSearchParams>;
+}) {
+    const [resolvedSearchParams, session, settings] = await Promise.all([searchParams, auth(), getSystemSettingsOrDefaults()]);
+    const operationContext = buildOperationContext(settings);
+    const query = pickParam(resolvedSearchParams?.query).trim();
+    const rawTab = pickParam(resolvedSearchParams?.tab);
+    const appointmentTab: AppointmentTab = rawTab === "today" ? "today" : "upcoming";
+    const sessionUser = session?.user as { id?: string; email?: string | null; name?: string | null } | undefined;
+    const userName = sessionUser?.name || "Joel Venegas";
+    const data = await getDashboardData({
+        appointmentTab,
+        query,
+        userId: sessionUser?.id,
+        userEmail: sessionUser?.email,
+        operationContext,
+    });
 
     return (
-        <div className="flex flex-col gap-6">
-            {/* ── Greeting Row ── */}
-            <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4">
-                <div>
-                    <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">
-                        Hola, {userName}
-                    </h1>
-                    <p className="text-muted-foreground text-sm mt-1">
-                        Visualiza el rendimiento general de tu negocio en tiempo real.
-                    </p>
+        <div className="grid gap-5 xl:grid-cols-[300px_minmax(0,1fr)]">
+            <aside className="space-y-5">
+                <SpecialistProfileCard specialist={data.specialist} fallbackName={userName} />
+                <DirectChatsCard chats={data.directChats} />
+            </aside>
+
+            <main className="space-y-5">
+                <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-3">
+                    <StatCard
+                        title="Total de Pacientes"
+                        value={data.stats.totalPatients}
+                        caption={formatDate(new Date(), operationContext)}
+                        icon={Users}
+                        locale={operationContext.locale}
+                    />
+                    <StatCard
+                        title="Visitas de Hoy"
+                        value={data.stats.visitsToday}
+                        caption={formatDate(new Date(), operationContext)}
+                        icon={Stethoscope}
+                        locale={operationContext.locale}
+                    />
+                    <StatCard
+                        title="Citas Recientes"
+                        value={data.stats.appointmentsFromToday}
+                        caption="Desde hoy"
+                        icon={CalendarCheck2}
+                        locale={operationContext.locale}
+                    />
+                    <StatCard
+                        title="Citas Canceladas"
+                        value={data.stats.canceledAppointments}
+                        caption="Historico"
+                        icon={CalendarX2}
+                        locale={operationContext.locale}
+                    />
+                    <StatCard
+                        title="Ingresos de Hoy"
+                        value={formatCurrency(data.stats.incomeToday, operationContext)}
+                        caption={formatDate(new Date(), operationContext)}
+                        icon={CreditCard}
+                        locale={operationContext.locale}
+                    />
+                    <StatCard
+                        title="Gasto Total"
+                        value={formatCurrency(data.stats.budgetTotal, operationContext)}
+                        caption="Presupuesto acumulado"
+                        icon={WalletCards}
+                        locale={operationContext.locale}
+                    />
                 </div>
-                <div className="flex gap-2 flex-wrap">
-                    <Button variant="outline" size="sm" className="rounded-lg gap-1.5 font-medium" asChild>
-                        <Link href="/dashboard/contacts">
-                            <Plus className="h-3.5 w-3.5" /> Nuevo Contacto
-                        </Link>
-                    </Button>
-                    <Button size="sm" className="rounded-lg gap-1.5 font-medium" asChild>
-                        <Link href="/dashboard/pipeline">
-                            <BarChart3 className="h-3.5 w-3.5" /> Ver Pipeline
-                        </Link>
-                    </Button>
-                </div>
-            </div>
 
-            {/* ── Stat Cards (2x2 grid) ── */}
-            <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
-                {/* Card 1 - Contactos */}
-                <Card className="border border-border/60 shadow-sm rounded-xl">
-                    <CardContent className="p-4 sm:p-5">
-                        <div className="flex items-start justify-between gap-3">
-                            <div className="space-y-1 min-w-0 flex-1">
-                                <p className="text-xs sm:text-sm font-medium text-muted-foreground">Contactos Totales</p>
-                                <div className="text-xl sm:text-2xl font-bold tracking-tight text-foreground">
-                                    {stats.totalContacts.toLocaleString("es-MX")}
-                                </div>
-                                <p className="text-[11px] text-muted-foreground/70">Base de datos activa</p>
-                            </div>
-                            <div className="p-2.5 rounded-xl" style={{ backgroundColor: "#2563EB18", color: "#2563EB" }}>
-                                <Users className="h-5 w-5" />
-                            </div>
-                        </div>
-                    </CardContent>
-                </Card>
-
-                {/* Card 2 - Conversaciones */}
-                <Card className="border border-border/60 shadow-sm rounded-xl">
-                    <CardContent className="p-4 sm:p-5">
-                        <div className="flex items-start justify-between gap-3">
-                            <div className="space-y-1 min-w-0 flex-1">
-                                <p className="text-xs sm:text-sm font-medium text-muted-foreground">Chats Activos</p>
-                                <div className="text-xl sm:text-2xl font-bold tracking-tight text-foreground">
-                                    {stats.activeConversations}
-                                </div>
-                                <p className="text-[11px] text-muted-foreground/70">En proceso de atención</p>
-                            </div>
-                            <div className="p-2.5 rounded-xl" style={{ backgroundColor: "#F59E0B18", color: "#F59E0B" }}>
-                                <MessageSquare className="h-5 w-5" />
-                            </div>
-                        </div>
-                    </CardContent>
-                </Card>
-
-                {/* Card 3 - Pipeline Value */}
-                <Card className="border border-border/60 shadow-sm rounded-xl">
-                    <CardContent className="p-4 sm:p-5">
-                        <div className="flex items-start justify-between gap-3">
-                            <div className="space-y-1 min-w-0 flex-1">
-                                <p className="text-xs sm:text-sm font-medium text-muted-foreground">Valor en Pipeline</p>
-                                <div className="text-xl sm:text-2xl font-bold tracking-tight text-foreground">
-                                    ${stats.pipelineValue.toLocaleString("es-MX")}
-                                </div>
-                                <p className="text-[11px] text-muted-foreground/70">Oportunidades abiertas</p>
-                            </div>
-                            <div className="p-2.5 rounded-xl" style={{ backgroundColor: "#8B5CF618", color: "#8B5CF6" }}>
-                                <Wallet className="h-5 w-5" />
-                            </div>
-                        </div>
-                    </CardContent>
-                </Card>
-
-                {/* Card 4 - Ventas Cerradas */}
-                <Card className="border border-border/60 shadow-sm rounded-xl">
-                    <CardContent className="p-4 sm:p-5">
-                        <div className="flex items-start justify-between gap-3">
-                            <div className="space-y-1 min-w-0 flex-1">
-                                <p className="text-xs sm:text-sm font-medium text-muted-foreground">Ventas Cerradas</p>
-                                <div className="text-xl sm:text-2xl font-bold tracking-tight text-foreground">
-                                    ${stats.closedWonValue.toLocaleString("es-MX")}
-                                </div>
-                                <p className="text-[11px] text-muted-foreground/70">Ingresos generados</p>
-                            </div>
-                            <div className="p-2.5 rounded-xl" style={{ backgroundColor: "#10B98118", color: "#10B981" }}>
-                                <TrendingUp className="h-5 w-5" />
-                            </div>
-                        </div>
-                    </CardContent>
-                </Card>
-            </div>
-
-            {/* ── Row 2: Pipeline Bar Chart + Donut Overview ── */}
-            <div className="grid gap-4 grid-cols-1 xl:grid-cols-12">
-
-                {/* Vertical Bar Chart */}
-                <Card className="xl:col-span-7 border border-border/60 shadow-sm rounded-xl">
-                    <CardHeader className="flex flex-row items-center justify-between pb-4">
-                        <div>
-                            <CardTitle className="text-lg font-bold">Distribución del Pipeline</CardTitle>
-                            <CardDescription>Valor por etapa</CardDescription>
-                        </div>
-                        <Button variant="ghost" size="sm" className="h-8 text-sm text-primary font-medium" asChild>
-                            <Link href="/dashboard/pipeline">
-                                Ver Pipeline <ArrowRight className="ml-1 h-3 w-3" />
-                            </Link>
-                        </Button>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="flex gap-0">
-                            {/* Y-axis labels */}
-                            <div className="flex flex-col justify-between pr-2 py-1 text-[11px] text-muted-foreground font-medium" style={{ height: 200 }}>
-                                {yTicks.map((tick) => (
-                                    <span key={tick} className="text-right leading-none whitespace-nowrap">${tick.toLocaleString("es-MX")}</span>
-                                ))}
-                            </div>
-                            {/* Chart area */}
-                            <div className="flex-1 relative" style={{ height: 200 }}>
-                                {yTicks.map((tick, i) => (
-                                    <div
-                                        key={tick}
-                                        className="absolute left-0 right-0 border-t border-dashed border-border/40"
-                                        style={{ top: `${(i / (yTicks.length - 1)) * 100}%` }}
-                                    />
-                                ))}
-                                <div className="relative flex items-end justify-around h-full gap-1 px-1">
-                                    {stageData.map((stage) => {
-                                        const barHeight = Math.max(Math.round((stage.value / niceMax) * 180), 4);
-                                        return (
-                                            <div key={stage.name} className="flex flex-col items-center justify-end flex-1 min-w-0 z-10 h-full">
-                                                <span className="text-[10px] font-bold text-foreground mb-1 whitespace-nowrap">
-                                                    ${stage.value.toLocaleString("es-MX")}
-                                                </span>
-                                                <div
-                                                    className="w-full max-w-[44px] rounded-t-md"
-                                                    style={{
-                                                        height: barHeight,
-                                                        backgroundColor: stage.color,
-                                                    }}
-                                                />
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-                        </div>
-                        {/* X-axis labels */}
-                        <div className="flex justify-around mt-2 ml-10 px-1">
-                            {stageData.map((stage) => (
-                                <div key={stage.id} className="flex flex-col items-center flex-1 min-w-0">
-                                    <span className="text-[10px] font-semibold text-foreground truncate max-w-full text-center leading-tight">
-                                        {stage.name}
-                                    </span>
-                                    <span className="text-[9px] text-muted-foreground">
-                                        ({stage.count} op.)
-                                    </span>
-                                </div>
-                            ))}
-                        </div>
-                    </CardContent>
-                </Card>
-
-                {/* Donut Chart - Pipeline Overview */}
-                <Card className="xl:col-span-5 border border-border/60 shadow-sm rounded-xl">
-                    <CardHeader className="pb-4">
-                        <CardTitle className="text-lg font-bold">Resumen del Pipeline</CardTitle>
-                        <CardDescription>Distribución de oportunidades</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="flex flex-col items-center gap-4">
-                            {/* SVG Donut Chart */}
-                            <div className="relative">
-                                <svg width="160" height="160" viewBox="0 0 160 160">
-                                    {(() => {
-                                        let cumulativePercent = 0;
-                                        const radius = 62;
-                                        const circumference = 2 * Math.PI * radius;
-                                        return stageData.map((stage) => {
-                                            const percent = stage.count / totalDealsForDonut;
-                                            const strokeDasharray = `${percent * circumference} ${circumference}`;
-                                            const strokeDashoffset = -cumulativePercent * circumference;
-                                            cumulativePercent += percent;
-                                            return (
-                                                <circle
-                                                    key={stage.id}
-                                                    cx="80"
-                                                    cy="80"
-                                                    r={radius}
-                                                    fill="none"
-                                                    stroke={stage.color}
-                                                    strokeWidth="20"
-                                                    strokeDasharray={strokeDasharray}
-                                                    strokeDashoffset={strokeDashoffset}
-                                                    transform="rotate(-90 80 80)"
-                                                    className="transition-all duration-700"
-                                                />
-                                            );
-                                        });
-                                    })()}
-                                </svg>
-                                {/* Center label */}
-                                <div className="absolute inset-0 flex flex-col items-center justify-center">
-                                    <span className="text-2xl font-bold text-foreground">{stats.totalDeals}</span>
-                                    <span className="text-[11px] text-muted-foreground">Oportunidades</span>
-                                </div>
-                            </div>
-                            {/* Legend */}
-                            <div className="grid grid-cols-2 gap-x-6 gap-y-2 w-full">
-                                {stageData.map((stage) => (
-                                    <div key={stage.id} className="flex items-center gap-2 min-w-0">
-                                        <div className="h-2.5 w-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: stage.color }} />
-                                        <span className="text-xs text-muted-foreground truncate">{stage.name}</span>
-                                        <span className="text-xs font-bold text-foreground ml-auto">{stage.count}</span>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    </CardContent>
-                </Card>
-            </div>
-
-            {/* ── Row 3: Activity + Appointments ── */}
-            <div className="grid gap-4 grid-cols-1 xl:grid-cols-2">
-
-                {/* Activity Feed */}
-                <Card className="border border-border/60 shadow-sm rounded-xl">
-                    <CardHeader className="flex flex-row items-center justify-between pb-2">
-                        <CardTitle className="text-lg font-bold">Actividad Reciente</CardTitle>
-                        <Button variant="ghost" size="sm" className="h-8 text-xs text-primary font-medium" asChild>
-                            <Link href="/dashboard/pipeline">
-                                Ver todo <ArrowRight className="ml-1 h-3 w-3" />
-                            </Link>
-                        </Button>
-                    </CardHeader>
-                    <CardContent className="pt-0">
-                        {stats.recentDeals.length === 0 ? (
-                            <div className="text-center py-6 text-muted-foreground text-sm">
-                                No hay actividad reciente.
-                            </div>
-                        ) : (
-                            <div className="divide-y divide-border/40">
-                                {stats.recentDeals.map((deal) => (
-                                    <div key={deal.id} className="flex items-center gap-3 py-2.5">
-                                        <div
-                                            className="h-8 w-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
-                                            style={{
-                                                backgroundColor: deal.stage.color + "15",
-                                                color: deal.stage.color,
-                                            }}
-                                        >
-                                            {(deal.contact?.name || deal.title).charAt(0).toUpperCase()}
-                                        </div>
-                                        <div className="flex-1 min-w-0">
-                                            <p className="text-sm font-semibold truncate text-foreground leading-snug">
-                                                {deal.contact ? getContactFullName(deal.contact, deal.title) : deal.title}
-                                            </p>
-                                            <p className="text-xs text-muted-foreground truncate">
-                                                {deal.stage.name} • <span className="font-medium text-foreground">${deal.value.toLocaleString("es-MX")}</span>
-                                            </p>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </CardContent>
-                </Card>
-
-                {/* Upcoming Appointments */}
-                <Card className="border border-border/60 shadow-sm rounded-xl">
-                    <CardHeader className="pb-2">
-                        <CardTitle className="text-lg font-bold flex items-center gap-2">
-                            <Calendar className="h-4 w-4 text-primary" />
-                            Próximas Citas
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent className="pt-0">
-                        {stats.upcomingAppointments.length === 0 ? (
-                            <p className="text-sm text-muted-foreground py-2">No tienes citas próximas.</p>
-                        ) : (
-                            <div className="divide-y divide-border/40">
-                                {stats.upcomingAppointments.map((apt) => (
-                                    <div key={apt.id} className="flex items-center gap-3 py-2.5">
-                                        <div className="bg-primary/10 text-primary h-8 w-8 rounded-lg flex items-center justify-center flex-shrink-0">
-                                            <span className="text-xs font-bold">
-                                                {new Date(apt.startTime).getDate()}
-                                            </span>
-                                        </div>
-                                        <div className="min-w-0 flex-1">
-                                            <p className="text-sm font-semibold text-foreground truncate">
-                                                {apt.title}
-                                            </p>
-                                            <p className="text-xs text-muted-foreground">
-                                                {new Date(apt.startTime).toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" })}
-                                                {apt.contact ? ` • ${getContactFullName(apt.contact)}` : ""}
-                                            </p>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </CardContent>
-                </Card>
-            </div>
+                <AppointmentsPanel
+                    appointments={data.appointments}
+                    appointmentTab={appointmentTab}
+                    query={query}
+                    operationContext={operationContext}
+                />
+            </main>
         </div>
+    );
+}
+
+function SpecialistProfileCard({
+    specialist,
+    fallbackName,
+}: {
+    specialist: Awaited<ReturnType<typeof getPreferredSpecialist>>;
+    fallbackName: string;
+}) {
+    const displayName = specialist?.displayName || specialist?.name || fallbackName;
+    const specialty = specialist?.specialty || "Oftalmologia";
+    const photoUrl = specialist?.photoUrl || DEFAULT_OPHTHALMOLOGIST_IMAGE;
+
+    return (
+        <Card className="overflow-hidden rounded-2xl border border-border/70 bg-card shadow-sm">
+            <CardContent className="space-y-4 p-5 text-center">
+                <div
+                    className="mx-auto flex h-32 w-32 items-center justify-center rounded-full border bg-muted bg-cover bg-center shadow-inner"
+                    style={{ backgroundImage: `url("${photoUrl}")` }}
+                    aria-label={`Foto de perfil de ${displayName}`}
+                    role="img"
+                >
+                    <span className="sr-only">{getInitials(displayName)}</span>
+                </div>
+                <div className="space-y-1">
+                    <h1 className="text-xl font-bold text-foreground">{displayName}</h1>
+                    <p className="text-sm text-muted-foreground">{specialty}</p>
+                    <p className="text-sm text-muted-foreground">{specialist?.room || "Clinica principal"}</p>
+                    {specialist?.phone || specialist?.email ? (
+                        <p className="truncate text-xs text-muted-foreground">
+                            {specialist.phone || specialist.email}
+                        </p>
+                    ) : (
+                        <p className="text-xs text-muted-foreground">
+                            {specialist ? `${specialist.defaultDurationMinutes} min por consulta` : "Perfil pendiente de configurar"}
+                        </p>
+                    )}
+                </div>
+                {specialist?.googleCalendarSource ? (
+                    <Badge variant="outline" className="mx-auto">
+                        Google Calendar conectado
+                    </Badge>
+                ) : null}
+                <Button className="w-full rounded-xl font-semibold" asChild>
+                    <Link href="/dashboard/settings?section=specialists">
+                        Ver perfil
+                    </Link>
+                </Button>
+            </CardContent>
+        </Card>
+    );
+}
+
+function DirectChatsCard({
+    chats,
+}: {
+    chats: Awaited<ReturnType<typeof getDashboardData>>["directChats"];
+}) {
+    return (
+        <Card className="rounded-2xl border border-border/70 bg-card shadow-sm">
+            <CardContent className="p-5">
+                <div className="mb-4 flex items-center justify-between gap-3">
+                    <h2 className="text-sm font-bold uppercase tracking-wide text-foreground">Chats directos</h2>
+                    <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full" asChild>
+                        <Link href="/dashboard/inbox" title="Abrir inbox">
+                            <WhatsAppIcon className="h-4 w-4 text-primary" />
+                        </Link>
+                    </Button>
+                </div>
+                {chats.length === 0 ? (
+                    <p className="rounded-xl border border-dashed px-3 py-6 text-center text-sm text-muted-foreground">
+                        No hay chats activos.
+                    </p>
+                ) : (
+                    <div className="space-y-2">
+                        {chats.map((chat) => {
+                            const name = getContactFullName(chat.contact, "Contacto");
+                            const lastMessage = chat.messages[0]?.content || "Sin mensajes recientes";
+                            return (
+                                <Link
+                                    key={chat.id}
+                                    href={`/dashboard/inbox?conversationId=${chat.id}`}
+                                    className="flex items-center gap-3 rounded-xl border bg-background px-3 py-3 transition hover:border-primary/45 hover:bg-primary/5"
+                                >
+                                    <div
+                                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-muted bg-cover bg-center text-sm font-bold text-primary"
+                                        style={{
+                                            backgroundImage: chat.contact.whatsappAvatarUrl ? `url("${chat.contact.whatsappAvatarUrl}")` : undefined,
+                                        }}
+                                    >
+                                        {chat.contact.whatsappAvatarUrl ? null : getInitials(name)}
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                        <p className="truncate text-sm font-semibold text-foreground">{name}</p>
+                                        <p className="truncate text-xs text-muted-foreground">{lastMessage}</p>
+                                    </div>
+                                    <DirectChatUnreadBadge conversationId={chat.id} />
+                                </Link>
+                            );
+                        })}
+                    </div>
+                )}
+            </CardContent>
+        </Card>
+    );
+}
+
+function StatCard({
+    title,
+    value,
+    caption,
+    icon: Icon,
+    locale,
+}: {
+    title: string;
+    value: number | string;
+    caption: string;
+    icon: ComponentType<{ className?: string }>;
+    locale: string;
+}) {
+    return (
+        <Card className="rounded-2xl border border-border/70 shadow-sm">
+            <CardContent className="flex min-h-[106px] items-center gap-4 p-4">
+                <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full border border-primary/15 bg-primary/10 text-primary ring-4 ring-primary/10">
+                    <Icon className="h-7 w-7" />
+                </div>
+                <div className="min-w-0">
+                    <p className="truncate text-sm text-muted-foreground">{title}</p>
+                    <p className="truncate text-3xl font-black leading-tight text-foreground">
+                        {typeof value === "number" ? value.toLocaleString(locale) : value}
+                    </p>
+                    <p className="truncate text-xs text-muted-foreground">{caption}</p>
+                </div>
+            </CardContent>
+        </Card>
+    );
+}
+
+function getStatusLabel(status: string) {
+    const labels: Record<string, string> = {
+        scheduled: "Programada",
+        completed: "Completada",
+        cancelled: "Cancelada",
+        no_show: "No asistio",
+    };
+    return labels[status] || status;
+}
+
+function getPaymentText(
+    appointment: Awaited<ReturnType<typeof getDashboardData>>["appointments"][number],
+    operationContext: DashboardOperationContext,
+) {
+    const amount = appointment.paymentAmount || appointment.paidAmount;
+    if (appointment.paymentStatus === "paid" || appointment.paidAmount > 0) {
+        return `Pagado ${formatCurrency(amount, operationContext)}`;
+    }
+    if (amount > 0) {
+        return `Pendiente ${formatCurrency(amount, operationContext)}`;
+    }
+    return "Sin cargo";
+}
+
+function AppointmentsPanel({
+    appointments,
+    appointmentTab,
+    query,
+    operationContext,
+}: {
+    appointments: Awaited<ReturnType<typeof getDashboardData>>["appointments"];
+    appointmentTab: AppointmentTab;
+    query: string;
+    operationContext: DashboardOperationContext;
+}) {
+    const makeHref = (tab: AppointmentTab) => {
+        const params = new URLSearchParams();
+        params.set("tab", tab);
+        if (query) params.set("query", query);
+        return `/dashboard?${params.toString()}`;
+    };
+
+    return (
+        <Card className="rounded-2xl border border-border/70 shadow-sm">
+            <CardContent className="p-0">
+                <div className="flex flex-col gap-4 p-5 lg:flex-row lg:items-center lg:justify-between">
+                    <div>
+                        <h2 className="text-2xl font-bold tracking-tight text-foreground">Citas de Pacientes</h2>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                            Agenda conectada con pacientes, especialistas, pagos y actividad clinica.
+                        </p>
+                    </div>
+                    <div className="flex flex-col gap-2 sm:flex-row">
+                        <div className="flex rounded-full border bg-muted/30 p-1">
+                            <Button
+                                variant={appointmentTab === "upcoming" ? "default" : "ghost"}
+                                size="sm"
+                                className="rounded-full"
+                                asChild
+                            >
+                                <Link href={makeHref("upcoming")}>Proximas</Link>
+                            </Button>
+                            <Button
+                                variant={appointmentTab === "today" ? "default" : "ghost"}
+                                size="sm"
+                                className="rounded-full"
+                                asChild
+                            >
+                                <Link href={makeHref("today")}>Hoy</Link>
+                            </Button>
+                        </div>
+                        <form action="/dashboard" className="flex gap-2">
+                            <input type="hidden" name="tab" value={appointmentTab} />
+                            <div className="relative min-w-[190px]">
+                                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                                <input
+                                    name="query"
+                                    defaultValue={query}
+                                    placeholder="Buscar"
+                                    className="h-10 w-full rounded-full border bg-background pl-9 pr-3 text-sm outline-none transition focus:border-primary"
+                                />
+                            </div>
+                            <Button type="submit" variant="outline" className="rounded-full">
+                                Buscar
+                            </Button>
+                        </form>
+                    </div>
+                </div>
+
+                <div className="overflow-x-auto px-5 pb-3">
+                    <table className="w-full min-w-[1060px] border-separate border-spacing-0 text-sm">
+                        <thead>
+                            <tr className="bg-muted/45 text-left text-xs uppercase text-muted-foreground">
+                                <th className="rounded-l-xl px-3 py-3 font-bold">ID Paciente</th>
+                                <th className="px-3 py-3 font-bold">Hora</th>
+                                <th className="px-3 py-3 font-bold">Nombre</th>
+                                <th className="px-3 py-3 font-bold">Motivo</th>
+                                <th className="px-3 py-3 font-bold">Facturacion</th>
+                                <th className="px-3 py-3 font-bold">Proxima cita</th>
+                                <th className="px-3 py-3 font-bold">Accion</th>
+                                <th className="px-3 py-3 font-bold">Visitas</th>
+                                <th className="rounded-r-xl px-3 py-3 font-bold">Asignar</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {appointments.length === 0 ? (
+                                <tr>
+                                    <td colSpan={9} className="rounded-xl border border-t-0 px-4 py-12 text-center text-muted-foreground">
+                                        No hay citas para este filtro.
+                                    </td>
+                                </tr>
+                            ) : (
+                                appointments.map((appointment) => {
+                                    const displayName = appointment.patient
+                                        ? getPatientName(appointment.patient)
+                                        : getContactFullName(appointment.contact, "Contacto");
+                                    const specialistName = appointment.specialist?.displayName || appointment.specialist?.name || appointment.specialistName || "Sin asignar";
+                                    const visitCount = appointment.patient?._count.consultations || 0;
+
+                                    return (
+                                        <tr key={appointment.id} className="border-b">
+                                            <td className="border-b px-3 py-3 align-top text-xs font-semibold text-muted-foreground">
+                                                {appointment.patient?.patientNumber || appointment.contact?.phone || "-"}
+                                            </td>
+                                            <td className="border-b px-3 py-3 align-top">
+                                                <div className="flex items-center gap-2 font-semibold">
+                                                    <Clock className="h-4 w-4 text-primary" />
+                                                    {formatTime(appointment.startTime, operationContext)}
+                                                </div>
+                                                <p className="mt-1 text-xs text-muted-foreground">{formatDate(appointment.startTime, operationContext)}</p>
+                                            </td>
+                                            <td className="border-b px-3 py-3 align-top">
+                                                <p className="font-semibold text-foreground">{displayName}</p>
+                                                <p className="text-xs text-muted-foreground">{appointment.patient?.phone || appointment.contact?.phone || "-"}</p>
+                                            </td>
+                                            <td className="border-b px-3 py-3 align-top">
+                                                <p className="max-w-[190px] truncate font-medium">{appointment.appointmentType || appointment.title}</p>
+                                                <p className="max-w-[190px] truncate text-xs text-muted-foreground">{appointment.notes || appointment.title}</p>
+                                            </td>
+                                            <td className="border-b px-3 py-3 align-top">
+                                                <Badge variant={appointment.paymentStatus === "paid" || appointment.paidAmount > 0 ? "secondary" : "outline"}>
+                                                    {getPaymentText(appointment, operationContext)}
+                                                </Badge>
+                                            </td>
+                                            <td className="border-b px-3 py-3 align-top text-muted-foreground">
+                                                {formatDate(appointment.nextAppointment?.startTime, operationContext, { day: "numeric", month: "short", year: "numeric" })}
+                                            </td>
+                                            <td className="border-b px-3 py-3 align-top">
+                                                <div className="flex flex-col gap-2">
+                                                    <Badge variant="outline">{getStatusLabel(appointment.status)}</Badge>
+                                                    <Button size="sm" variant="ghost" className="h-7 justify-start px-0 text-primary" asChild>
+                                                        <Link href={appointment.patientId ? "/dashboard/patients" : "/dashboard/calendar"}>
+                                                            Abrir <ArrowRight className="ml-1 h-3 w-3" />
+                                                        </Link>
+                                                    </Button>
+                                                </div>
+                                            </td>
+                                            <td className="border-b px-3 py-3 align-top font-semibold">
+                                                {visitCount}
+                                            </td>
+                                            <td className="border-b px-3 py-3 align-top">
+                                                <div className="flex items-center gap-2">
+                                                    <span
+                                                        className="h-2.5 w-2.5 rounded-full"
+                                                        style={{ backgroundColor: appointment.specialist?.color || "#2563EB" }}
+                                                    />
+                                                    <div className="min-w-0">
+                                                        <p className="max-w-[160px] truncate font-medium">{specialistName}</p>
+                                                        <p className="max-w-[160px] truncate text-xs text-muted-foreground">{appointment.specialist?.room || appointment.googleCalendarName || "-"}</p>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    );
+                                })
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+
+                <div className="border-t px-5 py-4 text-sm text-muted-foreground">
+                    Mostrando {appointments.length} registro{appointments.length === 1 ? "" : "s"}
+                    {query ? ` para "${query}"` : ""}
+                </div>
+            </CardContent>
+        </Card>
     );
 }

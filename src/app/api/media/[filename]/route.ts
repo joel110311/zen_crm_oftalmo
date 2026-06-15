@@ -24,6 +24,8 @@ const MIME_TYPES: Record<string, string> = {
     ".jpg": "image/jpeg",
     ".jpeg": "image/jpeg",
     ".png": "image/png",
+    ".svg": "image/svg+xml",
+    ".ico": "image/x-icon",
     ".gif": "image/gif",
     ".webp": "image/webp",
     ".pdf": "application/pdf",
@@ -31,7 +33,7 @@ const MIME_TYPES: Record<string, string> = {
     ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 };
 
-const IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".gif", ".webp"]);
+const IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".svg", ".ico", ".gif", ".webp"]);
 
 function buildMissingMediaPlaceholderSvg(label: string) {
     const safeLabel = label.replace(/[<>&"']/g, "");
@@ -44,7 +46,7 @@ function buildMissingMediaPlaceholderSvg(label: string) {
   <rect x="224" y="120" width="240" height="16" rx="8" fill="#111827" opacity="0.78" />
   <rect x="224" y="150" width="176" height="12" rx="6" fill="#6b7280" opacity="0.75" />
   <rect x="96" y="210" width="448" height="54" rx="12" fill="#f9fafb" stroke="#e5e7eb" />
-  <text x="320" y="242" text-anchor="middle" fill="#374151" font-size="18" font-family="Arial, sans-serif">${safeLabel}</text>
+  <text x="320" y="242" text-anchor="middle" fill="#374151" font-size="18" font-family="Inter, Segoe UI, Arial, sans-serif">${safeLabel}</text>
 </svg>
 `.trim();
 }

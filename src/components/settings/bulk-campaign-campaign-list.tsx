@@ -52,7 +52,7 @@ export function BulkCampaignCampaignList({
             <div className="relative">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
-                    placeholder="Buscar campana..."
+                    placeholder="Buscar campaña..."
                     value={search}
                     onChange={(event) => onSearchChange(event.target.value)}
                     className="pl-9"
@@ -61,18 +61,18 @@ export function BulkCampaignCampaignList({
 
             <Button variant="ghost" className="h-9 w-full justify-start rounded-xl" onClick={onRefreshCampaigns}>
                 <RefreshCcw className="mr-2 h-4 w-4" />
-                Refrescar campanas
+                Refrescar campañas
             </Button>
 
             <div className="space-y-3">
                 {isLoading ? (
                     <div className="rounded-2xl border border-dashed p-6 text-sm text-muted-foreground">
                         <Loader2 className="mr-2 inline h-4 w-4 animate-spin" />
-                        Cargando campanas...
+                        Cargando campañas...
                     </div>
                 ) : campaigns.length === 0 ? (
                     <div className="rounded-2xl border border-dashed p-6 text-sm text-muted-foreground">
-                        {search ? "No encontramos campanas con ese texto." : "Todavia no hay campanas creadas."}
+                        {search ? "No encontramos campañas con ese texto." : "Todavia no hay campañas creadas."}
                     </div>
                 ) : (
                     campaigns.map((campaign) => {
@@ -136,7 +136,7 @@ export function BulkCampaignCampaignList({
             <div className="rounded-xl border bg-muted/20 p-3.5">
                 <p className="text-sm font-medium">Borrador activo</p>
                 <p className="mt-1 text-xs text-muted-foreground">
-                    {form.name || "Nueva campana sin nombre"}
+                    {form.name || "Nueva campaña sin nombre"}
                 </p>
             </div>
         </div>

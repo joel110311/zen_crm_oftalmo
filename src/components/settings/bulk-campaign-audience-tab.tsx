@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
+import { useOperationContext } from "@/components/shared/use-operation-context";
 import {
     AUDIENCE_MODE_OPTIONS,
     type AudiencePreview,
@@ -108,6 +109,8 @@ export function BulkCampaignAudienceTab({
     onCsvImportTagChange,
     onCsvImport,
 }: BulkCampaignAudienceTabProps) {
+    const operationContext = useOperationContext();
+
     return (
         <div className="space-y-4">
             <div className="hidden rounded-xl border bg-muted/15 p-4">
@@ -325,7 +328,7 @@ export function BulkCampaignAudienceTab({
                                                         </div>
                                                     </TableCell>
                                                     <TableCell>{contact.company || "—"}</TableCell>
-                                                    <TableCell>{formatPhone(contact.phone)}</TableCell>
+                                                    <TableCell>{formatPhone(contact.phone, operationContext.phoneDefaultCountry)}</TableCell>
                                                     <TableCell>
                                                         <Badge variant="outline" className="capitalize">
                                                             {contact.status}
@@ -359,7 +362,7 @@ export function BulkCampaignAudienceTab({
                                 onFormChange((current) => ({ ...current, manualAudienceText: event.target.value }))
                             }
                             className="mt-4 min-h-[170px]"
-                            placeholder={`Karen | +5215512345678\n+5215511223344\nBodega norte, +5215511122233`}
+                            placeholder={`Karen | ${operationContext.phoneExample}\n${operationContext.callingCode}123456789\nBodega norte, ${operationContext.callingCode}987654321`}
                         />
                         <p className="mt-2 text-xs text-muted-foreground">
                             Se detectaron {manualEntryCount} entradas válidas.
@@ -506,7 +509,7 @@ export function BulkCampaignAudienceTab({
                                                         ) : null}
                                                     </div>
                                                 </TableCell>
-                                                <TableCell>{formatPhone(recipient.phone)}</TableCell>
+                                                <TableCell>{formatPhone(recipient.phone, operationContext.phoneDefaultCountry)}</TableCell>
                                                 <TableCell>
                                                     <Badge variant={recipient.source === "crm" ? "outline" : "secondary"}>
                                                         {recipient.source === "crm" ? "CRM" : "Manual"}

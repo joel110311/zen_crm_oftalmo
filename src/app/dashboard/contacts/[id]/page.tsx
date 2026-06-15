@@ -1,12 +1,13 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { ArrowLeft, MessageSquare } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { getContact } from "@/app/actions/contacts";
 import { notFound } from "next/navigation";
 import { AutoSaveInput } from "@/components/contacts/auto-save-input";
 import { ContactTags } from "@/components/contacts/contact-tags";
+import { WhatsAppIcon } from "@/components/icons/whatsapp-icon";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { getContactFullName, getContactInitial } from "@/lib/contact-name";
@@ -70,7 +71,7 @@ export default async function ContactDetailsPage(props: { params: Promise<{ id: 
                                             className="h-10 w-10 rounded-full border-primary/30 text-primary hover:bg-primary/10"
                                             title="Ir al chat"
                                         >
-                                            <MessageSquare className="h-5 w-5" />
+                                            <WhatsAppIcon className="h-5 w-5" />
                                         </Button>
                                     </Link>
                                 ) : (
@@ -81,7 +82,7 @@ export default async function ContactDetailsPage(props: { params: Promise<{ id: 
                                         className="h-10 w-10 rounded-full"
                                         title="Este contacto no tiene telefono"
                                     >
-                                        <MessageSquare className="h-5 w-5" />
+                                        <WhatsAppIcon className="h-5 w-5 text-muted-foreground" />
                                     </Button>
                                 )}
                             </div>

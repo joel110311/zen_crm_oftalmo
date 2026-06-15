@@ -2,8 +2,7 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import { ChangeEvent, useMemo, useRef, useState } from "react";
-import { parsePhoneNumberFromString } from "libphonenumber-js/min";
+import { ChangeEvent, useCallback, useMemo, useRef, useState } from "react";
 import {
     Building2,
     Check,
@@ -23,6 +22,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { PhonePrefixInput } from "@/components/shared/phone-prefix-input";
+import { useOperationContext } from "@/components/shared/use-operation-context";
+import { buildOperationContext, formatPhoneForDisplay } from "@/lib/operation-context";
+import { formatDateInOperationZone, formatTimeInOperationZone } from "@/lib/operation-dates";
 import { cn } from "@/lib/utils";
 
 type QuoteTemplateId = "corporate" | "executive" | "visual";
@@ -100,6 +103,7 @@ export type GeneratedQuoteAsset = {
 };
 
 const QUOTE_DRAFT_STORAGE_KEY = "zen-crm-quote-draft";
+const FALLBACK_QUOTE_OPERATION = buildOperationContext();
 
 const QUOTE_VARIABLES: Array<{ key: keyof QuoteVariableValues | "piezas" | "total" | "subtotal" | "iva" | "vigencia"; label: string; description: string }> = [
     { key: "nombre", label: "{{nombre}}", description: "Nombre del contacto" },
@@ -175,10 +179,14 @@ const DEFAULT_ITEMS: QuoteItem[] = [
     },
 ];
 
-function formatCurrency(value: number) {
-    return new Intl.NumberFormat("es-MX", {
+function formatCurrency(
+    value: number,
+    currency = FALLBACK_QUOTE_OPERATION.defaultCurrency,
+    locale = FALLBACK_QUOTE_OPERATION.locale,
+) {
+    return new Intl.NumberFormat(locale, {
         style: "currency",
-        currency: "MXN",
+        currency,
         maximumFractionDigits: 2,
     }).format(Number.isFinite(value) ? value : 0);
 }
@@ -207,29 +215,15 @@ function safeNumber(value: number) {
     return Number.isFinite(value) ? value : 0;
 }
 
-function formatClientPhoneForQuote(value: string | null | undefined) {
+function formatClientPhoneForQuote(value: string | null | undefined, defaultCountryCode?: string | null) {
     const rawValue = (value || "").trim();
     if (!rawValue) return "";
 
-    const digits = rawValue.replace(/\D/g, "");
-    if (!digits) return rawValue;
-    if (digits.length <= 10) return digits;
-
-    const phoneNumber = parsePhoneNumberFromString(rawValue.startsWith("+") ? rawValue : `+${digits}`);
-    if (phoneNumber?.isValid()) {
-        return phoneNumber.nationalNumber;
-    }
-
-    const knownWhatsappPrefixes = ["521", "541", "549"];
-    const matchingPrefix = knownWhatsappPrefixes.find((prefix) => digits.startsWith(prefix) && digits.length > prefix.length);
-    if (matchingPrefix) {
-        return digits.slice(matchingPrefix.length);
-    }
-
-    return digits;
+    return formatPhoneForDisplay(rawValue, defaultCountryCode) || rawValue;
 }
 
 export function QuoteBuilderPanel({ initialContact, agentName, mode = "full", onGenerate }: QuoteBuilderPanelProps) {
+    const operationContext = useOperationContext();
     const isCompact = mode === "compact";
     const quotePageRef = useRef<HTMLDivElement | null>(null);
     const [selectedTemplate, setSelectedTemplate] = useState<QuoteTemplateId>("corporate");
@@ -270,6 +264,12 @@ export function QuoteBuilderPanel({ initialContact, agentName, mode = "full", on
     );
     const ivaAmount = optionalFlags.iva ? subtotal * Math.max(0, ivaPercent) / 100 : 0;
     const total = subtotal + ivaAmount;
+    const quoteCurrency = operationContext.defaultCurrency;
+    const quoteLocale = operationContext.locale;
+    const formatQuoteCurrency = useCallback(
+        (value: number) => formatCurrency(value, quoteCurrency, quoteLocale),
+        [quoteCurrency, quoteLocale],
+    );
 
     const renderedVariables = useMemo(() => {
         const quantityValue = variableValues.cantidad || String(items[0]?.quantity || "");
@@ -282,9 +282,9 @@ export function QuoteBuilderPanel({ initialContact, agentName, mode = "full", on
             piezas: quantityValue,
             fecha: variableValues.fecha,
             ciudad: variableValues.ciudad,
-            subtotal: formatCurrency(subtotal),
-            iva: formatCurrency(ivaAmount),
-            total: formatCurrency(total),
+            subtotal: formatQuoteCurrency(subtotal),
+            iva: formatQuoteCurrency(ivaAmount),
+            total: formatQuoteCurrency(total),
             vigencia: validUntil,
         };
     }, [
@@ -294,6 +294,7 @@ export function QuoteBuilderPanel({ initialContact, agentName, mode = "full", on
         initialContact?.phone,
         items,
         ivaAmount,
+        formatQuoteCurrency,
         subtotal,
         total,
         validUntil,
@@ -342,7 +343,7 @@ export function QuoteBuilderPanel({ initialContact, agentName, mode = "full", on
     };
 
     const buildGeneratedQuoteText = () => {
-        const renderedClientPhone = formatClientPhoneForQuote(renderText(clientPhone));
+        const renderedClientPhone = formatClientPhoneForQuote(renderText(clientPhone), operationContext.phoneDefaultCountry);
         const lines = [
             "*Cotizacion*",
             optionalFlags.companyName && renderText(companyName)
@@ -357,12 +358,12 @@ export function QuoteBuilderPanel({ initialContact, agentName, mode = "full", on
             ...items.map((item) => {
                 const quantity = safeNumber(item.quantity);
                 const unitPrice = safeNumber(item.unitPrice);
-                return `- ${renderText(item.concept)}: ${quantity} x ${formatCurrency(unitPrice)} = ${formatCurrency(quantity * unitPrice)}`;
+                return `- ${renderText(item.concept)}: ${quantity} x ${formatQuoteCurrency(unitPrice)} = ${formatQuoteCurrency(quantity * unitPrice)}`;
             }),
             "",
-            `Subtotal: ${formatCurrency(subtotal)}`,
-            optionalFlags.iva ? `IVA (${ivaPercent}%): ${formatCurrency(ivaAmount)}` : null,
-            `*Total: ${formatCurrency(total)}*`,
+            `Subtotal: ${formatQuoteCurrency(subtotal)}`,
+            optionalFlags.iva ? `IVA (${ivaPercent}%): ${formatQuoteCurrency(ivaAmount)}` : null,
+            `*Total: ${formatQuoteCurrency(total)}*`,
             `Vigencia: ${renderText(validUntil)}`,
             optionalFlags.notes && renderText(notes) ? `Notas: ${renderText(notes)}` : null,
         ];
@@ -440,7 +441,7 @@ export function QuoteBuilderPanel({ initialContact, agentName, mode = "full", on
         setIsGenerating(true);
         try {
             const asset = await createQuoteAsset();
-            setLastGeneratedAt(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
+            setLastGeneratedAt(formatTimeInOperationZone(new Date(), operationContext.locale, operationContext.timeZone));
             if (onGenerate) {
                 await onGenerate(asset);
                 return;
@@ -452,7 +453,7 @@ export function QuoteBuilderPanel({ initialContact, agentName, mode = "full", on
     };
 
     const saveDraftLocally = () => {
-        const savedAt = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+        const savedAt = formatTimeInOperationZone(new Date(), operationContext.locale, operationContext.timeZone);
         window.localStorage.setItem(
             QUOTE_DRAFT_STORAGE_KEY,
             JSON.stringify({
@@ -544,8 +545,12 @@ export function QuoteBuilderPanel({ initialContact, agentName, mode = "full", on
         optionalFlags.social && social ? `Redes: ${renderText(social)}` : null,
         optionalFlags.address && address ? `Direccion: ${renderText(address)}` : null,
     ].filter((item): item is string => Boolean(item));
-    const displayedClientPhone = formatClientPhoneForQuote(renderText(clientPhone));
-    const quoteDateLabel = renderedVariables.fecha || new Date().toLocaleDateString("es-MX", { day: "2-digit", month: "long", year: "numeric" });
+    const displayedClientPhone = formatClientPhoneForQuote(renderText(clientPhone), operationContext.phoneDefaultCountry);
+    const quoteDateLabel = renderedVariables.fecha || formatDateInOperationZone(new Date(), quoteLocale, operationContext.timeZone, {
+        day: "2-digit",
+        month: "long",
+        year: "numeric",
+    });
     const companyLabel = renderText(companyName) || "Nombre de la empresa";
 
     return (
@@ -771,7 +776,12 @@ export function QuoteBuilderPanel({ initialContact, agentName, mode = "full", on
                                 </div>
                                 <div className="space-y-1.5">
                                     <Label>{"{{telefono}}"}</Label>
-                                    <Input value={variableValues.telefono} onChange={(event) => updateVariable("telefono", event.target.value)} />
+                                    <PhonePrefixInput
+                                        value={variableValues.telefono}
+                                        onChange={(value) => updateVariable("telefono", value)}
+                                        defaultCountry={operationContext.phoneDefaultCountry}
+                                        placeholder="Telefono del contacto"
+                                    />
                                 </div>
                                 <div className="space-y-1.5">
                                     <Label>{"{{cantidad}}"}</Label>
@@ -851,7 +861,12 @@ export function QuoteBuilderPanel({ initialContact, agentName, mode = "full", on
                                 {optionalFlags.contactPhone ? (
                                     <div className="space-y-2">
                                         <Label>Telefono</Label>
-                                        <Input value={contactPhone} onChange={(event) => setContactPhone(event.target.value)} />
+                                        <PhonePrefixInput
+                                            value={contactPhone}
+                                            onChange={setContactPhone}
+                                            defaultCountry={operationContext.phoneDefaultCountry}
+                                            placeholder="Telefono de contacto"
+                                        />
                                     </div>
                                 ) : null}
                                 {optionalFlags.website ? (
@@ -1010,8 +1025,8 @@ export function QuoteBuilderPanel({ initialContact, agentName, mode = "full", on
                                                             ) : null}
                                                         </div>
                                                         <div className="text-right font-semibold">{quantity}</div>
-                                                        <div className="text-right">{formatCurrency(unitPrice)}</div>
-                                                        <div className="text-right font-black">{formatCurrency(quantity * unitPrice)}</div>
+                                                        <div className="text-right">{formatQuoteCurrency(unitPrice)}</div>
+                                                        <div className="text-right font-black">{formatQuoteCurrency(quantity * unitPrice)}</div>
                                                     </div>
                                                 );
                                             })}
@@ -1020,18 +1035,18 @@ export function QuoteBuilderPanel({ initialContact, agentName, mode = "full", on
                                         <section className="ml-auto mt-5 w-[17rem] space-y-2 text-sm">
                                             <div className="flex justify-between text-slate-600">
                                                 <span>Subtotal</span>
-                                                <span>{formatCurrency(subtotal)}</span>
+                                                <span>{formatQuoteCurrency(subtotal)}</span>
                                             </div>
                                             {optionalFlags.iva ? (
                                                 <div className="flex justify-between text-slate-600">
                                                     <span>IVA {ivaPercent}%</span>
-                                                    <span>{formatCurrency(ivaAmount)}</span>
+                                                    <span>{formatQuoteCurrency(ivaAmount)}</span>
                                                 </div>
                                             ) : null}
                                             <div className="h-px bg-slate-900" />
                                             <div className="flex justify-between text-lg font-black uppercase text-slate-950">
                                                 <span>Total</span>
-                                                <span>{formatCurrency(total)}</span>
+                                                <span>{formatQuoteCurrency(total)}</span>
                                             </div>
                                         </section>
 
@@ -1099,7 +1114,7 @@ export function QuoteBuilderPanel({ initialContact, agentName, mode = "full", on
                                                         </h2>
                                                         <div className="ml-auto mt-4 h-1 w-56" style={{ backgroundColor: template.accent }} />
                                                         <p className="mt-3 text-xs font-semibold text-slate-600">
-                                                            Fecha: {renderedVariables.fecha || new Date().toLocaleDateString("es-MX", { day: "2-digit", month: "long", year: "numeric" })}
+                                                            Fecha: {quoteDateLabel}
                                                         </p>
                                                     </>
                                                 ) : (
@@ -1132,7 +1147,7 @@ export function QuoteBuilderPanel({ initialContact, agentName, mode = "full", on
                                                     <div className="px-4 py-2 text-center text-sm font-black text-white" style={{ backgroundColor: template.accent }}>
                                                         FECHA
                                                     </div>
-                                                    <p className="mt-3 text-sm font-black">{renderedVariables.fecha || new Date().toLocaleDateString("es-MX", { day: "2-digit", month: "long", year: "numeric" })}</p>
+                                                    <p className="mt-3 text-sm font-black">{quoteDateLabel}</p>
                                                 </div>
                                             ) : null}
                                         </section>
@@ -1159,9 +1174,9 @@ export function QuoteBuilderPanel({ initialContact, agentName, mode = "full", on
                                                             <p className="font-bold">{renderText(item.concept) || "Concepto"}</p>
                                                             <p className="mt-1 text-[10px] leading-4 text-slate-500">{renderText(item.description)}</p>
                                                         </div>
-                                                        <div className="px-3 py-4 text-right">{formatCurrency(unitPrice)}</div>
+                                                        <div className="px-3 py-4 text-right">{formatQuoteCurrency(unitPrice)}</div>
                                                         <div className="px-3 py-4 text-right font-semibold">{quantity}</div>
-                                                        <div className="px-3 py-4 text-right font-semibold">{formatCurrency(quantity * unitPrice)}</div>
+                                                        <div className="px-3 py-4 text-right font-semibold">{formatQuoteCurrency(quantity * unitPrice)}</div>
                                                     </div>
                                                 );
                                             })}
@@ -1170,17 +1185,17 @@ export function QuoteBuilderPanel({ initialContact, agentName, mode = "full", on
                                         <section className="ml-auto mt-5 w-64 space-y-1 text-sm">
                                             <div className="flex justify-between">
                                                 <span>Subtotal</span>
-                                                <span>{formatCurrency(subtotal)}</span>
+                                                <span>{formatQuoteCurrency(subtotal)}</span>
                                             </div>
                                             {optionalFlags.iva ? (
                                                 <div className="flex justify-between">
                                                     <span>IVA {ivaPercent}%</span>
-                                                    <span>{formatCurrency(ivaAmount)}</span>
+                                                    <span>{formatQuoteCurrency(ivaAmount)}</span>
                                                 </div>
                                             ) : null}
                                             <div className="mt-2 flex justify-between px-4 py-3 text-base font-black text-white" style={{ backgroundColor: template.accent }}>
                                                 <span>Total</span>
-                                                <span>{formatCurrency(total)}</span>
+                                                <span>{formatQuoteCurrency(total)}</span>
                                             </div>
                                         </section>
 

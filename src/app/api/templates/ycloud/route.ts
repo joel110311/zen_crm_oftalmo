@@ -1,25 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
+import { ensurePermissionResponse } from "@/lib/authz";
 import { createYCloudTemplate, deleteYCloudTemplate, listYCloudTemplates } from "@/lib/ycloud";
-
-function getSessionRole(session: unknown) {
-    return (session as { user?: { role?: string } } | null)?.user?.role || null;
-}
-
-function ensureAuthenticated(session: unknown) {
-    if (!(session as { user?: { id?: string } } | null)?.user?.id) {
-        return NextResponse.json({ error: "No autorizado" }, { status: 401 });
-    }
-    return null;
-}
-
-function ensureSuperadmin(session: unknown) {
-    const role = getSessionRole(session);
-    if (role !== "SUPERADMIN") {
-        return NextResponse.json({ error: "Solo superadmin puede solicitar plantillas en YCloud" }, { status: 403 });
-    }
-    return null;
-}
 
 function asItems(payload: unknown) {
     if (!payload || typeof payload !== "object") return [];
@@ -35,8 +17,8 @@ function asItems(payload: unknown) {
 export async function GET(request: NextRequest) {
     try {
         const session = await auth();
-        const unauthorized = ensureAuthenticated(session);
-        if (unauthorized) return unauthorized;
+        const forbidden = ensurePermissionResponse(session, "templates.manage", "No tienes permiso para administrar plantillas en YCloud.");
+        if (forbidden) return forbidden;
 
         const { searchParams } = new URL(request.url);
         const limit = Number.parseInt(searchParams.get("limit") || "100", 10);
@@ -63,9 +45,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
     try {
         const session = await auth();
-        const unauthorized = ensureAuthenticated(session);
-        if (unauthorized) return unauthorized;
-        const forbidden = ensureSuperadmin(session);
+        const forbidden = ensurePermissionResponse(session, "templates.manage", "No tienes permiso para administrar plantillas en YCloud.");
         if (forbidden) return forbidden;
 
         const body = await request.json();
@@ -102,9 +82,7 @@ export async function POST(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
     try {
         const session = await auth();
-        const unauthorized = ensureAuthenticated(session);
-        if (unauthorized) return unauthorized;
-        const forbidden = ensureSuperadmin(session);
+        const forbidden = ensurePermissionResponse(session, "templates.manage", "No tienes permiso para administrar plantillas en YCloud.");
         if (forbidden) return forbidden;
 
         const { searchParams } = new URL(request.url);

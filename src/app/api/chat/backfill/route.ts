@@ -1,25 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
+import { ensurePermissionResponse } from "@/lib/authz";
 import {
     backfillMissingActiveConversations,
     getConversationCoverageSnapshot,
 } from "@/lib/conversation-coverage";
 
-function canRunRepair(role?: string) {
-    return role === "SUPERADMIN";
-}
-
 export async function GET() {
     try {
         const session = await auth();
-        const currentUser = session?.user as { role?: string } | undefined;
-
-        if (!canRunRepair(currentUser?.role)) {
-            return NextResponse.json(
-                { error: "No autorizado." },
-                { status: 403 },
-            );
-        }
+        const forbidden = ensurePermissionResponse(session, "settings.manage", "No autorizado.");
+        if (forbidden) return forbidden;
 
         const snapshot = await getConversationCoverageSnapshot();
         return NextResponse.json({ success: true, snapshot });
@@ -35,14 +26,8 @@ export async function GET() {
 export async function POST(request: NextRequest) {
     try {
         const session = await auth();
-        const currentUser = session?.user as { role?: string } | undefined;
-
-        if (!canRunRepair(currentUser?.role)) {
-            return NextResponse.json(
-                { error: "No autorizado." },
-                { status: 403 },
-            );
-        }
+        const forbidden = ensurePermissionResponse(session, "settings.manage", "No autorizado.");
+        if (forbidden) return forbidden;
 
         const body = await request.json().catch(() => ({}));
         const dryRun = Boolean(body?.dryRun);

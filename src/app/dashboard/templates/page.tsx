@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, type ComponentType } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { LayoutTemplate, Loader2, Megaphone, ShieldAlert, MessageSquare, ReceiptText } from "lucide-react";
@@ -9,19 +9,36 @@ import { BulkCampaignManagerPanel } from "@/components/settings/bulk-campaign-ma
 import { TemplateManagerPanel } from "@/components/settings/template-manager-panel";
 import { YCloudTemplateRequestPanel } from "@/components/templates/ycloud-template-request-panel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { hasPermission, type PermissionKey } from "@/lib/permissions";
 
-const TEMPLATE_TABS = new Set(["templates", "ycloud", "campaigns", "quotes"]);
+const TEMPLATE_TAB_ITEMS: Array<{
+    value: string;
+    label: string;
+    icon: ComponentType<{ className?: string }>;
+    permission: PermissionKey;
+}> = [
+    { value: "templates", label: "Respuestas guardadas", icon: LayoutTemplate, permission: "templates.manage" },
+    { value: "ycloud", label: "Plantillas YCloud", icon: MessageSquare, permission: "templates.manage" },
+    { value: "campaigns", label: "Envios masivos", icon: Megaphone, permission: "campaigns.manage" },
+    { value: "quotes", label: "Cotizaciones", icon: ReceiptText, permission: "templates.manage" },
+];
+
+const TEMPLATE_TABS = new Set(TEMPLATE_TAB_ITEMS.map((tab) => tab.value));
 
 export default function TemplatesPage() {
     const router = useRouter();
     const pathname = usePathname();
     const searchParams = useSearchParams();
     const { data: session, status } = useSession();
-    const sessionUser = session?.user as { role?: string } | undefined;
-    const isSuperadmin = sessionUser?.role === "SUPERADMIN";
+    const sessionUser = session?.user as { role?: string; permissions?: unknown } | undefined;
+    const visibleTabs = TEMPLATE_TAB_ITEMS.filter((tab) => hasPermission(sessionUser, tab.permission));
+    const hasTemplateAccess = visibleTabs.length > 0;
     const currentUserName = session?.user?.name || "";
     const requestedTab = searchParams.get("tab") || "templates";
-    const activeTab = TEMPLATE_TABS.has(requestedTab) ? requestedTab : "templates";
+    const fallbackTab = visibleTabs[0]?.value || "templates";
+    const activeTab = TEMPLATE_TABS.has(requestedTab) && visibleTabs.some((tab) => tab.value === requestedTab)
+        ? requestedTab
+        : fallbackTab;
     const quoteInitialContact = useMemo(() => ({
         name: searchParams.get("contactName") || "",
         phone: searchParams.get("phone") || "",
@@ -45,7 +62,7 @@ export default function TemplatesPage() {
         );
     }
 
-    if (!isSuperadmin) {
+    if (!hasTemplateAccess) {
         return (
             <div className="mx-auto max-w-3xl space-y-5">
                 <div className="rounded-xl border bg-card px-5 py-4 shadow-[0_12px_28px_-22px_rgba(15,23,42,0.25)]">
@@ -62,7 +79,7 @@ export default function TemplatesPage() {
                     <ShieldAlert className="mx-auto h-10 w-10 text-amber-500" />
                     <h2 className="mt-4 text-lg font-semibold">Acceso restringido</h2>
                     <p className="mt-2 text-sm text-muted-foreground">
-                        Solo un superadministrador puede gestionar las plantillas internas.
+                        Tu rol no tiene permisos para gestionar plantillas, campañas o cotizaciones.
                     </p>
                 </div>
             </div>
@@ -77,49 +94,48 @@ export default function TemplatesPage() {
                     Plantillas
                 </h1>
                 <p className="mt-1.5 max-w-3xl text-sm leading-6 text-muted-foreground">
-                    Administra respuestas guardadas y campanas de envios masivos desde un mismo lugar.
+                    Administra respuestas guardadas y campañas de envios masivos desde un mismo lugar.
                 </p>
             </div>
 
             <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-4">
                 <TabsList className="grid h-auto w-full max-w-[64rem] grid-cols-2 gap-2 rounded-2xl border bg-card p-1.5 shadow-[0_12px_24px_-20px_rgba(15,23,42,0.22)] md:grid-cols-4">
-                    <TabsTrigger value="templates" className="min-w-0 h-10 gap-1.5 rounded-xl border border-transparent bg-background px-3 text-[13px] font-semibold text-foreground/75 data-[state=active]:border-primary/30 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-[0_14px_28px_-18px_rgba(37,99,235,0.72)] sm:h-11 sm:px-4 sm:text-sm">
-                        <LayoutTemplate className="hidden h-4 w-4 sm:block" />
-                        <span className="truncate">Respuestas guardadas</span>
-                    </TabsTrigger>
-                    <TabsTrigger value="ycloud" className="min-w-0 h-10 gap-1.5 rounded-xl border border-transparent bg-background px-3 text-[13px] font-semibold text-foreground/75 data-[state=active]:border-primary/30 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-[0_14px_28px_-18px_rgba(37,99,235,0.72)] sm:h-11 sm:px-4 sm:text-sm">
-                        <MessageSquare className="hidden h-4 w-4 sm:block" />
-                        <span className="truncate">Plantillas YCloud</span>
-                    </TabsTrigger>
-                    <TabsTrigger value="campaigns" className="min-w-0 h-10 gap-1.5 rounded-xl border border-transparent bg-background px-3 text-[13px] font-semibold text-foreground/75 data-[state=active]:border-primary/30 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-[0_14px_28px_-18px_rgba(37,99,235,0.72)] sm:h-11 sm:px-4 sm:text-sm">
-                        <Megaphone className="hidden h-4 w-4 sm:block" />
-                        <span className="truncate">Envios masivos</span>
-                    </TabsTrigger>
-                    <TabsTrigger value="quotes" className="min-w-0 h-10 gap-1.5 rounded-xl border border-transparent bg-background px-3 text-[13px] font-semibold text-foreground/75 data-[state=active]:border-primary/30 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-[0_14px_28px_-18px_rgba(37,99,235,0.72)] sm:h-11 sm:px-4 sm:text-sm">
-                        <ReceiptText className="hidden h-4 w-4 sm:block" />
-                        <span className="truncate">Cotizaciones</span>
-                    </TabsTrigger>
+                    {visibleTabs.map((tab) => {
+                        const Icon = tab.icon;
+                        return (
+                            <TabsTrigger key={tab.value} value={tab.value} className="min-w-0 h-10 gap-1.5 rounded-xl border border-transparent bg-background px-3 text-[13px] font-semibold text-foreground/75 data-[state=active]:border-primary/30 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-[0_14px_28px_-18px_rgba(37,99,235,0.72)] sm:h-11 sm:px-4 sm:text-sm">
+                                <Icon className="hidden h-4 w-4 sm:block" />
+                                <span className="truncate">{tab.label}</span>
+                            </TabsTrigger>
+                        );
+                    })}
                 </TabsList>
 
-                <TabsContent value="templates" className="mt-0">
-                    <TemplateManagerPanel />
-                </TabsContent>
+                {hasPermission(sessionUser, "templates.manage") ? (
+                    <>
+                        <TabsContent value="templates" className="mt-0">
+                            <TemplateManagerPanel />
+                        </TabsContent>
 
-                <TabsContent value="ycloud" className="mt-0">
-                    <YCloudTemplateRequestPanel />
-                </TabsContent>
+                        <TabsContent value="ycloud" className="mt-0">
+                            <YCloudTemplateRequestPanel />
+                        </TabsContent>
 
-                <TabsContent value="campaigns" className="mt-0">
-                    <BulkCampaignManagerPanel />
-                </TabsContent>
+                        <TabsContent value="quotes" className="mt-0">
+                            <QuoteBuilderPanel
+                                key={`${quoteInitialContact.name}-${quoteInitialContact.phone}-${quoteInitialContact.company}`}
+                                initialContact={quoteInitialContact}
+                                agentName={currentUserName}
+                            />
+                        </TabsContent>
+                    </>
+                ) : null}
 
-                <TabsContent value="quotes" className="mt-0">
-                    <QuoteBuilderPanel
-                        key={`${quoteInitialContact.name}-${quoteInitialContact.phone}-${quoteInitialContact.company}`}
-                        initialContact={quoteInitialContact}
-                        agentName={currentUserName}
-                    />
-                </TabsContent>
+                {hasPermission(sessionUser, "campaigns.manage") ? (
+                    <TabsContent value="campaigns" className="mt-0">
+                        <BulkCampaignManagerPanel />
+                    </TabsContent>
+                ) : null}
             </Tabs>
         </div>
     );

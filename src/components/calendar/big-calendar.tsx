@@ -17,6 +17,14 @@ import {
     type BusinessHoursConfig,
 } from "@/lib/calendar/business-hours";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import {
+    formatDateTimeInOperationZone,
+    getLocalCalendarDateKey,
+    getOperationTodayKey,
+    localWallDateToOperationUtc,
+    operationDateReference,
+    operationInstantToLocalWallDate,
+} from "@/lib/operation-dates";
 
 const locales = {
     es,
@@ -41,8 +49,12 @@ interface CalendarEvent {
     notes?: string;
     resource?: {
         contact?: unknown;
+        patient?: unknown;
         user?: unknown;
         status?: string;
+        visitMode?: string;
+        meetLink?: string;
+        paymentStatus?: string;
         googleCalendarColor?: string;
         googleCalendarName?: string;
         specialistName?: string;
@@ -59,11 +71,11 @@ interface BigCalendarProps {
     onMutationSettled?: () => Promise<void> | void;
 }
 
-function normalizeEvents(initialEvents: CalendarEvent[]) {
+function normalizeEvents(initialEvents: CalendarEvent[], timeZone: string) {
     return initialEvents.map((event) => ({
         ...event,
-        start: new Date(event.start),
-        end: new Date(event.end),
+        start: operationInstantToLocalWallDate(event.start, timeZone),
+        end: operationInstantToLocalWallDate(event.end, timeZone),
     }));
 }
 
@@ -75,17 +87,21 @@ export function BigCalendar({
     onAppointmentTimeChange,
     onMutationSettled,
 }: BigCalendarProps) {
-    const [events, setEvents] = useState<CalendarEvent[]>(() => normalizeEvents(initialEvents));
-    const [view, setView] = useState<View>(Views.MONTH);
+    const [events, setEvents] = useState<CalendarEvent[]>(() => normalizeEvents(initialEvents, businessHours.timeZone));
+    const [view, setView] = useState<View>(Views.DAY);
     const [date, setDate] = useState(new Date());
     const { toast } = useToast();
 
     React.useEffect(() => {
-        setEvents(normalizeEvents(initialEvents));
-    }, [initialEvents]);
+        setEvents(normalizeEvents(initialEvents, businessHours.timeZone));
+    }, [businessHours.timeZone, initialEvents]);
 
     const visibleRange = useMemo(
-        () => getCalendarVisibleRange(businessHours, date, view === Views.DAY ? "day" : "week"),
+        () => getCalendarVisibleRange(
+            businessHours,
+            operationDateReference(getLocalCalendarDateKey(date), businessHours.timeZone),
+            view === Views.DAY ? "day" : "week",
+        ),
         [businessHours, date, view],
     );
 
@@ -116,20 +132,37 @@ export function BigCalendar({
                 start: new Date(start),
                 end: new Date(end),
             };
+            const nextStartUtc = localWallDateToOperationUtc(nextEvent.start, businessHours.timeZone);
+            const nextEndUtc = localWallDateToOperationUtc(nextEvent.end, businessHours.timeZone);
+            if (nextStartUtc <= new Date()) {
+                toast({
+                    title: "Horario no disponible",
+                    description: "Solo puedes reprogramar citas desde este momento en adelante.",
+                    variant: "destructive",
+                });
+                return;
+            }
 
             replaceEvent(event.id, nextEvent);
-            onAppointmentTimeChange?.(event.id, nextEvent.start, nextEvent.end);
+            onAppointmentTimeChange?.(event.id, nextStartUtc, nextEndUtc);
 
             try {
                 await updateAppointment(event.id, {
-                    startTime: nextEvent.start,
-                    endTime: nextEvent.end,
+                    startTime: nextStartUtc,
+                    endTime: nextEndUtc,
                 });
-                toast({ title: successMessage, description: `Movida a ${format(nextEvent.start, "PPP p", { locale: es })}` });
+                toast({
+                    title: successMessage,
+                    description: `Movida a ${formatDateTimeInOperationZone(nextStartUtc, "es-MX", businessHours.timeZone)}`,
+                });
                 await onMutationSettled?.();
             } catch {
                 replaceEvent(event.id, originalEvent);
-                onAppointmentTimeChange?.(event.id, originalEvent.start, originalEvent.end);
+                onAppointmentTimeChange?.(
+                    event.id,
+                    localWallDateToOperationUtc(originalEvent.start, businessHours.timeZone),
+                    localWallDateToOperationUtc(originalEvent.end, businessHours.timeZone),
+                );
                 toast({
                     title: "Error",
                     description: "No se pudo actualizar la cita.",
@@ -137,7 +170,7 @@ export function BigCalendar({
                 });
             }
         },
-        [onAppointmentTimeChange, onMutationSettled, replaceEvent, toast],
+        [businessHours.timeZone, onAppointmentTimeChange, onMutationSettled, replaceEvent, toast],
     );
 
     const onEventResize: any = useCallback(
@@ -155,7 +188,7 @@ export function BigCalendar({
     );
 
     const CustomEvent = ({ event }: EventProps<CalendarEvent>) => {
-        const isPast = new Date(event.end) < new Date();
+        const isPast = localWallDateToOperationUtc(event.end, businessHours.timeZone).getTime() < Date.now();
         const isCompleted = event.resource?.status === "completed";
         const calendarColor = event.resource?.googleCalendarColor || "#0EA5E9";
         const baseClasses =
@@ -268,8 +301,28 @@ export function BigCalendar({
                 resizable
                 onEventDrop={onEventDrop}
                 onEventResize={onEventResize}
-                onSelectSlot={(slot: any) => onSelectSlot(slot)}
-                onSelectEvent={(event: any) => onSelectEvent(event)}
+                onSelectSlot={(slot: any) => {
+                    const slotDateKey = getLocalCalendarDateKey(slot.start);
+                    const todayKey = getOperationTodayKey(businessHours.timeZone);
+                    const startUtc = localWallDateToOperationUtc(slot.start, businessHours.timeZone);
+                    const isPastSelection = view === Views.MONTH
+                        ? slotDateKey < todayKey
+                        : startUtc <= new Date();
+                    if (isPastSelection) {
+                        toast({
+                            title: "Horario no disponible",
+                            description: "Solo puedes crear citas desde este momento en adelante.",
+                            variant: "destructive",
+                        });
+                        return;
+                    }
+                    onSelectSlot(slot);
+                }}
+                onSelectEvent={(event: any) => onSelectEvent({
+                    ...event,
+                    start: localWallDateToOperationUtc(event.start, businessHours.timeZone),
+                    end: localWallDateToOperationUtc(event.end, businessHours.timeZone),
+                })}
                 messages={{
                     next: "Siguiente",
                     previous: "Anterior",

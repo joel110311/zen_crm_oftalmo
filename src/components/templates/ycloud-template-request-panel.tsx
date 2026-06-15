@@ -58,6 +58,8 @@ import {
     Eye,
 } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
+import { useOperationContext } from "@/components/shared/use-operation-context";
+import { buildOperationContext } from "@/lib/operation-context";
 
 /* ──────────────────── Types ──────────────────── */
 interface TemplateComponent {
@@ -118,9 +120,18 @@ function categoryLabel(c: string) {
         default: return c;
     }
 }
-function formatDate(d?: string) {
+const FALLBACK_TEMPLATE_OPERATION = buildOperationContext();
+
+function formatDate(d?: string, locale = FALLBACK_TEMPLATE_OPERATION.locale, timeZone = FALLBACK_TEMPLATE_OPERATION.timeZone) {
     if (!d) return "—";
-    return new Intl.DateTimeFormat("es-MX", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }).format(new Date(d));
+    return new Intl.DateTimeFormat(locale, {
+        timeZone,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+    }).format(new Date(d));
 }
 
 function extractVariables(text: string): string[] {
@@ -130,6 +141,7 @@ function extractVariables(text: string): string[] {
 
 /* ──────────────────── Main Page ──────────────────── */
 export function YCloudTemplateRequestPanel() {
+    const operationContext = useOperationContext();
     const [templates, setTemplates] = useState<Template[]>([]);
     const [search, setSearch] = useState("");
     const [filterCategory, setFilterCategory] = useState("all");
@@ -215,7 +227,10 @@ export function YCloudTemplateRequestPanel() {
         if (!selectedTemplate || !phoneInput.trim()) return;
         setSending(true); setSendResult(null);
         try {
-            const phones = phoneInput.split(/[,\n]+/).map((p) => p.trim()).filter(Boolean);
+            const phones = phoneInput
+                .split(/[,\n]+/)
+                .map((p) => operationContext.normalizePhone(p))
+                .filter(Boolean);
 
             // Build variable components for the API
             const bodyVars = extractVariables(sendTemplateBody);
@@ -359,7 +374,7 @@ export function YCloudTemplateRequestPanel() {
                                                     {statusLabel(t.status)}
                                                 </Badge>
                                             </td>
-                                            <td className="px-4 py-3 text-muted-foreground text-xs">{formatDate(t.updatedAt || t.createdAt)}</td>
+                                            <td className="px-4 py-3 text-muted-foreground text-xs">{formatDate(t.updatedAt || t.createdAt, operationContext.locale, operationContext.timeZone)}</td>
                                             <td className="px-4 py-3">
                                                 <DropdownMenu>
                                                     <DropdownMenuTrigger asChild>
@@ -469,8 +484,16 @@ export function YCloudTemplateRequestPanel() {
                                 )}
                                 <div>
                                     <Label>Números de destino</Label>
-                                    <Textarea placeholder="+524771234567\n+524779876543" value={phoneInput} onChange={(e) => setPhoneInput(e.target.value)} rows={4} className="resize-none mt-1.5" />
-                                    <p className="text-xs text-muted-foreground mt-1">Formato internacional (uno por línea o separados por coma)</p>
+                                    <Textarea
+                                        placeholder={`${operationContext.phoneExample}\n${operationContext.callingCode}123456789`}
+                                        value={phoneInput}
+                                        onChange={(e) => setPhoneInput(e.target.value)}
+                                        rows={4}
+                                        className="resize-none mt-1.5"
+                                    />
+                                    <p className="text-xs text-muted-foreground mt-1">
+                                        Puedes usar numero local o internacional. Default: {operationContext.countryName} {operationContext.callingCode}.
+                                    </p>
                                 </div>
                                 {sendResult && (
                                     <div className={`rounded-xl p-3 text-sm ${sendResult.failed > 0 ? "bg-amber-500/10 border border-amber-500/20" : "bg-emerald-500/10 border border-emerald-500/20"}`}>
@@ -507,6 +530,8 @@ function StatCard({ label, value, color }: { label: string; value: number; color
    CREATE TEMPLATE — Full-page multi-step flow
    ══════════════════════════════════════════════════════════════ */
 function CreateTemplatePage({ onBack, wabaId }: { onBack: () => void; wabaId: string }) {
+    const operationContext = useOperationContext();
+
     // Step: "method" | "editor"
     const [step, setStep] = useState<"method" | "editor">("method");
 
@@ -677,7 +702,7 @@ function CreateTemplatePage({ onBack, wabaId }: { onBack: () => void; wabaId: st
             useCase: ["Actualización de Pago"],
             components: [
                 { type: "HEADER", format: "TEXT", text: "Pago recibido" },
-                { type: "BODY", text: "Hemos recibido tu pago de ${{1}} MXN el día {{2}}.\nTu referencia es {{3}}.\n\nGracias por tu puntualidad." },
+                { type: "BODY", text: "Hemos recibido tu pago de $" + "{{1}} " + operationContext.defaultCurrency + " el día {{2}}.\nTu referencia es {{3}}.\n\nGracias por tu puntualidad." },
                 { type: "FOOTER", text: "Zen CRM - Pagos" },
             ],
         },
@@ -710,7 +735,7 @@ function CreateTemplatePage({ onBack, wabaId }: { onBack: () => void; wabaId: st
             name: "cobro_recordatorio", category: "UTILITY", industry: ["Servicios Financieros"],
             useCase: ["Actualización de Pago"],
             components: [
-                { type: "BODY", text: "Hola {{1}},\n\nTe recordamos que tienes un saldo pendiente de ${{2}} MXN con fecha límite {{3}}.\n\nRealiza tu pago para evitar cargos adicionales." },
+                { type: "BODY", text: "Hola {{1}},\n\nTe recordamos que tienes un saldo pendiente de $" + "{{2}} " + operationContext.defaultCurrency + " con fecha límite {{3}}.\n\nRealiza tu pago para evitar cargos adicionales." },
                 { type: "BUTTONS", buttons: [{ type: "QUICK_REPLY", text: "Pagar ahora" }, { type: "QUICK_REPLY", text: "Ya pagué" }] },
             ],
         },
@@ -1189,6 +1214,8 @@ function PhonePreview({
     buttons: Array<{ type: string; text: string }>;
     variableSamples: Record<string, string>;
 }) {
+    const operationContext = useOperationContext();
+
     // Render body with styled variables
     const renderBody = () => {
         if (!body) return <span className="text-gray-400 text-xs">Type a message</span>;
@@ -1273,7 +1300,7 @@ function PhonePreview({
                             <p className="text-[10px] text-gray-500 dark:text-gray-400 italic">{footer}</p>
                         )}
                         <p className="text-[9px] text-gray-400 text-right">
-                            {new Date().toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" })}
+                            {new Date().toLocaleTimeString(operationContext.locale, { timeZone: operationContext.timeZone, hour: "2-digit", minute: "2-digit" })}
                         </p>
                         {buttons.length > 0 && (
                             <div className="border-t border-gray-200 dark:border-gray-700 pt-1.5 space-y-1">

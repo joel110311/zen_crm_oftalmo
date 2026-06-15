@@ -12,7 +12,6 @@ import {
     ChevronLeft,
     ChevronRight,
     Download,
-    MessageSquare,
     RotateCw,
     Search,
     Star,
@@ -22,6 +21,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { WhatsAppIcon } from "@/components/icons/whatsapp-icon";
 import {
     Select,
     SelectContent,
@@ -43,6 +43,7 @@ import { ContactActions } from "@/components/contacts/contact-actions";
 import { ContactsBulkCampaignDialog } from "@/components/contacts/contacts-bulk-campaign-dialog";
 import { ContactsBulkDeleteDialog } from "@/components/contacts/contacts-bulk-delete-dialog";
 import { getContactFullName, getContactInitial } from "@/lib/contact-name";
+import { hasPermission } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
 
 type ContactConversationSummary = {
@@ -145,8 +146,8 @@ export function ContactsTable({ contacts }: ContactsPageProps) {
     const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
     const [rawSelectedContactIds, setRawSelectedContactIds] = useState<string[]>([]);
 
-    const sessionUser = session?.user as { role?: string } | undefined;
-    const isSuperadmin = sessionUser?.role === "SUPERADMIN";
+    const sessionUser = session?.user as { role?: string; permissions?: unknown } | undefined;
+    const canManageCampaigns = hasPermission(sessionUser, "campaigns.manage");
 
     const handleSearch = useDebouncedCallback((term: string) => {
         const params = new URLSearchParams(searchParams);
@@ -380,7 +381,7 @@ export function ContactsTable({ contacts }: ContactsPageProps) {
                                     Limpiar
                                 </Button>
 
-                                {isSuperadmin ? (
+                                {canManageCampaigns ? (
                                     <ContactsBulkCampaignDialog
                                         contacts={selectedContacts}
                                         onCreated={clearSelection}
@@ -522,7 +523,7 @@ export function ContactsTable({ contacts }: ContactsPageProps) {
                                                     href={`/dashboard/inbox?contactId=${encodeURIComponent(contact.id)}`}
                                                     className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-primary/25 bg-primary/10 px-3 text-xs font-medium text-primary transition-colors hover:bg-primary/15"
                                                 >
-                                                    <MessageSquare className="h-3.5 w-3.5" />
+                                                    <WhatsAppIcon className="h-3.5 w-3.5" />
                                                     Ir al chat
                                                 </Link>
                                             ) : (

@@ -263,6 +263,26 @@ export function getBusinessDateKey(date: Date, timeZone: string) {
     return `${String(parts.year).padStart(4, "0")}-${String(parts.month).padStart(2, "0")}-${String(parts.day).padStart(2, "0")}`;
 }
 
+export function normalizeBusinessDateKey(value?: string | Date | null, timeZone = DEFAULT_BUSINESS_TIME_ZONE) {
+    if (typeof value === "string") {
+        const trimmed = value.trim();
+        if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+            return trimmed;
+        }
+
+        const parsed = new Date(trimmed);
+        if (!Number.isNaN(parsed.getTime())) {
+            return getBusinessDateKey(parsed, timeZone);
+        }
+    }
+
+    if (value instanceof Date && !Number.isNaN(value.getTime())) {
+        return getBusinessDateKey(value, timeZone);
+    }
+
+    return getBusinessDateKey(new Date(), timeZone);
+}
+
 export function getBusinessDayKey(date: Date, timeZone: string): BusinessDayKey {
     const weekday = new Intl.DateTimeFormat("en-US", {
         timeZone,
@@ -280,6 +300,36 @@ export function shiftDateKey(dateKey: string, days: number) {
     const [year, month, day] = dateKey.split("-").map(Number);
     const base = new Date(Date.UTC(year, month - 1, day + days));
     return `${base.getUTCFullYear()}-${String(base.getUTCMonth() + 1).padStart(2, "0")}-${String(base.getUTCDate()).padStart(2, "0")}`;
+}
+
+export function businessDayBounds(date?: string | Date | null, timeZone = DEFAULT_BUSINESS_TIME_ZONE) {
+    const dateKey = normalizeBusinessDateKey(date, timeZone);
+
+    return {
+        start: zonedDateTimeToUtc(dateKey, "00:00", timeZone),
+        end: zonedDateTimeToUtc(shiftDateKey(dateKey, 1), "00:00", timeZone),
+        dateKey,
+        timeZone,
+    };
+}
+
+export function businessDateRangeBounds(
+    from?: string | Date | null,
+    to?: string | Date | null,
+    timeZone = DEFAULT_BUSINESS_TIME_ZONE,
+) {
+    const fromKey = normalizeBusinessDateKey(from, timeZone);
+    const toKey = normalizeBusinessDateKey(to || fromKey, timeZone);
+    const startKey = fromKey <= toKey ? fromKey : toKey;
+    const endKey = fromKey <= toKey ? toKey : fromKey;
+
+    return {
+        start: zonedDateTimeToUtc(startKey, "00:00", timeZone),
+        end: zonedDateTimeToUtc(shiftDateKey(endKey, 1), "00:00", timeZone),
+        fromKey: startKey,
+        toKey: endKey,
+        timeZone,
+    };
 }
 
 export function zonedDateTimeToUtc(dateKey: string, time: string, timeZone: string) {

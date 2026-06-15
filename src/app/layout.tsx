@@ -1,15 +1,5 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import { Manrope } from "next/font/google";
-export const metadata: Metadata = {
-  title: "Zen CRM",
-  description: "Advanced WhatsApp CRM with AI capabilities",
-  icons: {
-    icon: "/brand/zen-favicon.svg",
-    shortcut: "/brand/zen-favicon.svg",
-    apple: "/brand/zen-favicon.svg",
-  },
-};
 
 import { ThemeProvider } from "@/components/theme-provider"
 import { Toaster } from "@/components/ui/toaster"
@@ -17,13 +7,37 @@ import { SessionProvider } from "@/components/providers/session-provider"
 import { ColorThemeProvider } from "@/components/color-theme-provider"
 import { auth } from "@/lib/auth"
 import { COLOR_THEME_STORAGE_KEY, DEFAULT_COLOR_THEME } from "@/lib/color-theme"
+import { resolveBranding } from "@/lib/branding"
+import { getSystemSettingsOrDefaults } from "@/lib/system-settings"
 
-const manrope = Manrope({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700", "800"],
-  variable: "--font-manrope",
-  display: "swap",
-});
+export async function generateMetadata(): Promise<Metadata> {
+  try {
+    const settings = await getSystemSettingsOrDefaults();
+    const branding = resolveBranding(settings);
+
+    return {
+      title: branding.brandName,
+      description: "CRM oftalmologico para WhatsApp con IA",
+      icons: {
+        icon: branding.brandFaviconUrl,
+        shortcut: branding.brandFaviconUrl,
+        apple: branding.brandFaviconUrl,
+      },
+    };
+  } catch {
+    const branding = resolveBranding(null);
+
+    return {
+      title: branding.brandName,
+      description: "CRM oftalmologico para WhatsApp con IA",
+      icons: {
+        icon: branding.brandFaviconUrl,
+        shortcut: branding.brandFaviconUrl,
+        apple: branding.brandFaviconUrl,
+      },
+    };
+  }
+}
 
 const colorThemeInitScript = `
 (() => {
@@ -50,7 +64,7 @@ export default async function RootLayout({
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <script dangerouslySetInnerHTML={{ __html: colorThemeInitScript }} />
       </head>
-      <body className={`${manrope.variable} font-sans antialiased`}>
+      <body className="font-sans antialiased">
         <SessionProvider session={session}>
           <ThemeProvider
             attribute="class"

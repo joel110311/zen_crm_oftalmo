@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { refreshWhatsAppAvatarForContactsInBackground } from "@/lib/whatsapp-avatar";
+import { formatPhoneForDisplay } from "@/lib/operation-context";
 import type { Prisma } from "@prisma/client";
 
 let lastAvatarRefreshKickAt = 0;
@@ -36,20 +37,7 @@ function parseBoundedInt(value: string | null, fallback: number, min: number, ma
 }
 
 function formatPhone(phone: string | null | undefined) {
-    if (!phone) return null;
-
-    const cleaned = phone.replace(/\D/g, "");
-    if (!cleaned) return null;
-
-    if (cleaned.length === 12 && cleaned.startsWith("52")) {
-        return `+${cleaned.slice(0, 2)} ${cleaned.slice(2, 5)} ${cleaned.slice(5, 8)} ${cleaned.slice(8)}`;
-    }
-
-    if (cleaned.length === 10) {
-        return `+52 ${cleaned.slice(0, 3)} ${cleaned.slice(3, 6)} ${cleaned.slice(6)}`;
-    }
-
-    return `+${cleaned}`;
+    return formatPhoneForDisplay(phone) || null;
 }
 
 function normalizeContactName(name?: string | null) {
@@ -113,7 +101,10 @@ export async function GET(request: NextRequest) {
 
             const messages = await prisma.message.findMany({
                 where: whereClause,
-                orderBy: { createdAt: "desc" }, // Get newest first
+                orderBy: [
+                    { createdAt: "desc" },
+                    { id: "desc" },
+                ], // Get newest first
                 take: sinceDate ? undefined : messageLimit,
             });
             // Reverse so they are chronological for UI
@@ -157,7 +148,10 @@ export async function GET(request: NextRequest) {
                                 not: "system",
                             },
                         },
-                        orderBy: { createdAt: "desc" },
+                        orderBy: [
+                            { createdAt: "desc" },
+                            { id: "desc" },
+                        ],
                         take: 1,
                     },
                 },

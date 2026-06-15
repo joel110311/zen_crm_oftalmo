@@ -2,6 +2,7 @@ import { Sidebar } from "@/components/layout/sidebar";
 import { Header } from "@/components/layout/header";
 import { InboxNotifier } from "@/components/layout/inbox-notifier";
 import { UnreadTabBadge } from "@/components/layout/unread-tab-badge";
+import { WaitingRoomNotifier } from "@/components/layout/waiting-room-notifier";
 import { SessionProvider } from "@/components/providers/session-provider";
 import { auth } from "@/lib/auth";
 
@@ -20,6 +21,7 @@ export default async function DashboardLayout({
         <SessionProvider session={session}>
             <div className="flex h-screen w-full overflow-hidden bg-background">
                 <InboxNotifier />
+                <WaitingRoomNotifier />
                 <UnreadTabBadge />
                 <Sidebar />
                 <div className="flex min-w-0 flex-1 flex-col overflow-hidden pt-14 md:pt-0">

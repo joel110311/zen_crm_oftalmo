@@ -37,6 +37,8 @@ import {
     parseBulkCampaignManualEntries,
 } from "@/lib/bulk-campaign-audience";
 import { listTemplateVariableKeys, renderTemplateContent } from "@/lib/templates";
+import { useOperationContext } from "@/components/shared/use-operation-context";
+import { operationInputValueToUtc } from "@/lib/operation-dates";
 
 function normalizeCampaignTypeForForm(value: unknown): CampaignMessageType {
     return value === "image" || value === "document" || value === "template" ? value : "text";
@@ -56,7 +58,7 @@ function normalizeTemplateVariableValuesForForm(value: unknown) {
     );
 }
 
-function mapCampaignToForm(campaign: CampaignRecord): CampaignFormState {
+function mapCampaignToForm(campaign: CampaignRecord, timeZone?: string): CampaignFormState {
     return {
         id: campaign.id,
         name: campaign.name,
@@ -76,7 +78,7 @@ function mapCampaignToForm(campaign: CampaignRecord): CampaignFormState {
         batchDelayMinutes: campaign.batchDelayMinutes,
         randomDelayMinSeconds: campaign.randomDelayMinSeconds,
         randomDelayMaxSeconds: campaign.randomDelayMaxSeconds,
-        scheduledStartAt: toLocalDateTimeValue(campaign.scheduledStartAt),
+        scheduledStartAt: toLocalDateTimeValue(campaign.scheduledStartAt, timeZone),
         respectBusinessHours: campaign.respectBusinessHours,
         stopOnReply: campaign.stopOnReply,
         followUpCount: campaign.followUpCount,
@@ -87,8 +89,8 @@ function mapCampaignToForm(campaign: CampaignRecord): CampaignFormState {
         audienceQuery: campaign.audienceFilters?.query || "",
         audienceLimit: campaign.audienceFilters?.limit ? String(campaign.audienceFilters.limit) : "",
         audienceOnlyOpenYCloudWindow: campaign.audienceFilters?.onlyOpenYCloudWindow ?? (campaign.sourceType === "ycloud"),
-        audienceLastInboundFrom: toLocalDateTimeValue(campaign.audienceFilters?.lastInboundFrom || null),
-        audienceLastInboundTo: toLocalDateTimeValue(campaign.audienceFilters?.lastInboundTo || null),
+        audienceLastInboundFrom: toLocalDateTimeValue(campaign.audienceFilters?.lastInboundFrom || null, timeZone),
+        audienceLastInboundTo: toLocalDateTimeValue(campaign.audienceFilters?.lastInboundTo || null, timeZone),
         audienceSelectedContactIds: campaign.audienceFilters?.selectedContactIds || [],
         manualAudienceText: formatBulkCampaignManualEntries(campaign.audienceFilters?.manualEntries || []),
         totalRecipients: campaign.totalRecipients,
@@ -108,6 +110,7 @@ function mapCampaignToForm(campaign: CampaignRecord): CampaignFormState {
 }
 
 export function BulkCampaignManagerPanel() {
+    const operationContext = useOperationContext();
     const { toast } = useToast();
     const [campaigns, setCampaigns] = useState<CampaignRecord[]>([]);
     const [search, setSearch] = useState("");
@@ -142,7 +145,7 @@ export function BulkCampaignManagerPanel() {
             if (preserveSelection && form.id) {
                 const refreshed = nextCampaigns.find((campaign) => campaign.id === form.id);
                 if (refreshed) {
-                    setForm(mapCampaignToForm(refreshed));
+                    setForm(mapCampaignToForm(refreshed, operationContext.timeZone));
                 }
             }
         } catch (error) {
@@ -154,7 +157,7 @@ export function BulkCampaignManagerPanel() {
         } finally {
             setIsLoading(false);
         }
-    }, [form.id, toast]);
+    }, [form.id, operationContext.timeZone, toast]);
 
     useEffect(() => {
         void loadCampaigns(false);
@@ -186,11 +189,11 @@ export function BulkCampaignManagerPanel() {
                 contact: {
                     name: "Karen",
                     company: "Zen Estates",
-                    phone: "9991234567",
+                    phone: operationContext.phoneExample,
                 },
                 agentName: "Joel",
             }),
-        [activeVariant?.content],
+        [activeVariant?.content, operationContext.phoneExample],
     );
 
     const detectedVariables = useMemo(() => {
@@ -199,8 +202,8 @@ export function BulkCampaignManagerPanel() {
     }, [form.variants]);
 
     const manualEntries = useMemo(
-        () => parseBulkCampaignManualEntries(form.manualAudienceText),
-        [form.manualAudienceText],
+        () => parseBulkCampaignManualEntries(form.manualAudienceText, operationContext.phoneDefaultCountry),
+        [form.manualAudienceText, operationContext.phoneDefaultCountry],
     );
 
     const audiencePayload = useMemo(() => ({
@@ -323,7 +326,7 @@ export function BulkCampaignManagerPanel() {
                 batchDelayMinutes: form.batchDelayMinutes,
                 randomDelayMinSeconds: form.randomDelayMinSeconds,
                 randomDelayMaxSeconds: form.randomDelayMaxSeconds,
-                scheduledStartAt: form.scheduledStartAt ? new Date(form.scheduledStartAt).toISOString() : null,
+                scheduledStartAt: form.scheduledStartAt ? operationInputValueToUtc(form.scheduledStartAt, operationContext.timeZone)?.toISOString() || null : null,
                 respectBusinessHours: form.respectBusinessHours,
                 stopOnReply: form.stopOnReply,
                 followUpCount: form.followUpCount,
@@ -344,7 +347,7 @@ export function BulkCampaignManagerPanel() {
             if (!response.ok) throw new Error(result.error || "No se pudo guardar la campaña");
 
             const campaign = result.campaign as CampaignRecord;
-            setForm(mapCampaignToForm(campaign));
+            setForm(mapCampaignToForm(campaign, operationContext.timeZone));
             setCampaigns((current) => {
                 const rest = current.filter((entry) => entry.id !== campaign.id);
                 return [campaign, ...rest];
@@ -385,7 +388,7 @@ export function BulkCampaignManagerPanel() {
             if (!response.ok) throw new Error(result.error || "No se pudo ejecutar la acción");
 
             const campaign = result.campaign as CampaignRecord;
-            setForm(mapCampaignToForm(campaign));
+            setForm(mapCampaignToForm(campaign, operationContext.timeZone));
             setCampaigns((current) => {
                 const rest = current.filter((entry) => entry.id !== campaign.id);
                 return [campaign, ...rest];
@@ -516,7 +519,7 @@ export function BulkCampaignManagerPanel() {
                 onSearchChange={setSearch}
                 selectedCampaignId={form.id}
                 onSelectCampaign={(campaign) => {
-                    setForm(mapCampaignToForm(campaign));
+                    setForm(mapCampaignToForm(campaign, operationContext.timeZone));
                     setActiveVariantIndex(0);
                 }}
                 onCreateCampaign={resetForm}
@@ -550,7 +553,7 @@ export function BulkCampaignManagerPanel() {
                             <span className="text-sm">Inicio</span>
                         </div>
                         <p className="mt-2 text-sm font-semibold leading-tight">
-                            {form.scheduledStartAt ? formatDateTime(new Date(form.scheduledStartAt).toISOString()) : "Inmediato"}
+                            {form.scheduledStartAt ? formatDateTime(operationInputValueToUtc(form.scheduledStartAt, operationContext.timeZone)?.toISOString() || null, operationContext.locale, operationContext.timeZone) : "Inmediato"}
                         </p>
                     </div>
                     <div className="min-w-0 rounded-xl border bg-card p-3.5 shadow-[0_12px_24px_-20px_rgba(15,23,42,0.24)]">

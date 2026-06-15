@@ -1,28 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { auth } from "@/lib/auth";
+import { ensurePermissionResponse } from "@/lib/authz";
 import { listTemplateVariableKeys, normalizeTemplateShortcut } from "@/lib/templates";
 
 const ALLOWED_TEMPLATE_TYPES = new Set(["text", "image", "document"]);
-
-function getSessionRole(session: unknown) {
-    return (session as { user?: { role?: string } } | null)?.user?.role || null;
-}
-
-function ensureAuthenticated(session: unknown) {
-    if (!(session as { user?: { id?: string } } | null)?.user?.id) {
-        return NextResponse.json({ error: "No autorizado" }, { status: 401 });
-    }
-    return null;
-}
-
-function ensureSuperadmin(session: unknown) {
-    const role = getSessionRole(session);
-    if (role !== "SUPERADMIN") {
-        return NextResponse.json({ error: "Solo superadmin puede administrar plantillas" }, { status: 403 });
-    }
-    return null;
-}
 
 export async function PATCH(
     request: NextRequest,
@@ -30,9 +12,7 @@ export async function PATCH(
 ) {
     try {
         const session = await auth();
-        const unauthorized = ensureAuthenticated(session);
-        if (unauthorized) return unauthorized;
-        const forbidden = ensureSuperadmin(session);
+        const forbidden = ensurePermissionResponse(session, "templates.manage", "No tienes permiso para administrar plantillas.");
         if (forbidden) return forbidden;
         const templateRepo = prisma.template as any;
 
@@ -110,9 +90,7 @@ export async function DELETE(
 ) {
     try {
         const session = await auth();
-        const unauthorized = ensureAuthenticated(session);
-        if (unauthorized) return unauthorized;
-        const forbidden = ensureSuperadmin(session);
+        const forbidden = ensurePermissionResponse(session, "templates.manage", "No tienes permiso para administrar plantillas.");
         if (forbidden) return forbidden;
         const templateRepo = prisma.template as any;
 

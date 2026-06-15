@@ -9,6 +9,7 @@ import {
 } from "@/lib/whatsapp-avatar";
 import { resolveMessageSourceId } from "@/lib/message-source";
 import { getSystemSettingsOrDefaults } from "@/lib/system-settings";
+import { requirePermission } from "@/lib/authz";
 
 const CONTACT_LIST_INCLUDE = {
     conversations: {
@@ -190,6 +191,8 @@ async function deleteContactsGraph(contactIds: string[]) {
 }
 
 export async function getContacts(query?: string) {
+    await requirePermission("contacts.manage");
+
     try {
         const contacts = await prisma.contact.findMany({
             where: buildContactSearchWhere(query),
@@ -210,6 +213,8 @@ export async function getContacts(query?: string) {
 }
 
 export async function getContact(id: string) {
+    await requirePermission("contacts.manage");
+
     try {
         await refreshWhatsAppAvatarForContact(id).catch((error) => {
             console.warn("[Contacts] Could not refresh WhatsApp avatar for contact details", error);
@@ -239,6 +244,8 @@ export async function getContact(id: string) {
 }
 
 export async function createContact(formData: FormData) {
+    await requirePermission("contacts.manage");
+
     const name = formData.get("name") as string;
     const email = formData.get("email") as string;
     const phone = formData.get("phone") as string;
@@ -301,6 +308,8 @@ export async function updateContact(
         tags: string[];
     }>,
 ) {
+    await requirePermission("contacts.manage");
+
     try {
         const contact = await prisma.contact.update({
             where: { id },
@@ -323,6 +332,8 @@ export async function updateContact(
 }
 
 export async function deleteContact(id: string) {
+    await requirePermission("contacts.manage");
+
     try {
         const deletedCount = await deleteContactsGraph([id]);
         revalidateContactSurfaces([id]);
@@ -339,6 +350,8 @@ export async function deleteContact(id: string) {
 }
 
 export async function deleteContactsBulk(contactIds: string[]) {
+    await requirePermission("contacts.manage");
+
     try {
         const ids = normalizeContactIds(contactIds);
         if (ids.length === 0) {
@@ -362,6 +375,8 @@ export async function deleteContactsBulk(contactIds: string[]) {
 }
 
 export async function addContactTag(contactId: string, tag: string) {
+    await requirePermission("contacts.manage");
+
     try {
         const contact = await prisma.contact.findUnique({ where: { id: contactId } });
         if (!contact) {
@@ -384,6 +399,8 @@ export async function addContactTag(contactId: string, tag: string) {
 }
 
 export async function removeContactTag(contactId: string, tag: string) {
+    await requirePermission("contacts.manage");
+
     try {
         const contact = await prisma.contact.findUnique({ where: { id: contactId } });
         if (!contact) {

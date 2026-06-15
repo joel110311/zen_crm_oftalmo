@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { auth } from "@/lib/auth";
+import { hasPermission } from "@/lib/permissions";
 
 export async function POST(request: NextRequest) {
     try {
@@ -13,7 +14,7 @@ export async function POST(request: NextRequest) {
         }
 
         const session = await auth();
-        const currentUser = session?.user as { id?: string; role?: string } | undefined;
+        const currentUser = session?.user as { id?: string; role?: string; permissions?: unknown } | undefined;
 
         console.log("[API] Conversation action:", action, "for:", conversationId);
 
@@ -93,7 +94,7 @@ export async function POST(request: NextRequest) {
                         : null;
 
                 if (
-                    currentUser?.role !== "SUPERADMIN" &&
+                    !hasPermission(currentUser, "users.manage") &&
                     nextAssignedUserId &&
                     nextAssignedUserId !== currentUser?.id
                 ) {

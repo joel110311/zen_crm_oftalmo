@@ -1,4 +1,5 @@
 import { getSystemSettingsOrDefaults } from "@/lib/system-settings";
+import { normalizePhoneForOperation } from "@/lib/operation-context";
 
 const YCLOUD_API_BASE = "https://api.ycloud.com/v2";
 const YCLOUD_SEND_MESSAGE_PATH = "/whatsapp/messages/sendDirectly";
@@ -8,6 +9,7 @@ type YCloudMessageType = "text" | "image" | "document" | "audio" | "video";
 type YCloudCredentials = {
     apiKey: string;
     phoneId: string;
+    phoneDefaultCountry: string | null;
 };
 
 type YCloudTemplateParameter =
@@ -25,13 +27,10 @@ type YCloudTemplateComponent = {
     parameters: YCloudTemplateParameter[];
 };
 
-function formatPhoneE164(raw: string) {
-    const digits = (raw || "").replace(/\D/g, "");
+function formatPhoneE164(raw: string, defaultCountryCode?: string | null) {
+    const digits = normalizePhoneForOperation(raw, defaultCountryCode);
     if (!digits) return "";
-
-    // Local MX fallback: 10 digits -> +52XXXXXXXXXX
-    const normalized = digits.length === 10 ? `52${digits}` : digits;
-    return `+${normalized}`;
+    return `+${digits}`;
 }
 
 function extractApiErrorMessage(payload: unknown, fallback: string) {
@@ -52,8 +51,9 @@ async function getYCloudCredentials(): Promise<YCloudCredentials> {
 
     const apiKey = (settings.ycloudApiKey || process.env.YCLOUD_API_KEY || "").trim();
     const phoneId = (settings.ycloudPhoneId || process.env.YCLOUD_WHATSAPP_PHONE_ID || "").trim();
+    const phoneDefaultCountry = settings.phoneDefaultCountry || settings.operationCountry || null;
 
-    return { apiKey, phoneId };
+    return { apiKey, phoneId, phoneDefaultCountry };
 }
 
 async function requestYCloud(pathname: string, init: RequestInit) {
@@ -105,15 +105,15 @@ function extractYCloudMessageId(response: unknown) {
 }
 
 export async function sendYCloudTextMessage(to: string, text: string) {
-    const { phoneId } = await getYCloudCredentials();
+    const { phoneId, phoneDefaultCountry } = await getYCloudCredentials();
 
     if (!phoneId) {
         throw new Error("YCloud Phone Number ID no configurado.");
     }
 
     const payload = {
-        from: formatPhoneE164(phoneId),
-        to: formatPhoneE164(to),
+        from: formatPhoneE164(phoneId, phoneDefaultCountry),
+        to: formatPhoneE164(to, phoneDefaultCountry),
         type: "text" as const,
         text: {
             body: text,
@@ -138,15 +138,15 @@ export async function sendYCloudTemplateMessage(params: {
     languageCode?: string;
     components?: YCloudTemplateComponent[];
 }) {
-    const { phoneId } = await getYCloudCredentials();
+    const { phoneId, phoneDefaultCountry } = await getYCloudCredentials();
 
     if (!phoneId) {
         throw new Error("YCloud Phone Number ID no configurado.");
     }
 
     const payload = {
-        from: formatPhoneE164(phoneId),
-        to: formatPhoneE164(params.to),
+        from: formatPhoneE164(phoneId, phoneDefaultCountry),
+        to: formatPhoneE164(params.to, phoneDefaultCountry),
         type: "template" as const,
         template: {
             name: params.templateName,
@@ -176,7 +176,7 @@ export async function sendYCloudMediaMessage(params: {
     caption?: string;
     fileName?: string;
 }) {
-    const { phoneId } = await getYCloudCredentials();
+    const { phoneId, phoneDefaultCountry } = await getYCloudCredentials();
 
     if (!phoneId) {
         throw new Error("YCloud Phone Number ID no configurado.");
@@ -195,8 +195,8 @@ export async function sendYCloudMediaMessage(params: {
     }
 
     const payload = {
-        from: formatPhoneE164(phoneId),
-        to: formatPhoneE164(params.to),
+        from: formatPhoneE164(phoneId, phoneDefaultCountry),
+        to: formatPhoneE164(params.to, phoneDefaultCountry),
         type: params.mediaType,
         [params.mediaType]: mediaPayload,
         externalId: `zencrm_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
@@ -218,15 +218,15 @@ export async function sendYCloudReaction(params: {
     providerMessageId: string;
     reaction: string | null;
 }) {
-    const { phoneId } = await getYCloudCredentials();
+    const { phoneId, phoneDefaultCountry } = await getYCloudCredentials();
 
     if (!phoneId) {
         throw new Error("YCloud Phone Number ID no configurado.");
     }
 
     const payload = {
-        from: formatPhoneE164(phoneId),
-        to: formatPhoneE164(params.to),
+        from: formatPhoneE164(phoneId, phoneDefaultCountry),
+        to: formatPhoneE164(params.to, phoneDefaultCountry),
         type: "reaction" as const,
         reaction: {
             message_id: params.providerMessageId,

@@ -304,22 +304,49 @@ async function startup() {
             pool,
             'ALTER TABLE "SystemSettings" ALTER COLUMN "leadInterestThreshold" SET NOT NULL',
         );
+        await runSafeQuery(pool, 'ALTER TABLE "SystemSettings" ADD COLUMN IF NOT EXISTS "operationCountry" TEXT NOT NULL DEFAULT \'MX\'');
+        await runSafeQuery(pool, 'ALTER TABLE "SystemSettings" ADD COLUMN IF NOT EXISTS "phoneDefaultCountry" TEXT NOT NULL DEFAULT \'MX\'');
+        await runSafeQuery(pool, 'ALTER TABLE "SystemSettings" ADD COLUMN IF NOT EXISTS "paymentEnabledCurrencies" JSONB NOT NULL DEFAULT \'["MXN"]\'::jsonb');
+        await runSafeQuery(pool, 'UPDATE "SystemSettings" SET "operationCountry" = COALESCE(NULLIF("operationCountry", \'\'), \'MX\')');
+        await runSafeQuery(pool, 'UPDATE "SystemSettings" SET "phoneDefaultCountry" = COALESCE(NULLIF("phoneDefaultCountry", \'\'), \'MX\')');
+        await runSafeQuery(pool, 'UPDATE "SystemSettings" SET "paymentDefaultCurrency" = COALESCE(NULLIF("paymentDefaultCurrency", \'\'), \'MXN\')');
+        await runSafeQuery(pool, 'UPDATE "SystemSettings" SET "businessTimeZone" = COALESCE(NULLIF("businessTimeZone", \'\'), \'America/Mexico_City\')');
+        await runSafeQuery(pool, 'UPDATE "SystemSettings" SET "paymentEnabledCurrencies" = \'["MXN"]\'::jsonb WHERE "paymentEnabledCurrencies" IS NULL');
 
+        await runSafeQuery(pool, 'ALTER TABLE "User" ADD COLUMN IF NOT EXISTS permissions JSONB');
+        await runSafeQuery(pool, 'ALTER TABLE "User" ALTER COLUMN permissions SET DEFAULT \'[]\'::jsonb');
+        await runSafeQuery(pool, 'UPDATE "User" SET permissions = \'[]\'::jsonb WHERE permissions IS NULL');
         await runSafeQuery(
             pool,
             `
-            DO $$
-            BEGIN
-                IF NOT EXISTS (
-                    SELECT 1
-                    FROM pg_enum e
-                    JOIN pg_type t ON t.oid = e.enumtypid
-                    WHERE t.typname = 'Role' AND e.enumlabel = 'SUPERADMIN'
-                ) THEN
-                    ALTER TYPE "Role" ADD VALUE 'SUPERADMIN';
-                END IF;
+            UPDATE "User"
+            SET role = CASE
+                WHEN role = 'SUPERADMIN' THEN 'ADMINISTRADOR'
+                WHEN role = 'ADMIN' THEN 'RECEPCION'
+                WHEN role IN ('ADMINISTRADOR', 'PROFESIONAL', 'RECEPCION') THEN role
+                ELSE 'RECEPCION'
             END
-            $$;
+            `,
+        );
+        await runSafeQuery(pool, 'ALTER TABLE "User" ALTER COLUMN role SET DEFAULT \'RECEPCION\'');
+        await runSafeQuery(
+            pool,
+            `
+            WITH first_user AS (
+                SELECT id
+                FROM "User"
+                ORDER BY "createdAt" ASC
+                LIMIT 1
+            )
+            UPDATE "User"
+            SET role = 'ADMINISTRADOR'
+            WHERE id IN (SELECT id FROM first_user)
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM "User"
+                  WHERE role = 'ADMINISTRADOR'
+                     OR permissions @> '["system.fullAccess"]'::jsonb
+              )
             `,
         );
 
@@ -525,10 +552,15 @@ async function startup() {
                     "agentTemperature",
                     "knowledgeTopK",
                     "autoReplyDelayMs",
+                    "operationCountry",
+                    "phoneDefaultCountry",
+                    "paymentDefaultCurrency",
+                    "paymentEnabledCurrencies",
+                    "businessTimeZone",
                     "isBotEnabled",
                     "updatedAt"
                 )
-                VALUES ('default', 'gpt-4o-mini', $1, 'Asistente Zen', 0.3, 6, 1200, false, NOW())
+                VALUES ('default', 'gpt-4o-mini', $1, 'Asistente Zen', 0.3, 6, 1200, 'MX', 'MX', 'MXN', '["MXN"]'::jsonb, 'America/Mexico_City', false, NOW())
                 ON CONFLICT (id) DO NOTHING
                 `,
                 [DEFAULT_WHATSAPP_INSTANCE_NAME],
@@ -540,13 +572,13 @@ async function startup() {
 
             await pool.query(
                 `
-                INSERT INTO "User" (id, email, name, password, role, "createdAt", "updatedAt")
-                VALUES ($1, $2, $3, $4, 'SUPERADMIN', NOW(), NOW())
+                INSERT INTO "User" (id, email, name, password, role, permissions, "createdAt", "updatedAt")
+                VALUES ($1, $2, $3, $4, 'ADMINISTRADOR', '[]'::jsonb, NOW(), NOW())
                 ON CONFLICT (email) DO NOTHING
                 `,
                 [adminId, initialAdmin.email, initialAdmin.name, adminPassword],
             );
-            console.log(`[Startup] Seeded initial superadmin (${initialAdmin.email})`);
+            console.log(`[Startup] Seeded initial administrator (${initialAdmin.email})`);
             if (initialAdmin.usingFallbackEmail || initialAdmin.usingFallbackPassword) {
                 console.warn(
                     "[Startup] WARNING: Using fallback superadmin credentials. Define INITIAL_ADMIN_EMAIL and INITIAL_ADMIN_PASSWORD in production.",

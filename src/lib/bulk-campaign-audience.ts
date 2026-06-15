@@ -1,4 +1,5 @@
-import { isPlausiblePhoneDigits, normalizePhoneDigits } from "@/lib/phone";
+import { isPlausiblePhoneDigits } from "@/lib/phone";
+import { normalizePhoneForOperation } from "@/lib/operation-context";
 
 export const MAX_BULK_CAMPAIGN_AUDIENCE_LIMIT = 5000;
 export const BULK_CAMPAIGN_AUDIENCE_MODES = ["filters", "selected", "mixed"] as const;
@@ -63,7 +64,7 @@ export function normalizeBulkCampaignAudienceSource(value: unknown): BulkCampaig
     return "any";
 }
 
-function parseManualLine(line: string): BulkCampaignManualEntry | null {
+function parseManualLine(line: string, defaultCountryCode?: string | null): BulkCampaignManualEntry | null {
     const trimmed = line.trim();
     if (!trimmed) return null;
 
@@ -94,7 +95,7 @@ function parseManualLine(line: string): BulkCampaignManualEntry | null {
         }
     }
 
-    const phone = normalizePhoneDigits(phoneCandidate);
+    const phone = normalizePhoneForOperation(phoneCandidate, defaultCountryCode);
     if (!isPlausiblePhoneDigits(phone)) {
         return null;
     }
@@ -106,12 +107,12 @@ function parseManualLine(line: string): BulkCampaignManualEntry | null {
     };
 }
 
-export function parseBulkCampaignManualEntries(rawValue: string) {
+export function parseBulkCampaignManualEntries(rawValue: string, defaultCountryCode?: string | null) {
     const seen = new Set<string>();
 
     return rawValue
         .split(/\r?\n/g)
-        .map((line) => parseManualLine(line))
+        .map((line) => parseManualLine(line, defaultCountryCode))
         .filter((entry): entry is BulkCampaignManualEntry => Boolean(entry))
         .filter((entry) => {
             if (seen.has(entry.phone)) return false;
@@ -129,7 +130,7 @@ export function formatBulkCampaignManualEntries(entries: BulkCampaignManualEntry
         .join("\n");
 }
 
-export function normalizeBulkCampaignManualEntries(value: unknown) {
+export function normalizeBulkCampaignManualEntries(value: unknown, defaultCountryCode?: string | null) {
     const entries = Array.isArray(value) ? value : [];
     const seen = new Set<string>();
 
@@ -138,7 +139,7 @@ export function normalizeBulkCampaignManualEntries(value: unknown) {
             const record = typeof entry === "object" && entry !== null
                 ? (entry as Record<string, unknown>)
                 : {};
-            const phone = normalizePhoneDigits(normalizeString(record.phone));
+            const phone = normalizePhoneForOperation(normalizeString(record.phone), defaultCountryCode);
             if (!isPlausiblePhoneDigits(phone)) {
                 return null;
             }
@@ -160,6 +161,7 @@ export function normalizeBulkCampaignManualEntries(value: unknown) {
 export function normalizeBulkCampaignAudienceFilters(
     value: unknown,
     maxLimit = MAX_BULK_CAMPAIGN_AUDIENCE_LIMIT,
+    defaultCountryCode?: string | null,
 ): BulkCampaignAudienceFilters {
     const record = typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
     const statuses = normalizeStringList(record.statuses).map((entry) => entry.toLowerCase());
@@ -179,6 +181,6 @@ export function normalizeBulkCampaignAudienceFilters(
         lastInboundFrom: normalizeString(record.lastInboundFrom),
         lastInboundTo: normalizeString(record.lastInboundTo),
         selectedContactIds: normalizeStringList(record.selectedContactIds),
-        manualEntries: normalizeBulkCampaignManualEntries(record.manualEntries),
+        manualEntries: normalizeBulkCampaignManualEntries(record.manualEntries, defaultCountryCode),
     };
 }

@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { addDays, format } from "date-fns";
 import { es } from "date-fns/locale";
 import { CalendarClock, CheckCircle2, Clock3 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -12,10 +11,17 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Switch } from "@/components/ui/switch";
 import type { CampaignFormState } from "@/components/settings/bulk-campaign-manager-shared";
 import {
-    formatDateTime,
     formatFollowUpCadenceLabel,
     getAudienceModeLabel,
 } from "@/components/settings/bulk-campaign-manager-shared";
+import { useOperationContext } from "@/components/shared/use-operation-context";
+import { shiftDateKey } from "@/lib/calendar/business-hours";
+import {
+    formatDateTimeInOperationZone,
+    getLocalCalendarDateKey,
+    operationInputValueToUtc,
+    operationInstantToLocalWallDate,
+} from "@/lib/operation-dates";
 import { cn } from "@/lib/utils";
 
 type BulkCampaignScheduleTabProps = {
@@ -31,11 +37,11 @@ function padDatePart(value: number) {
     return String(value).padStart(2, "0");
 }
 
-function buildLocalDateTimeValue(date: Date) {
+function buildWallDateTimeValue(date: Date) {
     return `${date.getFullYear()}-${padDatePart(date.getMonth() + 1)}-${padDatePart(date.getDate())}T${padDatePart(date.getHours())}:${padDatePart(date.getMinutes())}`;
 }
 
-function parseLocalDateTimeValue(value: string) {
+function parseWallDateTimeValue(value: string) {
     if (!value) return null;
 
     const [datePart, timePart] = value.split("T");
@@ -51,8 +57,13 @@ function parseLocalDateTimeValue(value: string) {
     return new Date(year, month - 1, day, hour, minute, 0, 0);
 }
 
-function buildDefaultScheduledStartValue() {
-    const next = new Date();
+function formatOperationInputValue(value: string, locale: string, timeZone: string, fallback = "Inmediato") {
+    const utcDate = operationInputValueToUtc(value, timeZone);
+    return utcDate ? formatDateTimeInOperationZone(utcDate, locale, timeZone) : fallback;
+}
+
+function buildDefaultScheduledStartValue(timeZone: string) {
+    const next = operationInstantToLocalWallDate(new Date(), timeZone);
     next.setSeconds(0, 0);
 
     const roundedMinutes = Math.ceil(next.getMinutes() / 5) * 5;
@@ -62,7 +73,7 @@ function buildDefaultScheduledStartValue() {
         next.setMinutes(roundedMinutes, 0, 0);
     }
 
-    return buildLocalDateTimeValue(next);
+    return buildWallDateTimeValue(next);
 }
 
 type ScheduledStartPickerProps = {
@@ -71,25 +82,24 @@ type ScheduledStartPickerProps = {
 };
 
 function ScheduledStartPicker({ value, onChange }: ScheduledStartPickerProps) {
+    const operationContext = useOperationContext();
     const [open, setOpen] = useState(false);
-    const [draftValue, setDraftValue] = useState(value || buildDefaultScheduledStartValue());
+    const [draftValue, setDraftValue] = useState(value || buildDefaultScheduledStartValue(operationContext.timeZone));
 
     const draftDate = useMemo(
-        () => parseLocalDateTimeValue(draftValue) ?? parseLocalDateTimeValue(buildDefaultScheduledStartValue()) ?? new Date(),
-        [draftValue],
+        () => parseWallDateTimeValue(draftValue) ?? parseWallDateTimeValue(buildDefaultScheduledStartValue(operationContext.timeZone)) ?? operationInstantToLocalWallDate(new Date(), operationContext.timeZone),
+        [draftValue, operationContext.timeZone],
     );
 
     const draftTime = `${padDatePart(draftDate.getHours())}:${padDatePart(draftDate.getMinutes())}`;
     const triggerLabel = value
-        ? formatDateTime(parseLocalDateTimeValue(value)?.toISOString() || null)
+        ? formatOperationInputValue(value, operationContext.locale, operationContext.timeZone, "Seleccionar fecha y hora")
         : "Seleccionar fecha y hora";
 
     const handleDateChange = (date: Date | undefined) => {
         if (!date) return;
 
-        const nextDate = new Date(date);
-        nextDate.setHours(draftDate.getHours(), draftDate.getMinutes(), 0, 0);
-        setDraftValue(buildLocalDateTimeValue(nextDate));
+        setDraftValue(`${getLocalCalendarDateKey(date)}T${draftTime}`);
     };
 
     const handleTimeChange = (nextTime: string) => {
@@ -98,13 +108,11 @@ function ScheduledStartPicker({ value, onChange }: ScheduledStartPickerProps) {
             return;
         }
 
-        const nextDate = new Date(draftDate);
-        nextDate.setHours(hours, minutes, 0, 0);
-        setDraftValue(buildLocalDateTimeValue(nextDate));
+        setDraftValue(`${getLocalCalendarDateKey(draftDate)}T${padDatePart(hours)}:${padDatePart(minutes)}`);
     };
 
     const handleCancel = () => {
-        setDraftValue(value || buildDefaultScheduledStartValue());
+        setDraftValue(value || buildDefaultScheduledStartValue(operationContext.timeZone));
         setOpen(false);
     };
 
@@ -115,13 +123,13 @@ function ScheduledStartPicker({ value, onChange }: ScheduledStartPickerProps) {
 
     const handleClear = () => {
         onChange("");
-        setDraftValue(buildDefaultScheduledStartValue());
+        setDraftValue(buildDefaultScheduledStartValue(operationContext.timeZone));
         setOpen(false);
     };
 
     const handleOpenChange = (nextOpen: boolean) => {
         if (nextOpen) {
-            setDraftValue(value || buildDefaultScheduledStartValue());
+            setDraftValue(value || buildDefaultScheduledStartValue(operationContext.timeZone));
         }
         setOpen(nextOpen);
     };
@@ -179,7 +187,7 @@ function ScheduledStartPicker({ value, onChange }: ScheduledStartPickerProps) {
                     <div className="rounded-xl border bg-muted/20 px-3 py-2 text-sm text-muted-foreground">
                         Quedara programada para{" "}
                         <span className="font-medium text-foreground">
-                            {format(draftDate, "PPP ' - ' p", { locale: es })}
+                            {formatOperationInputValue(draftValue, operationContext.locale, operationContext.timeZone, "una fecha valida")}
                         </span>
                         .
                     </div>
@@ -213,29 +221,29 @@ export function BulkCampaignScheduleTab({
     followUpWindowDays,
     onFormChange,
 }: BulkCampaignScheduleTabProps) {
-    const scheduledStartDate = useMemo(
-        () => parseLocalDateTimeValue(form.scheduledStartAt),
-        [form.scheduledStartAt],
-    );
+    const operationContext = useOperationContext();
     const followUpTimeline = useMemo(() => {
         if (form.followUpCount <= 0) {
             return [];
         }
 
+        const [dateKey, time = "00:00"] = form.scheduledStartAt.split("T");
         return Array.from({ length: form.followUpCount }, (_, index) => {
             const attemptNumber = index + 1;
             const offsetDays = attemptNumber * Math.max(1, form.followUpDelayDays);
-            const plannedDate = scheduledStartDate ? addDays(scheduledStartDate, offsetDays) : null;
+            const plannedDate = dateKey
+                ? operationInputValueToUtc(`${shiftDateKey(dateKey, offsetDays)}T${time}`, operationContext.timeZone)
+                : null;
 
             return {
                 attemptNumber,
                 offsetDays,
                 label: plannedDate
-                    ? format(plannedDate, "PPP 'a las' p", { locale: es })
+                    ? formatDateTimeInOperationZone(plannedDate, operationContext.locale, operationContext.timeZone)
                     : `${offsetDays} ${offsetDays === 1 ? "dia" : "dias"} despues del arranque`,
             };
         });
-    }, [form.followUpCount, form.followUpDelayDays, scheduledStartDate]);
+    }, [form.followUpCount, form.followUpDelayDays, form.scheduledStartAt, operationContext.locale, operationContext.timeZone]);
 
     return (
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1.02fr)_minmax(0,0.98fr)]">
@@ -246,7 +254,7 @@ export function BulkCampaignScheduleTab({
                         <p className="font-medium">Disparo inicial</p>
                     </div>
                     <p className="mt-1 text-sm text-muted-foreground">
-                        Si dejas este campo vacio, la campana inicia en cuanto pulses empezar.
+                        Si dejas este campo vacio, la campaña inicia en cuanto pulses empezar.
                     </p>
                     <div className="mt-4 space-y-2">
                         <Label>Programar inicio</Label>
@@ -265,7 +273,7 @@ export function BulkCampaignScheduleTab({
                         <p className="font-medium">Pacing humano</p>
                     </div>
                     <p className="mt-1 text-sm text-muted-foreground">
-                        Asi rompes el patron rigido entre mensajes y haces mas natural la campana.
+                        Asi rompes el patron rigido entre mensajes y haces mas natural la campaña.
                     </p>
 
                     <div className="mt-4 grid gap-4 lg:grid-cols-2">
@@ -452,7 +460,7 @@ export function BulkCampaignScheduleTab({
                     </div>
                     <div className="mt-4 space-y-3 text-sm text-muted-foreground">
                         <div className="rounded-xl border bg-background/85 p-3">
-                            Primer disparo: <span className="font-semibold text-foreground">{form.scheduledStartAt ? formatDateTime(new Date(form.scheduledStartAt).toISOString()) : "cuando pulses iniciar"}</span>
+                            Primer disparo: <span className="font-semibold text-foreground">{form.scheduledStartAt ? formatOperationInputValue(form.scheduledStartAt, operationContext.locale, operationContext.timeZone, "cuando pulses iniciar") : "cuando pulses iniciar"}</span>
                         </div>
                         <div className="rounded-xl border bg-background/85 p-3">
                             Luego el sistema intercalara delays de <span className="font-semibold text-foreground">{form.randomDelayMinSeconds}</span> a <span className="font-semibold text-foreground">{form.randomDelayMaxSeconds}</span> segundos por mensaje.

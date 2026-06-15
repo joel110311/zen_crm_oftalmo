@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 import { Prisma } from "@prisma/client";
 import { withSettingsDefaults } from "@/lib/system-settings";
+import { requirePermission } from "@/lib/authz";
 
 export async function getSystemSettings() {
     try {
@@ -41,6 +42,9 @@ export async function updateSystemSettings(data: {
     businessTimeZone?: string;
     businessWeeklySchedule?: Prisma.InputJsonValue;
     appointmentDurationMinutes?: number;
+    brandName?: string;
+    brandLogoUrl?: string;
+    brandFaviconUrl?: string;
     googleClientId?: string;
     googleClientSecret?: string;
     googleCalendarId?: string;
@@ -57,6 +61,8 @@ export async function updateSystemSettings(data: {
     catalogIncludeLink?: boolean;
 }) {
     try {
+        await requirePermission("ai.manage");
+
         const first = await prisma.systemSettings.findFirst();
 
         if (first) {

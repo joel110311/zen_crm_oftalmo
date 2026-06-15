@@ -1,4 +1,8 @@
 import type { BulkCampaignAudienceMode, BulkCampaignManualEntry } from "@/lib/bulk-campaign-audience";
+import { buildOperationContext, formatPhoneForDisplay } from "@/lib/operation-context";
+import { dateTimeToOperationInputValue } from "@/lib/operation-dates";
+
+const FALLBACK_CAMPAIGN_OPERATION = buildOperationContext();
 
 export type CampaignVariantRecord = {
     id: string;
@@ -270,31 +274,30 @@ export function appendCommaSeparatedValue(source: string, value: string) {
     return [...existing, normalizedValue].join(", ");
 }
 
-export function formatPhone(phone: string | null | undefined) {
-    if (!phone) return "Sin teléfono";
-    const cleaned = phone.replace(/\D/g, "");
-    if (cleaned.length === 12 && cleaned.startsWith("52")) {
-        return `+${cleaned.slice(0, 2)} ${cleaned.slice(2, 5)} ${cleaned.slice(5, 8)} ${cleaned.slice(8)}`;
-    }
-    if (cleaned.length === 10) {
-        return `+52 ${cleaned.slice(0, 3)} ${cleaned.slice(3, 6)} ${cleaned.slice(6)}`;
-    }
-    return `+${cleaned}`;
+export function formatPhone(phone: string | null | undefined, defaultCountryCode?: string | null) {
+    return formatPhoneForDisplay(phone, defaultCountryCode) || "Sin teléfono";
 }
 
-export function toLocalDateTimeValue(value: string | null | undefined) {
+export function toLocalDateTimeValue(
+    value: string | null | undefined,
+    timeZone = FALLBACK_CAMPAIGN_OPERATION.timeZone,
+) {
     if (!value) return "";
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return "";
-    const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
-    return localDate.toISOString().slice(0, 16);
+    return dateTimeToOperationInputValue(date, timeZone);
 }
 
-export function formatDateTime(value: string | null | undefined) {
+export function formatDateTime(
+    value: string | null | undefined,
+    locale = FALLBACK_CAMPAIGN_OPERATION.locale,
+    timeZone = FALLBACK_CAMPAIGN_OPERATION.timeZone,
+) {
     if (!value) return "Inmediato";
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return "Inmediato";
-    return date.toLocaleString("es-MX", {
+    return date.toLocaleString(locale, {
+        timeZone,
         dateStyle: "medium",
         timeStyle: "short",
     });

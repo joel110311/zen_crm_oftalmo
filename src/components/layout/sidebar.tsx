@@ -5,14 +5,16 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { signOut, useSession } from "next-auth/react";
 import {
+    Banknote,
+    BarChart3,
     BrainCircuit,
     Calendar,
-    KanbanSquare,
+    ClipboardCheck,
+    ClipboardList,
     LayoutDashboard,
     LayoutTemplate,
     LogOut,
     Menu,
-    MessageSquare,
     Settings,
     Shield,
     ShieldCheck,
@@ -21,26 +23,41 @@ import {
 } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
-import { ZenLogo } from "@/components/icons/zen-logo";
+import { WhatsAppIcon } from "@/components/icons/whatsapp-icon";
+import { BrandLogo } from "@/components/brand/brand-logo";
+import { resolveBranding, type BrandingSettings } from "@/lib/branding";
 import { cn } from "@/lib/utils";
+import { getRoleLabel, hasPermission, type PermissionKey } from "@/lib/permissions";
 
-const sidebarNavItems = [
-    { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-    { title: "Contactos", href: "/dashboard/contacts", icon: Users },
-    { title: "Pipeline", href: "/dashboard/pipeline", icon: KanbanSquare },
-    { title: "Chats", href: "/dashboard/inbox", icon: MessageSquare },
-    { title: "Plantillas", href: "/dashboard/templates", icon: LayoutTemplate, superadminOnly: true },
-    { title: "Calendario", href: "/dashboard/calendar", icon: Calendar },
-    { title: "Cerebro IA", href: "/dashboard/brain", icon: BrainCircuit, superadminOnly: true },
+type SidebarNavItem = {
+    title: string;
+    href: string;
+    icon: React.ComponentType<{ className?: string }>;
+    permission?: PermissionKey;
+};
+
+const sidebarNavItems: SidebarNavItem[] = [
+    { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard, permission: "dashboard.view" },
+    { title: "Contactos", href: "/dashboard/contacts", icon: Users, permission: "contacts.manage" },
+    { title: "Pacientes", href: "/dashboard/patients", icon: ClipboardList, permission: "patients.manage" },
+    { title: "Recepcion", href: "/dashboard/reception", icon: ClipboardCheck, permission: "reception.manage" },
+    { title: "Caja", href: "/dashboard/billing", icon: Banknote, permission: "billing.manage" },
+    { title: "Reportes", href: "/dashboard/reports", icon: BarChart3, permission: "reports.view" },
+    { title: "Chats", href: "/dashboard/inbox", icon: WhatsAppIcon, permission: "chats.manage" },
+    { title: "Plantillas", href: "/dashboard/templates", icon: LayoutTemplate, permission: "templates.manage" },
+    { title: "Calendario", href: "/dashboard/calendar", icon: Calendar, permission: "calendar.manage" },
+    { title: "Cerebro IA", href: "/dashboard/brain", icon: BrainCircuit, permission: "ai.manage" },
     { title: "Configuracion", href: "/dashboard/settings", icon: Settings },
 ];
 
 export function Sidebar({ className }: React.HTMLAttributes<HTMLDivElement>) {
     const pathname = usePathname();
     const [open, setOpen] = useState(false);
+    const [branding, setBranding] = useState<BrandingSettings>(() => resolveBranding(null));
     const { data: session, status } = useSession();
     const sessionLoading = status === "loading";
-    const userRole = (session?.user as { role?: string } | undefined)?.role;
+    const sessionUser = session?.user as { role?: string; permissions?: unknown } | undefined;
+    const userRole = sessionUser?.role;
     const userName = session?.user?.name || (sessionLoading ? "..." : "Usuario");
 
     useEffect(() => {
@@ -50,13 +67,30 @@ export function Sidebar({ className }: React.HTMLAttributes<HTMLDivElement>) {
         };
     }, [open]);
 
+    useEffect(() => {
+        let ignore = false;
+
+        fetch("/api/branding", { cache: "no-store" })
+            .then((response) => response.json())
+            .then((data) => {
+                if (!ignore) setBranding(resolveBranding(data));
+            })
+            .catch(() => {
+                if (!ignore) setBranding(resolveBranding(null));
+            });
+
+        return () => {
+            ignore = true;
+        };
+    }, []);
+
     const filteredNavItems = sidebarNavItems.filter((item) => {
-        if (sessionLoading) return !item.superadminOnly;
-        if (item.superadminOnly && userRole !== "SUPERADMIN") return false;
+        if (sessionLoading) return !item.permission;
+        if (item.permission && !hasPermission(sessionUser, item.permission)) return false;
         return true;
     });
 
-    const renderNavItem = (item: typeof sidebarNavItems[number], key: string, onClickExtra?: () => void) => {
+    const renderNavItem = (item: SidebarNavItem, key: string, onClickExtra?: () => void) => {
         const Icon = item.icon;
         const isActive = pathname === item.href;
 
@@ -103,13 +137,13 @@ export function Sidebar({ className }: React.HTMLAttributes<HTMLDivElement>) {
                 <Badge variant="outline" className="mt-1 border-white/10 bg-white/5 px-2 py-0 text-[10px] text-sidebar-foreground/70">
                     {sessionLoading ? (
                         <div className="my-1 h-2 w-12 animate-pulse rounded bg-white/10" />
-                    ) : userRole === "SUPERADMIN" ? (
+                    ) : hasPermission(sessionUser, "system.fullAccess") ? (
                         <>
-                            <ShieldCheck className="mr-0.5 h-2.5 w-2.5" /> Super Admin
+                            <ShieldCheck className="mr-0.5 h-2.5 w-2.5" /> Control total
                         </>
                     ) : (
                         <>
-                            <Shield className="mr-0.5 h-2.5 w-2.5" /> Admin
+                            <Shield className="mr-0.5 h-2.5 w-2.5" /> {getRoleLabel(userRole)}
                         </>
                     )}
                 </Badge>
@@ -129,8 +163,8 @@ export function Sidebar({ className }: React.HTMLAttributes<HTMLDivElement>) {
                 </button>
 
                 <Link href="/dashboard" className="flex items-center gap-2.5 text-sidebar-foreground">
-                    <ZenLogo className="h-7 w-7 text-white" />
-                    <span className="text-base font-semibold tracking-tight text-white">Zen CRM</span>
+                    <BrandLogo brandName={branding.brandName} logoUrl={branding.brandLogoUrl} className="h-7 w-7 text-white" />
+                    <span className="text-base font-semibold tracking-tight text-white">{branding.brandName}</span>
                 </Link>
 
                 <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-sm font-bold text-primary-foreground shadow-[0_12px_22px_-16px_rgba(10,64,35,0.95)]">
@@ -154,8 +188,8 @@ export function Sidebar({ className }: React.HTMLAttributes<HTMLDivElement>) {
                 <div className="flex h-full flex-col">
                     <div className="flex items-center justify-between rounded-[1.1rem] border border-white/8 bg-white/6 px-3.5 py-3 shadow-[0_20px_40px_-30px_rgba(0,0,0,0.95)]">
                         <Link href="/dashboard" className="flex items-center gap-2.5 text-sidebar-foreground" onClick={() => setOpen(false)}>
-                            <ZenLogo className="h-8 w-8 text-white" />
-                            <span className="text-lg font-semibold tracking-tight text-white">Zen CRM</span>
+                            <BrandLogo brandName={branding.brandName} logoUrl={branding.brandLogoUrl} className="h-8 w-8 text-white" />
+                            <span className="text-lg font-semibold tracking-tight text-white">{branding.brandName}</span>
                         </Link>
                         <button
                             onClick={() => setOpen(false)}
@@ -195,9 +229,9 @@ export function Sidebar({ className }: React.HTMLAttributes<HTMLDivElement>) {
             <aside className={cn("hidden w-[244px] shrink-0 border-r border-sidebar-border/85 bg-sidebar px-3 py-3 md:flex md:flex-col", className)}>
                 <div className="rounded-[1.1rem] border border-white/8 bg-white/6 px-4 py-4 shadow-[0_20px_40px_-30px_rgba(0,0,0,0.9)]">
                     <Link href="/dashboard" className="flex items-center gap-3 text-sidebar-foreground">
-                        <ZenLogo className="h-8 w-8 text-white" />
+                        <BrandLogo brandName={branding.brandName} logoUrl={branding.brandLogoUrl} className="h-8 w-8 text-white" />
                         <div className="space-y-0.5">
-                            <span className="block text-base font-semibold tracking-tight text-white">Zen CRM</span>
+                            <span className="block truncate text-base font-semibold tracking-tight text-white">{branding.brandName}</span>
                             <span className="block text-xs text-sidebar-foreground/48">Workspace comercial</span>
                         </div>
                     </Link>

@@ -32,8 +32,20 @@ import { getSafeMediaUrl } from "@/lib/media-url";
 import { TemplateRecord, extractTemplateSlashQuery, renderTemplateContent } from "@/lib/templates";
 import { writeUnreadCounts } from "@/lib/inbox-browser-badge";
 import { parseInboundAdPreviewMessageContent } from "@/lib/inbound-ad-preview";
+import { hasPermission } from "@/lib/permissions";
+import { shiftDateKey } from "@/lib/calendar/business-hours";
 import { YCloudTemplateSendModal } from "@/components/inbox/ycloud-template-send-modal";
 import { type GeneratedQuoteAsset, QuoteBuilderPanel } from "@/components/quotes/quote-builder-panel";
+import { useOperationContext } from "@/components/shared/use-operation-context";
+import { buildOperationContext, formatPhoneForDisplay } from "@/lib/operation-context";
+import {
+    formatDateInOperationZone,
+    formatRelativeOperationDate,
+    formatTimeInOperationZone,
+    getOperationDateKey,
+    getOperationTodayKey,
+} from "@/lib/operation-dates";
+import { INBOX_DRAFT_STORAGE_KEY, type InboxDraftPayload } from "@/lib/inbox-drafts";
 import {
     Dialog,
     DialogContent,
@@ -54,6 +66,7 @@ const INBOX_MAX_LOADED_CONVERSATIONS = 5000;
 const INBOX_MESSAGE_PAGE_SIZE = 75;
 const INBOX_DELTA_POLL_INTERVAL_MS = 3000;
 const INBOX_FULL_RESYNC_INTERVAL_MS = 60000;
+const FALLBACK_INBOX_OPERATION = buildOperationContext();
 
 // ──────────── Types ────────────
 export type Message = {
@@ -234,7 +247,11 @@ function collapseMessageDuplicates(messages: Message[]) {
         collapsed.push(message);
     }
 
-    collapsed.sort((left, right) => left.createdAt.getTime() - right.createdAt.getTime());
+    collapsed.sort((left, right) => {
+        const timeDelta = left.createdAt.getTime() - right.createdAt.getTime();
+        if (timeDelta !== 0) return timeDelta;
+        return left.id.localeCompare(right.id);
+    });
     return collapsed;
 }
 
@@ -287,6 +304,39 @@ type WhatsAppSessionStatus = {
     ycloudPhoneId?: string | null;
     error?: string;
 };
+
+function parseStoredInboxDraft(raw: string | null): InboxDraftPayload | null {
+    if (!raw) return null;
+
+    try {
+        const parsed = JSON.parse(raw) as Partial<InboxDraftPayload>;
+        const mediaCategory = parsed.mediaCategory || "document";
+        const isKnownMediaCategory = ["image", "video", "audio", "document"].includes(mediaCategory);
+        const normalizedMediaCategory = mediaCategory as InboxDraftPayload["mediaCategory"];
+
+        if (
+            typeof parsed.conversationId === "string" &&
+            (typeof parsed.content === "string" || typeof parsed.mediaUrl === "string") &&
+            isKnownMediaCategory
+        ) {
+            return {
+                conversationId: parsed.conversationId,
+                content: typeof parsed.content === "string" ? parsed.content : "",
+                mediaUrl: typeof parsed.mediaUrl === "string" ? parsed.mediaUrl : "",
+                fileName: typeof parsed.fileName === "string" ? parsed.fileName : "",
+                mimeType: typeof parsed.mimeType === "string" ? parsed.mimeType : "",
+                mediaCategory: normalizedMediaCategory,
+                previewUrl: typeof parsed.previewUrl === "string" ? parsed.previewUrl : undefined,
+                createdAt: typeof parsed.createdAt === "string" ? parsed.createdAt : new Date().toISOString(),
+                source: parsed.source || "manual",
+            };
+        }
+    } catch (error) {
+        console.error("Failed to parse inbox draft:", error);
+    }
+
+    return null;
+}
 
 type LeadIntelligenceSnapshot = {
     score: number;
@@ -455,16 +505,8 @@ function formatWhatsAppText(text: string): React.ReactNode {
     });
 }
 // ──────────── Helpers ────────────
-function formatPhone(phone: string | null | undefined): string {
-    if (!phone) return "";
-    const cleaned = phone.replace(/\D/g, "");
-    if (cleaned.length === 12 && cleaned.startsWith("52")) {
-        return `+${cleaned.slice(0, 2)} ${cleaned.slice(2, 5)} ${cleaned.slice(5, 8)} ${cleaned.slice(8)}`;
-    }
-    if (cleaned.length === 10) {
-        return `+52 ${cleaned.slice(0, 3)} ${cleaned.slice(3, 6)} ${cleaned.slice(6)}`;
-    }
-    return `+${cleaned}`;
+function formatPhone(phone: string | null | undefined, defaultCountryCode?: string | null): string {
+    return formatPhoneForDisplay(phone, defaultCountryCode);
 }
 
 function fileExtensionFromMimeType(mimeType: string | null | undefined): string {
@@ -482,39 +524,17 @@ function fileExtensionFromMimeType(mimeType: string | null | undefined): string 
     return subtype.replace(/[^a-z0-9]/gi, "") || "png";
 }
 
-function formatConversationListTimestamp(value: Date | string | null | undefined): string {
+function formatConversationListTimestamp(
+    value: Date | string | null | undefined,
+    locale = FALLBACK_INBOX_OPERATION.locale,
+    timeZone = FALLBACK_INBOX_OPERATION.timeZone,
+): string {
     if (!value) return "";
 
     const date = value instanceof Date ? value : new Date(value);
     if (Number.isNaN(date.getTime())) return "";
 
-    const now = new Date();
-    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const targetStart = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-    const diffDays = Math.round((todayStart.getTime() - targetStart.getTime()) / 86_400_000);
-
-    if (diffDays <= 0) {
-        return date.toLocaleTimeString("es-MX", {
-            hour: "numeric",
-            minute: "2-digit",
-        });
-    }
-
-    if (diffDays === 1) {
-        return "Ayer";
-    }
-
-    if (diffDays <= 6) {
-        return date
-            .toLocaleDateString("es-MX", { weekday: "long" })
-            .toLowerCase();
-    }
-
-    return date.toLocaleDateString("es-MX", {
-        day: "numeric",
-        month: "numeric",
-        year: "numeric",
-    });
+    return formatRelativeOperationDate(date, locale, timeZone);
 }
 
 // Deterministic color for avatar based on name
@@ -914,6 +934,11 @@ function MicPermissionBanner({ onAllow, onDeny }: { onAllow: () => void; onDeny:
 
 // ──────────── Contact Info Panel ────────────
 function ContactInfoPanel({ conversation, onClose }: { conversation: Conversation; onClose: () => void }) {
+    const operationContext = useOperationContext();
+    const formatDisplayPhone = useCallback(
+        (phone: string | null | undefined) => formatPhone(phone, operationContext.phoneDefaultCountry),
+        [operationContext.phoneDefaultCountry],
+    );
     const contact = conversation.contact;
     const intelligence = conversation.leadIntelligence ?? null;
     const leadStatusLabel = intelligence ? (LEAD_STATUS_LABELS[intelligence.interestStatus] || intelligence.interestStatus) : null;
@@ -941,7 +966,7 @@ function ContactInfoPanel({ conversation, onClose }: { conversation: Conversatio
                     </Avatar>
                     <div className="mt-4 text-center">
                         <h4 className="text-lg font-semibold">{contact?.name || "Desconocido"}</h4>
-                        <p className="text-sm text-muted-foreground">{formatPhone(contact?.phone)}</p>
+                        <p className="text-sm text-muted-foreground">{formatDisplayPhone(contact?.phone)}</p>
                     </div>
 
                     {/* Status badge */}
@@ -958,7 +983,7 @@ function ContactInfoPanel({ conversation, onClose }: { conversation: Conversatio
                             <Phone className="h-4 w-4 text-muted-foreground shrink-0" />
                             <div>
                                 <p className="text-xs text-muted-foreground">Teléfono</p>
-                                <p className="text-sm font-medium">{formatPhone(contact?.phone) || "—"}</p>
+                                <p className="text-sm font-medium">{formatDisplayPhone(contact?.phone) || "—"}</p>
                             </div>
                         </div>
                         <div className="flex items-center gap-3 rounded-2xl bg-card/70 px-3 py-3 dark:bg-card/55">
@@ -980,7 +1005,8 @@ function ContactInfoPanel({ conversation, onClose }: { conversation: Conversatio
                             <div>
                                 <p className="text-xs text-muted-foreground">Última actividad</p>
                                 <p className="text-sm font-medium">
-                                    {new Date(conversation.updatedAt).toLocaleString("es-MX", {
+                                    {new Date(conversation.updatedAt).toLocaleString(operationContext.locale, {
+                                        timeZone: operationContext.timeZone,
                                         day: "numeric", month: "short", year: "numeric",
                                         hour: "2-digit", minute: "2-digit"
                                     })}
@@ -1051,7 +1077,7 @@ function ContactInfoPanel({ conversation, onClose }: { conversation: Conversatio
                                 </div>
                                 <div className="flex items-center justify-between gap-3 text-sm">
                                     <span className="text-muted-foreground">Telefono</span>
-                                    <span className="font-medium text-right">{formatPhone(contact?.phone) || "-"}</span>
+                                    <span className="font-medium text-right">{formatDisplayPhone(contact?.phone) || "-"}</span>
                                 </div>
                             </div>
                         </div>
@@ -1163,11 +1189,12 @@ function WindowTimer({ expiresAt, onWindowChange }: { expiresAt: string | null |
 
 // ──────────── Main Inbox Page ────────────
 export default function InboxPage() {
+    const operationContext = useOperationContext();
     const searchParams = useSearchParams();
     const { data: session } = useSession();
-    const sessionUser = session?.user as { id?: string; role?: string } | undefined;
+    const sessionUser = session?.user as { id?: string; role?: string; permissions?: unknown } | undefined;
     const currentUserId = sessionUser?.id || null;
-    const currentUserRole = sessionUser?.role || "ADMIN";
+    const canAssignAnyUser = hasPermission(sessionUser, "users.manage");
     const currentUserName = session?.user?.name || "";
     const [conversations, setConversations] = useState<Conversation[]>([]);
     const [selectedChat, setSelectedChat] = useState<Conversation | null>(null);
@@ -1205,6 +1232,10 @@ export default function InboxPage() {
         [messages, emojiPickerMsgId],
     );
     const outboundSourceType = selectedChat?.sourceType || "wuzapi";
+    const formatDisplayPhone = useCallback(
+        (phone: string | null | undefined) => formatPhone(phone, operationContext.phoneDefaultCountry),
+        [operationContext.phoneDefaultCountry],
+    );
 
     const isWuzapiTransportReady = Boolean(
         whatsAppSession?.configured &&
@@ -1267,6 +1298,44 @@ export default function InboxPage() {
 
         return target;
     }, []);
+
+    const clearInboxDeepLinkParams = useCallback(() => {
+        if (typeof window === "undefined") return;
+
+        const url = new URL(window.location.href);
+        const paramsToClear = ["conversationId", "contactId", "phone", "sourceType", "source", "draft"];
+        let changed = false;
+
+        for (const param of paramsToClear) {
+            if (url.searchParams.has(param)) {
+                url.searchParams.delete(param);
+                changed = true;
+            }
+        }
+
+        if (changed) {
+            const nextUrl = `${url.pathname}${url.search}${url.hash}`;
+            window.history.replaceState(null, "", nextUrl);
+        }
+    }, []);
+
+    const handleSelectConversation = useCallback((chat: Conversation) => {
+        ignoreDeepLinkSelectionRef.current = true;
+        clearInboxDeepLinkParams();
+        setSelectedChat(chat);
+        setShowContactInfo(false);
+        setUnreadCounts(prev => {
+            const next = { ...prev };
+            delete next[chat.id];
+            return next;
+        });
+    }, [clearInboxDeepLinkParams]);
+
+    const handleCloseConversation = useCallback(() => {
+        ignoreDeepLinkSelectionRef.current = true;
+        clearInboxDeepLinkParams();
+        setSelectedChat(null);
+    }, [clearInboxDeepLinkParams]);
 
     const handleWindowChange = useCallback((open: boolean) => {
         setIsWindowOpen(open);
@@ -1403,6 +1472,7 @@ export default function InboxPage() {
     const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
     const [hasLoadedUnreadCounts, setHasLoadedUnreadCounts] = useState(false);
     const isFirstFetchRef = useRef(true);
+    const ignoreDeepLinkSelectionRef = useRef(false);
     const prevConvTimestampsRef = useRef<Record<string, string>>({});
     const conversationsCursorRef = useRef<string | null>(null);
     const oldestConversationCursorRef = useRef<string | null>(null);
@@ -1414,6 +1484,7 @@ export default function InboxPage() {
     const selectedChatIdRef = useRef<string | null>(null);
     const selectedChatUpdatedAtRef = useRef<string | null>(null);
     const forceFullMessagesSyncRef = useRef(false);
+    const appliedInboxDraftRef = useRef<string | null>(null);
 
     const setHasMoreMessagesState = useCallback((next: boolean) => {
         hasMoreMessagesRef.current = next;
@@ -1644,9 +1715,18 @@ export default function InboxPage() {
                 if (isFirstFetchRef.current && mode === "full") {
                     isFirstFetchRef.current = false;
 
-                    const contactIdParam = searchParams.get("contactId");
-                    const phoneParam = searchParams.get("phone");
-                    const sourceParam = searchParams.get("sourceType") || searchParams.get("source");
+                    const conversationIdParam = ignoreDeepLinkSelectionRef.current ? null : searchParams.get("conversationId");
+                    if (conversationIdParam && transformed.length > 0) {
+                        const match = transformed.find((conversation) => conversation.id === conversationIdParam);
+                        if (match) {
+                            setSelectedChat(match);
+                            return;
+                        }
+                    }
+
+                    const contactIdParam = ignoreDeepLinkSelectionRef.current ? null : searchParams.get("contactId");
+                    const phoneParam = ignoreDeepLinkSelectionRef.current ? null : searchParams.get("phone");
+                    const sourceParam = ignoreDeepLinkSelectionRef.current ? null : searchParams.get("sourceType") || searchParams.get("source");
                     const requestedSource = sourceParam === "ycloud" || sourceParam === "wuzapi" ? sourceParam : null;
                     if ((contactIdParam || phoneParam) && transformed.length > 0) {
                         const contactMatches = transformed.filter((conversation) => {
@@ -1662,9 +1742,6 @@ export default function InboxPage() {
                         }
                     }
 
-                    if (!currentId && transformed.length > 0) {
-                        setSelectedChat(transformed[0]);
-                    }
                 }
 
                 if (currentId) {
@@ -1702,6 +1779,22 @@ export default function InboxPage() {
             clearInterval(fullResyncInterval);
         };
     }, [searchParams, setHasMoreConversationsState]);
+
+    useEffect(() => {
+        const conversationIdParam = searchParams.get("conversationId");
+        if (ignoreDeepLinkSelectionRef.current || !conversationIdParam || selectedChat?.id === conversationIdParam) {
+            return;
+        }
+
+        const existing = conversations.find((conversation) => conversation.id === conversationIdParam);
+        if (existing) {
+            setSelectedChat(existing);
+            setShowContactInfo(false);
+            return;
+        }
+
+        void refreshConversationsAndSelect(conversationIdParam);
+    }, [conversations, refreshConversationsAndSelect, searchParams, selectedChat?.id]);
 
     const loadOlderConversations = useCallback(async () => {
         if (isLoadingMoreConversationsRef.current || !hasMoreConversationsRef.current) return;
@@ -1997,6 +2090,31 @@ export default function InboxPage() {
         isPrependingOlderMessagesRef.current = false;
     }, [selectedChat?.id]);
 
+    useEffect(() => {
+        if (!selectedChat?.id || typeof window === "undefined") return;
+        if (!searchParams.get("draft")) return;
+
+        const draft = parseStoredInboxDraft(window.sessionStorage.getItem(INBOX_DRAFT_STORAGE_KEY));
+        if (!draft || draft.conversationId !== selectedChat.id) return;
+
+        const draftKey = `${draft.conversationId}:${draft.createdAt}:${draft.mediaUrl || "text"}`;
+        if (appliedInboxDraftRef.current === draftKey) return;
+
+        appliedInboxDraftRef.current = draftKey;
+        setInputText(draft.content || "");
+        setPendingFile(draft.mediaUrl ? {
+            url: draft.mediaUrl,
+            fileName: draft.fileName,
+            mimeType: draft.mimeType,
+            mediaCategory: draft.mediaCategory,
+            previewUrl: draft.previewUrl,
+        } : null);
+        setReplyingTo(null);
+        window.sessionStorage.removeItem(INBOX_DRAFT_STORAGE_KEY);
+        window.history.replaceState(null, "", `/dashboard/inbox?conversationId=${encodeURIComponent(selectedChat.id)}`);
+        setTimeout(() => scrollToBottom("instant"), 150);
+    }, [scrollToBottom, searchParams, selectedChat?.id]);
+
     // Cleanup
     useEffect(() => {
         return () => { if (recordingTimerRef.current) clearInterval(recordingTimerRef.current); };
@@ -2119,7 +2237,7 @@ export default function InboxPage() {
     });
 
     // ──── Voice Recording ────
-    const assignableUsers = currentUserRole === "SUPERADMIN"
+    const assignableUsers = canAssignAnyUser
         ? teamUsers
         : teamUsers.filter((user) => user.id === currentUserId || user.id === selectedChat?.assignedUserId);
 
@@ -2716,14 +2834,7 @@ export default function InboxPage() {
                                 <button
                                     key={chat.id}
                                     onClick={() => {
-                                        setSelectedChat(chat);
-                                        setShowContactInfo(false);
-                                        // Clear unread count for this chat
-                                        setUnreadCounts(prev => {
-                                            const next = { ...prev };
-                                            delete next[chat.id];
-                                            return next;
-                                        });
+                                        handleSelectConversation(chat);
                                     }}
                                     className={cn(
                                         "grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-2 rounded-[1.05rem] border px-2.5 py-2 text-left transition-all",
@@ -2759,7 +2870,7 @@ export default function InboxPage() {
                                             </span>
                                         </div>
                                         {chat.contact?.phone && (
-                                            <p className="mt-0.5 text-[10px] text-muted-foreground/85 truncate leading-tight">{formatPhone(chat.contact.phone)}</p>
+                                            <p className="mt-0.5 text-[10px] text-muted-foreground/85 truncate leading-tight">{formatDisplayPhone(chat.contact.phone)}</p>
                                         )}
                                         <p className="text-[10px] text-muted-foreground/80 truncate leading-tight">
                                             {chat.assignedUser
@@ -2772,7 +2883,7 @@ export default function InboxPage() {
                                     </div>
                                     <div className="flex shrink-0 flex-col items-end gap-0.5 pt-0.5">
                                         <span className="text-[10px] font-medium text-muted-foreground/85 whitespace-nowrap">
-                                            {formatConversationListTimestamp(chat.updatedAt)}
+                                            {formatConversationListTimestamp(chat.updatedAt, operationContext.locale, operationContext.timeZone)}
                                         </span>
                                         <MessageResponderBadge
                                             label={currentModeLabel}
@@ -2818,7 +2929,7 @@ export default function InboxPage() {
                             <div className="shrink-0 flex min-h-[5.4rem] flex-wrap items-center justify-between gap-3 border-b border-border/50 bg-card/70 px-4 py-4 backdrop-blur-2xl md:px-6">
                                 <div className="flex items-center gap-1 overflow-hidden">
                                     {/* Back button on mobile */}
-                                    <button className="md:hidden flex-shrink-0 rounded-full border border-border/60 bg-background/90 p-2 shadow-sm hover:bg-muted" onClick={() => setSelectedChat(null)}>
+                                    <button className="md:hidden flex-shrink-0 rounded-full border border-border/60 bg-background/90 p-2 shadow-sm hover:bg-muted" onClick={handleCloseConversation}>
                                         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6" /></svg>
                                     </button>
                                     <button className="ml-1 flex items-center gap-3 overflow-hidden text-left transition hover:opacity-80 md:ml-0" onClick={() => setShowContactInfo(true)}>
@@ -2842,7 +2953,7 @@ export default function InboxPage() {
                                                     <Badge variant="secondary" className="shrink-0 rounded-full border border-border/50 bg-background/80 px-2 py-0.5 text-[10px]">Cerrada</Badge>
                                                 )}
                                             </div>
-                                            <div className="text-xs text-muted-foreground truncate">{formatPhone(selectedChat.contact?.phone)}</div>
+                                            <div className="text-xs text-muted-foreground truncate">{formatDisplayPhone(selectedChat.contact?.phone)}</div>
                                             <div className="text-[11px] text-muted-foreground truncate">
                                                 {selectedChat.assignedUser
                                                     ? `Asignado a ${selectedChat.assignedUser.name || selectedChat.assignedUser.email}`
@@ -2979,20 +3090,21 @@ export default function InboxPage() {
                                             // Dynamic date separators
                                             const msgDate = new Date(msg.createdAt);
                                             const prevDate = idx > 0 ? new Date(messages[idx - 1].createdAt) : null;
-                                            const showDateSep = idx === 0 || (prevDate && msgDate.toDateString() !== prevDate.toDateString());
+                                            const msgDateKey = getOperationDateKey(msgDate, operationContext.timeZone);
+                                            const prevDateKey = prevDate ? getOperationDateKey(prevDate, operationContext.timeZone) : null;
+                                            const showDateSep = idx === 0 || msgDateKey !== prevDateKey;
                                             const responderLabel = getMessageResponderLabel(msg);
 
                                             let dateLabel = "";
                                             if (showDateSep) {
-                                                const today = new Date();
-                                                const yesterday = new Date();
-                                                yesterday.setDate(today.getDate() - 1);
-                                                if (msgDate.toDateString() === today.toDateString()) {
+                                                const todayKey = getOperationTodayKey(operationContext.timeZone);
+                                                const yesterdayKey = shiftDateKey(todayKey, -1);
+                                                if (msgDateKey === todayKey) {
                                                     dateLabel = "Hoy";
-                                                } else if (msgDate.toDateString() === yesterday.toDateString()) {
+                                                } else if (msgDateKey === yesterdayKey) {
                                                     dateLabel = "Ayer";
                                                 } else {
-                                                    dateLabel = msgDate.toLocaleDateString("es-MX", { day: "numeric", month: "numeric", year: "numeric" });
+                                                    dateLabel = formatDateInOperationZone(msgDate, operationContext.locale, operationContext.timeZone, { day: "numeric", month: "numeric", year: "numeric" });
                                                 }
                                             }
 
@@ -3142,7 +3254,7 @@ export default function InboxPage() {
                                                                     </span>
                                                                 )}
                                                                 <p>
-                                                                    {new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                                                                    {formatTimeInOperationZone(msg.createdAt, operationContext.locale, operationContext.timeZone)}
                                                                 </p>
                                                             </div>
                                                         </div>

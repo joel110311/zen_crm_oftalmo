@@ -1,23 +1,23 @@
 "use client";
 
-import { useState, useEffect, useTransition } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { useCallback, useEffect, useState, useTransition } from "react";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea"; // Assuming you have this, otherwise Input
+import { Switch } from "@/components/ui/switch";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { cn } from "@/lib/utils";
-import { format } from "date-fns";
-import { es } from "date-fns/locale";
-import { CalendarIcon, Clock, Check, ChevronsUpDown, Loader2, User } from "lucide-react";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
-import { createAppointment, updateAppointment, deleteAppointment } from "@/app/actions/calendar"; // Ensure these exist
-import { createContact, getContacts } from "@/app/actions/contacts"; // Need a search function for contacts
+import { cn } from "@/lib/utils";
+import { Bell, CalendarIcon, Check, ChevronsUpDown, Clock, CreditCard, Loader2, User } from "lucide-react";
+import { createAppointment, deleteAppointment, updateAppointment } from "@/app/actions/calendar";
+import { getPatientsForPicker, savePatient } from "@/app/actions/patients";
+import { getSpecialists } from "@/app/actions/specialists";
 import { useToast } from "@/components/ui/use-toast";
-import { getContactFullName } from "@/lib/contact-name";
+import { PhonePrefixInput } from "@/components/shared/phone-prefix-input";
 import type { GoogleCalendarSourceSummary } from "@/lib/google-calendar";
 import {
     formatTimeLabel,
@@ -27,91 +27,256 @@ import {
     timeToMinutes,
     type BusinessHoursConfig,
 } from "@/lib/calendar/business-hours";
-
-interface AppointmentDialogProps {
-    open: boolean;
-    onOpenChange: (open: boolean) => void;
-    selectedEvent?: any; // Replace with proper type
-    selectedSlot?: { start: Date; end: Date } | null;
-    onSuccess: () => void;
-    businessHours: BusinessHoursConfig;
-}
+import {
+    dateKeyToLocalNoonDate,
+    formatOperationDayLabel,
+    getLocalCalendarDateKey,
+    getOperationDateKey,
+    getOperationTodayKey,
+    operationDateReference,
+    operationDateTimeToUtc,
+    timeToOperationInputValue,
+} from "@/lib/operation-dates";
 
 type GoogleCalendarStatusPayload = {
     sources: GoogleCalendarSourceSummary[];
 };
 
-export function AppointmentDialog({ open, onOpenChange, selectedEvent, selectedSlot, onSuccess, businessHours }: AppointmentDialogProps) {
+type PatientPickerItem = Awaited<ReturnType<typeof getPatientsForPicker>>[number];
+type SpecialistPickerItem = Awaited<ReturnType<typeof getSpecialists>>[number];
+
+type SelectedAppointmentEvent = {
+    id: string;
+    title: string;
+    start: Date;
+    end: Date;
+    notes?: string | null;
+    resource?: {
+        patient?: { id?: string | null } | null;
+        specialist?: { id?: string | null } | null;
+        specialistId?: string | null;
+        appointmentType?: string | null;
+        isFirstVisit?: boolean | null;
+        isOverbook?: boolean | null;
+        visitMode?: string | null;
+        meetStatus?: string | null;
+        meetLink?: string | null;
+        paymentStatus?: string | null;
+        paymentAmount?: number | null;
+        paymentCurrency?: string | null;
+        remindersOptOut?: boolean | null;
+        googleCalendarId?: string | null;
+    };
+};
+
+interface AppointmentDialogProps {
+    open: boolean;
+    onOpenChange: (open: boolean) => void;
+    selectedEvent?: SelectedAppointmentEvent | null;
+    selectedSlot?: { start: Date; end: Date } | null;
+    defaultSpecialistId?: string | null;
+    onSuccess: () => void;
+    businessHours: BusinessHoursConfig;
+}
+
+function patientName(patient?: PatientPickerItem | null) {
+    return [patient?.firstName, patient?.lastName].filter(Boolean).join(" ") || "Paciente";
+}
+
+function localTimeInputValue(date: Date) {
+    return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+}
+
+function maxTimeInput(left: string, right: string) {
+    return left > right ? left : right;
+}
+
+function nextOperationMinute(timeZone: string) {
+    return timeToOperationInputValue(new Date(Date.now() + 60_000), timeZone);
+}
+
+export function AppointmentDialog({
+    open,
+    onOpenChange,
+    selectedEvent,
+    selectedSlot,
+    defaultSpecialistId,
+    onSuccess,
+    businessHours,
+}: AppointmentDialogProps) {
     const [isPending, startTransition] = useTransition();
     const { toast } = useToast();
 
-    // Form State
     const [title, setTitle] = useState("");
-    const [contactId, setContactId] = useState("");
+    const [patientId, setPatientId] = useState("");
     const [date, setDate] = useState<Date | undefined>(new Date());
     const [time, setTime] = useState("09:00");
-    const [duration, setDuration] = useState("30"); // minutes
+    const [duration, setDuration] = useState("30");
     const [notes, setNotes] = useState("");
     const [calendarSources, setCalendarSources] = useState<GoogleCalendarSourceSummary[]>([]);
     const [selectedCalendarId, setSelectedCalendarId] = useState<string>("general");
+    const [specialists, setSpecialists] = useState<SpecialistPickerItem[]>([]);
+    const [selectedSpecialistId, setSelectedSpecialistId] = useState<string>("none");
+    const [appointmentType, setAppointmentType] = useState("Consulta");
+    const [isFirstVisit, setIsFirstVisit] = useState(false);
+    const [isOverbook, setIsOverbook] = useState(false);
+    const [visitMode, setVisitMode] = useState("presencial");
+    const [meetLink, setMeetLink] = useState("");
+    const [requestGoogleMeet, setRequestGoogleMeet] = useState(false);
+    const [paymentAmount, setPaymentAmount] = useState("");
+    const [paymentCurrency, setPaymentCurrency] = useState("MXN");
+    const [remindersGloballyEnabled, setRemindersGloballyEnabled] = useState(false);
+    const [sendReminders, setSendReminders] = useState(false);
+    const [operationContext, setOperationContext] = useState({
+        phoneDefaultCountry: "MX",
+        currencies: ["MXN"],
+        defaultCurrency: "MXN",
+        locale: "es-MX",
+        timeZone: "America/Mexico_City",
+    });
 
-    // Contact Search State
-    const [contacts, setContacts] = useState<any[]>([]);
+    const [patients, setPatients] = useState<PatientPickerItem[]>([]);
     const [openCombobox, setOpenCombobox] = useState(false);
     const [query, setQuery] = useState("");
 
-    // New Contact Form State
-    const [isCreatingContact, setIsCreatingContact] = useState(false);
-    const [newContactName, setNewContactName] = useState("");
-    const [newContactPhone, setNewContactPhone] = useState("");
-    const [isSubmittingContact, setIsSubmittingContact] = useState(false);
+    const [isCreatingPatient, setIsCreatingPatient] = useState(false);
+    const [newPatientFirstName, setNewPatientFirstName] = useState("");
+    const [newPatientLastName, setNewPatientLastName] = useState("");
+    const [newPatientPhone, setNewPatientPhone] = useState("");
+    const [isSubmittingPatient, setIsSubmittingPatient] = useState(false);
 
-    const clampTimeToSchedule = (value: string, targetDate: Date) => {
-        const { schedule } = getBusinessDayScheduleForDate(targetDate, businessHours);
+    useEffect(() => {
+        let active = true;
+        fetch("/api/operation-context", { cache: "no-store" })
+            .then(async (response) => (response.ok ? response.json() : null))
+            .then((context) => {
+                if (!active || !context) return;
+                setOperationContext({
+                    phoneDefaultCountry: context.phoneDefaultCountry || "MX",
+                    currencies: Array.isArray(context.currencies) && context.currencies.length > 0 ? context.currencies : ["MXN"],
+                    defaultCurrency: context.defaultCurrency || "MXN",
+                    locale: context.locale || "es-MX",
+                    timeZone: context.timeZone || "America/Mexico_City",
+                });
+            })
+            .catch(() => undefined);
+
+        return () => {
+            active = false;
+        };
+    }, []);
+
+    useEffect(() => {
+        if (!open) return;
+        let active = true;
+        fetch("/api/settings", { cache: "no-store" })
+            .then(async (response) => (response.ok ? response.json() : null))
+            .then((settings) => {
+                if (!active || !settings) return;
+                const enabled = Boolean(settings.appointmentRemindersEnabled && settings.reminderWhatsAppEnabled);
+                setRemindersGloballyEnabled(enabled);
+                setSendReminders(enabled && !selectedEvent?.resource?.remindersOptOut);
+            })
+            .catch(() => undefined);
+
+        return () => {
+            active = false;
+        };
+    }, [open, selectedEvent]);
+
+    const clampTimeToSchedule = useCallback((value: string, targetDate: Date) => {
+        const targetDateKey = getLocalCalendarDateKey(targetDate);
+        const referenceDate = operationDateReference(targetDateKey, businessHours.timeZone);
+        const { schedule } = getBusinessDayScheduleForDate(referenceDate, businessHours);
         if (!schedule.enabled) {
             return businessHours.start;
         }
 
         const minutes = timeToMinutes(value);
-        if (minutes < timeToMinutes(schedule.start) || minutes >= timeToMinutes(schedule.end)) {
-            return schedule.start;
+        const minimumTime = targetDateKey === getOperationTodayKey(businessHours.timeZone)
+            ? maxTimeInput(schedule.start, nextOperationMinute(businessHours.timeZone))
+            : schedule.start;
+        if (minutes < timeToMinutes(minimumTime) || minutes >= timeToMinutes(schedule.end)) {
+            return minimumTime;
         }
 
         return value;
-    };
+    }, [businessHours]);
 
-    // Initialize form when opening
     useEffect(() => {
-        if (open) {
-            if (selectedEvent) {
-                setTitle(selectedEvent.title);
-                setContactId(selectedEvent.resource?.contact?.id || "");
-                setDate(selectedEvent.start);
-                setTime(clampTimeToSchedule(format(selectedEvent.start, "HH:mm"), selectedEvent.start));
-                const diffMins = (selectedEvent.end.getTime() - selectedEvent.start.getTime()) / 60000;
-                setDuration(diffMins.toString());
-                setNotes(selectedEvent.notes || "");
-            } else if (selectedSlot) {
-                const nextDate = isBusinessDayOpen(selectedSlot.start, businessHours)
-                    ? selectedSlot.start
-                    : getNextOpenDate(selectedSlot.start, businessHours);
-                setTitle("");
-                setContactId("");
-                setDate(nextDate);
-                setTime(clampTimeToSchedule(format(selectedSlot.start, "HH:mm"), nextDate));
-                setDuration(String(businessHours.defaultDurationMinutes));
-                setNotes("");
-            } else {
-                const nextOpenDate = getNextOpenDate(new Date(), businessHours);
-                setTitle("");
-                setContactId("");
-                setDate(nextOpenDate);
-                setTime(clampTimeToSchedule(businessHours.start, nextOpenDate));
-                setDuration(String(businessHours.defaultDurationMinutes));
-                setNotes("");
-            }
+        if (!open) return;
+
+        if (selectedEvent) {
+            const selectedDateKey = getOperationDateKey(selectedEvent.start, businessHours.timeZone);
+            const selectedLocalDate = dateKeyToLocalNoonDate(selectedDateKey);
+            setTitle(selectedEvent.title);
+            setPatientId(selectedEvent.resource?.patient?.id || "");
+            setDate(selectedLocalDate);
+            setTime(clampTimeToSchedule(timeToOperationInputValue(selectedEvent.start, businessHours.timeZone), selectedLocalDate));
+            const diffMins = (selectedEvent.end.getTime() - selectedEvent.start.getTime()) / 60000;
+            setDuration(diffMins.toString());
+            setNotes(selectedEvent.notes || "");
+            setSelectedSpecialistId(selectedEvent.resource?.specialistId || selectedEvent.resource?.specialist?.id || "none");
+            setAppointmentType(selectedEvent.resource?.appointmentType || "Consulta");
+            setIsFirstVisit(Boolean(selectedEvent.resource?.isFirstVisit));
+            setIsOverbook(Boolean(selectedEvent.resource?.isOverbook));
+            setVisitMode(selectedEvent.resource?.visitMode || "presencial");
+            setMeetLink(selectedEvent.resource?.meetLink || "");
+            setRequestGoogleMeet(selectedEvent.resource?.meetStatus === "requested");
+            setPaymentAmount(
+                selectedEvent.resource?.paymentAmount
+                    ? String(selectedEvent.resource.paymentAmount)
+                    : "",
+            );
+            setPaymentCurrency(selectedEvent.resource?.paymentCurrency || operationContext.defaultCurrency);
+            setSendReminders(remindersGloballyEnabled && !selectedEvent.resource?.remindersOptOut);
+            return;
         }
-    }, [businessHours, open, selectedEvent, selectedSlot]);
+
+        if (selectedSlot) {
+            const selectedDateKey = getLocalCalendarDateKey(selectedSlot.start);
+            const selectedLocalDate = dateKeyToLocalNoonDate(selectedDateKey);
+            const referenceDate = operationDateReference(selectedDateKey, businessHours.timeZone);
+            const nextDate = isBusinessDayOpen(referenceDate, businessHours)
+                ? selectedLocalDate
+                : dateKeyToLocalNoonDate(getOperationDateKey(getNextOpenDate(referenceDate, businessHours), businessHours.timeZone));
+            setTitle("");
+            setPatientId("");
+            setDate(nextDate);
+            setTime(clampTimeToSchedule(localTimeInputValue(selectedSlot.start), nextDate));
+            setDuration(String(businessHours.defaultDurationMinutes));
+            setNotes("");
+            setSelectedSpecialistId(defaultSpecialistId || "none");
+            setAppointmentType("Consulta");
+            setIsFirstVisit(false);
+            setIsOverbook(false);
+            setVisitMode("presencial");
+            setMeetLink("");
+            setRequestGoogleMeet(false);
+            setPaymentAmount("");
+            setPaymentCurrency(operationContext.defaultCurrency);
+            setSendReminders(remindersGloballyEnabled);
+            return;
+        }
+
+        const nextOpenDate = dateKeyToLocalNoonDate(getOperationDateKey(getNextOpenDate(new Date(), businessHours), businessHours.timeZone));
+        setTitle("");
+        setPatientId("");
+        setDate(nextOpenDate);
+        setTime(clampTimeToSchedule(businessHours.start, nextOpenDate));
+        setDuration(String(businessHours.defaultDurationMinutes));
+        setNotes("");
+        setSelectedSpecialistId(defaultSpecialistId || "none");
+        setAppointmentType("Consulta");
+        setIsFirstVisit(false);
+        setIsOverbook(false);
+        setVisitMode("presencial");
+        setMeetLink("");
+        setRequestGoogleMeet(false);
+        setPaymentAmount("");
+        setPaymentCurrency(operationContext.defaultCurrency);
+        setSendReminders(remindersGloballyEnabled);
+    }, [businessHours, clampTimeToSchedule, defaultSpecialistId, open, operationContext.defaultCurrency, remindersGloballyEnabled, selectedEvent, selectedSlot]);
 
     useEffect(() => {
         if (!open) return;
@@ -152,17 +317,48 @@ export function AppointmentDialog({ open, onOpenChange, selectedEvent, selectedS
         void loadGoogleCalendars();
     }, [open, selectedEvent]);
 
-    // Fetch contacts on query change (simple debounce could be added)
     useEffect(() => {
-        const fetchContacts = async () => {
-            // We need a search action. Using getContacts with query if available, or just fetch all for now if small list.
-            // Assuming getContacts accepts query. If not, we might need to update it or filter client side.
-            // For now, let's assume we can fetch recent/all.
-            const res = await getContacts(query);
-            if (res) setContacts(res);
+        if (!open) return;
+
+        const loadSpecialists = async () => {
+            try {
+                const rows = await getSpecialists();
+                setSpecialists(rows);
+                const eventSpecialistId = selectedEvent?.resource?.specialistId || selectedEvent?.resource?.specialist?.id;
+                if (eventSpecialistId && rows.some((row) => row.id === eventSpecialistId)) {
+                    setSelectedSpecialistId(eventSpecialistId);
+                    return;
+                }
+                if (!eventSpecialistId) {
+                    const defaultRow = defaultSpecialistId
+                        ? rows.find((row) => row.id === defaultSpecialistId)
+                        : null;
+                    if (defaultRow) {
+                        setSelectedSpecialistId(defaultRow.id);
+                        return;
+                    }
+                    if (rows.length === 1) {
+                        setSelectedSpecialistId(rows[0].id);
+                    }
+                }
+            } catch (error) {
+                console.error("Failed to load specialists:", error);
+            }
         };
-        fetchContacts();
-    }, [query]);
+
+        void loadSpecialists();
+    }, [defaultSpecialistId, open, selectedEvent]);
+
+    useEffect(() => {
+        if (!open) return;
+
+        const fetchPatients = async () => {
+            const results = await getPatientsForPicker(query);
+            setPatients(results);
+        };
+
+        void fetchPatients();
+    }, [open, query]);
 
     useEffect(() => {
         if (!date) return;
@@ -170,28 +366,47 @@ export function AppointmentDialog({ open, onOpenChange, selectedEvent, selectedS
         if (clamped !== time) {
             setTime(clamped);
         }
-    }, [businessHours, date, time]);
+    }, [businessHours, clampTimeToSchedule, date, time]);
 
     const selectedDaySchedule = date
-        ? getBusinessDayScheduleForDate(date, businessHours).schedule
+        ? getBusinessDayScheduleForDate(operationDateReference(getLocalCalendarDateKey(date), businessHours.timeZone), businessHours).schedule
         : null;
     const selectedDayStart = selectedDaySchedule?.enabled ? selectedDaySchedule.start : businessHours.start;
     const selectedDayEnd = selectedDaySchedule?.enabled ? selectedDaySchedule.end : businessHours.end;
+    const selectedDateKey = date ? getLocalCalendarDateKey(date) : "";
+    const todayKey = getOperationTodayKey(businessHours.timeZone);
+    const currentOperationTime = nextOperationMinute(businessHours.timeZone);
+    const selectedDayMinimumTime = selectedDateKey === todayKey
+        ? maxTimeInput(selectedDayStart, currentOperationTime)
+        : selectedDayStart;
     const writableSources = calendarSources.filter((source) => source.writable);
     const specialistSources = writableSources.filter((source) => source.isSpecialist);
     const selectedCalendar =
         writableSources.find((source) => source.calendarId === selectedCalendarId) ||
         writableSources.find((source) => source.isWriteTarget) ||
         null;
-
+    const selectedPatient = patients.find((patient) => patient.id === patientId);
+    const selectedSpecialist = specialists.find((specialist) => specialist.id === selectedSpecialistId);
+    const specialistCalendar = selectedSpecialist?.googleCalendarSource || null;
 
     const handleSubmit = () => {
-        if (!date || !time || !title) {
-            toast({ title: "Faltan datos", description: "Por favor completa los campos obligatorios.", variant: "destructive" });
+        if (!patientId) {
+            toast({
+                title: "Paciente requerido",
+                description: "Selecciona o registra un paciente antes de agendar la cita.",
+                variant: "destructive",
+            });
             return;
         }
 
-        const { schedule } = getBusinessDayScheduleForDate(date, businessHours);
+        if (!date || !time || !title) {
+            toast({ title: "Faltan datos", description: "Completa fecha, hora y motivo.", variant: "destructive" });
+            return;
+        }
+
+        const dateKey = getLocalCalendarDateKey(date);
+        const referenceDate = operationDateReference(dateKey, businessHours.timeZone);
+        const { schedule } = getBusinessDayScheduleForDate(referenceDate, businessHours);
         if (!schedule.enabled) {
             toast({
                 title: "Dia cerrado",
@@ -201,65 +416,80 @@ export function AppointmentDialog({ open, onOpenChange, selectedEvent, selectedS
             return;
         }
 
-        const [hours, minutes] = time.split(":").map(Number);
-        const startTime = new Date(date);
-        startTime.setHours(hours, minutes);
-
+        const startTime = operationDateTimeToUtc(dateKey, time, businessHours.timeZone);
         const endTime = new Date(startTime.getTime() + parseInt(duration) * 60000);
-        const blockingCalendarIds = selectedCalendar?.calendarId ? [selectedCalendar.calendarId] : undefined;
-        const specialistName = selectedCalendar?.isSpecialist
-            ? (selectedCalendar.specialistName || selectedCalendar.summary)
-            : undefined;
+        if (startTime <= new Date()) {
+            toast({
+                title: "Horario no disponible",
+                description: "Solo puedes agendar citas desde este momento en adelante.",
+                variant: "destructive",
+            });
+            return;
+        }
+        const targetCalendarId = specialistCalendar?.calendarId || selectedCalendar?.calendarId;
+        const blockingCalendarIds = targetCalendarId ? [targetCalendarId] : undefined;
+        const normalizedMeetLink = meetLink.trim();
+        const wantsGoogleMeet = ["virtual", "hibrida"].includes(visitMode) && requestGoogleMeet && !normalizedMeetLink;
+        const amount = Number(paymentAmount || 0);
+        const normalizedPaymentAmount = Number.isFinite(amount) ? Math.max(0, amount) : 0;
+        const existingPaymentStatus = selectedEvent?.resource?.paymentStatus;
+        const specialistName = selectedSpecialist
+            ? (selectedSpecialist.displayName || selectedSpecialist.name)
+            : selectedCalendar?.isSpecialist
+                ? (selectedCalendar.specialistName || selectedCalendar.summary)
+                : undefined;
 
         startTransition(async () => {
             try {
-                if (selectedEvent) {
-                    const result = await updateAppointment(selectedEvent.id, {
-                        title,
-                        startTime,
-                        endTime,
-                        notes,
-                        contactId: contactId || undefined,
-                        googleCalendarId: selectedCalendar?.calendarId,
-                        googleCalendarName: selectedCalendar?.summary,
-                        googleCalendarColor: selectedCalendar?.backgroundColor || undefined,
-                        specialistName,
-                        blockingCalendarIds,
-                    });
-                    if (!result.success) {
-                        throw new Error(result.error || "No se pudo actualizar la cita.");
-                    }
-                    toast({ title: "Cita actualizada" });
-                } else {
-                    const result = await createAppointment({
-                        title,
-                        startTime,
-                        endTime,
-                        notes,
-                        contactId: contactId || undefined,
-                        googleCalendarId: selectedCalendar?.calendarId,
-                        googleCalendarName: selectedCalendar?.summary,
-                        googleCalendarColor: selectedCalendar?.backgroundColor || undefined,
-                        specialistName,
-                        blockingCalendarIds,
-                    });
-                    if (!result.success) {
-                        throw new Error(result.error || "No se pudo agendar la cita.");
-                    }
-                    toast({ title: "Cita agendada" });
+                const payload = {
+                    title,
+                    startTime,
+                    endTime,
+                    notes,
+                    patientId,
+                    specialistId: selectedSpecialistId !== "none" ? selectedSpecialistId : undefined,
+                    appointmentType,
+                    isFirstVisit,
+                    isOverbook,
+                    visitMode,
+                    meetStatus: wantsGoogleMeet ? "requested" : normalizedMeetLink ? "generated" : "none",
+                    meetLink: normalizedMeetLink || undefined,
+                    paymentStatus: existingPaymentStatus || (normalizedPaymentAmount > 0 ? "pending" : "unpaid"),
+                    paymentAmount: normalizedPaymentAmount,
+                    paymentCurrency,
+                    remindersOptOut: !sendReminders,
+                    googleCalendarId: targetCalendarId,
+                    googleCalendarName: specialistCalendar?.summary || selectedCalendar?.summary,
+                    googleCalendarColor: specialistCalendar?.backgroundColor || selectedCalendar?.backgroundColor || undefined,
+                    specialistName,
+                    blockingCalendarIds,
+                };
+
+                const result = selectedEvent
+                    ? await updateAppointment(selectedEvent.id, payload)
+                    : await createAppointment(payload);
+
+                if (!result.success) {
+                    throw new Error(result.error || "No se pudo guardar la cita.");
                 }
+
+                toast({ title: selectedEvent ? "Cita actualizada" : "Cita agendada" });
                 onSuccess();
                 onOpenChange(false);
             } catch (error) {
                 console.error(error);
-                toast({ title: "Error", description: "No se pudo guardar la cita.", variant: "destructive" });
+                toast({
+                    title: "Error",
+                    description: error instanceof Error ? error.message : "No se pudo guardar la cita.",
+                    variant: "destructive",
+                });
             }
         });
     };
 
     const handleDelete = async () => {
         if (!selectedEvent) return;
-        if (!confirm("¿Eliminar cita?")) return;
+        if (!confirm("Eliminar cita?")) return;
 
         startTransition(async () => {
             await deleteAppointment(selectedEvent.id);
@@ -269,111 +499,119 @@ export function AppointmentDialog({ open, onOpenChange, selectedEvent, selectedS
         });
     };
 
-    const handleCreateContact = async () => {
-        if (!newContactName.trim() || !newContactPhone.trim()) {
-            toast({ title: "Error", description: "Nombre y teléfono son obligatorios", variant: "destructive" });
+    const handleCreatePatient = async () => {
+        if (!newPatientFirstName.trim() || !newPatientLastName.trim()) {
+            toast({ title: "Error", description: "Nombre y apellido son obligatorios.", variant: "destructive" });
             return;
         }
-        setIsSubmittingContact(true);
+
+        setIsSubmittingPatient(true);
         try {
-            const formData = new FormData();
-            formData.append("name", newContactName);
-            formData.append("phone", newContactPhone);
+            const result = await savePatient({
+                firstName: newPatientFirstName,
+                lastName: newPatientLastName,
+                phone: newPatientPhone,
+            });
 
-            const result = await createContact(formData);
-            if (result.success && result.contact) {
-                toast({ title: "Contacto creado exitosamente" });
-                // Auto-select the new contact
-                setContacts(prev => [result.contact, ...prev]);
-                setContactId(result.contact.id);
-                // Auto-fill title
-                if (!title) setTitle(`Cita con ${getContactFullName(result.contact)}`);
-
-                // Reset form state
-                setIsCreatingContact(false);
-                setNewContactName("");
-                setNewContactPhone("");
+            if (result.success && result.patient) {
+                const pickerPatient = {
+                    id: result.patient.id,
+                    patientNumber: result.patient.patientNumber,
+                    firstName: result.patient.firstName,
+                    lastName: result.patient.lastName,
+                    phone: result.patient.phone,
+                    email: result.patient.email,
+                    dob: result.patient.dob,
+                };
+                setPatients((prev) => [pickerPatient, ...prev]);
+                setPatientId(result.patient.id);
+                if (!title) setTitle(`Consulta con ${patientName(pickerPatient)}`);
+                setIsCreatingPatient(false);
+                setNewPatientFirstName("");
+                setNewPatientLastName("");
+                setNewPatientPhone("");
                 setOpenCombobox(false);
-            } else {
-                toast({ title: "Error", description: result.error || "No se pudo crear", variant: "destructive" });
+                toast({ title: "Paciente creado" });
+                return;
             }
-        } catch (error) {
-            toast({ title: "Error", description: "Error al crear contacto", variant: "destructive" });
+
+            toast({ title: "Error", description: result.error || "No se pudo crear.", variant: "destructive" });
+        } catch {
+            toast({ title: "Error", description: "Error al crear paciente.", variant: "destructive" });
         } finally {
-            setIsSubmittingContact(false);
+            setIsSubmittingPatient(false);
         }
     };
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="sm:max-w-[600px] bg-card">
-                <DialogHeader className="pb-4 border-b">
+            <DialogContent className="max-h-[90vh] overflow-y-auto bg-card sm:max-w-[720px]">
+                <DialogHeader className="border-b pb-4">
                     <DialogTitle className="text-xl font-semibold text-foreground">
                         {selectedEvent ? "Editar Cita" : "Nueva Cita"}
                     </DialogTitle>
                 </DialogHeader>
 
                 <div className="grid gap-6 py-4">
-                    {/* Client Search */}
                     <div className="space-y-2">
-                        <Label>Datos del cliente</Label>
+                        <Label>Paciente *</Label>
                         <Popover open={openCombobox} onOpenChange={setOpenCombobox}>
                             <PopoverTrigger asChild>
                                 <Button
                                     variant="outline"
                                     role="combobox"
                                     aria-expanded={openCombobox}
-                                    className="w-full justify-between bg-background h-11"
+                                    className="h-11 w-full justify-between bg-background"
                                 >
-                                    {contactId
-                                        ? getContactFullName(contacts.find((c) => c.id === contactId), "Cliente seleccionado")
-                                        : "Buscar cliente..."}
+                                    {patientId && selectedPatient
+                                        ? patientName(selectedPatient)
+                                        : "Buscar paciente requerido..."}
                                     <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                                 </Button>
                             </PopoverTrigger>
                             <PopoverContent className="w-[400px] p-0">
                                 <Command shouldFilter={false}>
-                                    <CommandInput placeholder="Buscar cliente..." onValueChange={setQuery} />
+                                    <CommandInput placeholder="Buscar paciente..." onValueChange={setQuery} />
                                     <CommandList>
-                                        <CommandEmpty>No se encontraron clientes.</CommandEmpty>
+                                        <CommandEmpty>No se encontraron pacientes.</CommandEmpty>
                                         <CommandGroup>
-                                            {contacts.map((contact) => (
+                                            {patients.map((patient) => (
                                                 <CommandItem
-                                                    key={contact.id}
-                                                    value={contact.id}
+                                                    key={patient.id}
+                                                    value={patient.id}
                                                     onSelect={(currentValue) => {
-                                                        setContactId(currentValue === contactId ? "" : currentValue);
+                                                        setPatientId(currentValue);
                                                         setOpenCombobox(false);
-                                                        // Auto-fill title if empty
-                                                        if (!title) setTitle(`Reunión con ${getContactFullName(contact)}`);
+                                                        if (!title) setTitle(`Consulta con ${patientName(patient)}`);
                                                     }}
                                                 >
                                                     <Check
                                                         className={cn(
                                                             "mr-2 h-4 w-4",
-                                                            contactId === contact.id ? "opacity-100" : "opacity-0"
+                                                            patientId === patient.id ? "opacity-100" : "opacity-0",
                                                         )}
                                                     />
                                                     <div className="flex flex-col">
-                                                        <span className="font-medium">{getContactFullName(contact)}</span>
-                                                        <span className="text-xs text-secondary-foreground">{contact.email || contact.phone}</span>
+                                                        <span className="font-medium">{patientName(patient)}</span>
+                                                        <span className="text-xs text-secondary-foreground">
+                                                            {patient.phone || patient.email || patient.patientNumber}
+                                                        </span>
                                                     </div>
                                                 </CommandItem>
                                             ))}
                                         </CommandGroup>
                                     </CommandList>
-
-                                    <div className="p-2 border-t mt-1">
+                                    <div className="mt-1 border-t p-2">
                                         <Button
                                             variant="ghost"
-                                            className="w-full justify-start text-primary font-medium"
-                                            onClick={(e) => {
-                                                e.preventDefault();
-                                                setIsCreatingContact(true);
+                                            className="w-full justify-start font-medium text-primary"
+                                            onClick={(event) => {
+                                                event.preventDefault();
+                                                setIsCreatingPatient(true);
                                                 setOpenCombobox(false);
                                             }}
                                         >
-                                            + Registrar nuevo contacto
+                                            + Registrar nuevo paciente
                                         </Button>
                                     </div>
                                 </Command>
@@ -381,61 +619,57 @@ export function AppointmentDialog({ open, onOpenChange, selectedEvent, selectedS
                         </Popover>
                     </div>
 
-                    {/* New Contact Inline Form */}
-                    {isCreatingContact && (
-                        <div className="p-4 bg-muted/30 rounded-lg border space-y-4 mb-2 -mt-2 animate-in fade-in slide-in-from-top-2">
-                            <div className="flex items-center justify-between pb-2 border-b">
-                                <h4 className="font-medium text-sm text-foreground flex items-center">
-                                    <User className="w-4 h-4 mr-2 text-primary" />
-                                    Registrar Contacto Rápido
+                    {isCreatingPatient ? (
+                        <div className="-mt-2 space-y-4 rounded-lg border bg-muted/30 p-4">
+                            <div className="flex items-center justify-between border-b pb-2">
+                                <h4 className="flex items-center text-sm font-medium text-foreground">
+                                    <User className="mr-2 h-4 w-4 text-primary" />
+                                    Registrar Paciente Rapido
                                 </h4>
-                                <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => setIsCreatingContact(false)}>
+                                <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => setIsCreatingPatient(false)}>
                                     Cancelar
                                 </Button>
                             </div>
                             <div className="grid grid-cols-2 gap-3">
                                 <div className="space-y-1">
                                     <Label className="text-xs">Nombre *</Label>
-                                    <Input
-                                        size={1}
-                                        value={newContactName}
-                                        onChange={e => setNewContactName(e.target.value)}
-                                        placeholder="Ej. Juan Pérez"
-                                        className="h-8 text-sm"
-                                    />
+                                    <Input value={newPatientFirstName} onChange={(event) => setNewPatientFirstName(event.target.value)} className="h-8 text-sm" />
                                 </div>
                                 <div className="space-y-1">
-                                    <Label className="text-xs">Teléfono *</Label>
-                                    <Input
-                                        size={1}
-                                        value={newContactPhone}
-                                        onChange={e => setNewContactPhone(e.target.value)}
-                                        placeholder="Ej. 521..."
-                                        className="h-8 text-sm"
+                                    <Label className="text-xs">Apellido *</Label>
+                                    <Input value={newPatientLastName} onChange={(event) => setNewPatientLastName(event.target.value)} className="h-8 text-sm" />
+                                </div>
+                                <div className="col-span-2 space-y-1">
+                                    <Label className="text-xs">Telefono</Label>
+                                    <PhonePrefixInput
+                                        value={newPatientPhone}
+                                        onChange={setNewPatientPhone}
+                                        defaultCountry={operationContext.phoneDefaultCountry}
+                                        className="grid-cols-[116px_minmax(0,1fr)]"
+                                        inputClassName="h-8 text-sm"
                                     />
                                 </div>
                             </div>
                             <Button
                                 type="button"
                                 size="sm"
-                                className="w-full h-8"
-                                onClick={handleCreateContact}
-                                disabled={isSubmittingContact || !newContactName || !newContactPhone}
+                                className="h-8 w-full"
+                                onClick={handleCreatePatient}
+                                disabled={isSubmittingPatient || !newPatientFirstName || !newPatientLastName}
                             >
-                                {isSubmittingContact ? <Loader2 className="w-3 h-3 animate-spin mr-2" /> : null}
+                                {isSubmittingPatient ? <Loader2 className="mr-2 h-3 w-3 animate-spin" /> : null}
                                 Guardar y Seleccionar
                             </Button>
                         </div>
-                    )}
+                    ) : null}
 
-                    {/* Title */}
                     <div className="space-y-2">
-                        <Label>Título / Motivo</Label>
+                        <Label>Titulo / Motivo</Label>
                         <Input
                             value={title}
-                            onChange={(e) => setTitle(e.target.value)}
-                            className="bg-background h-11"
-                            placeholder="Ej. Demo de producto"
+                            onChange={(event) => setTitle(event.target.value)}
+                            className="h-11 bg-background"
+                            placeholder="Ej. Consulta oftalmologica"
                         />
                     </div>
 
@@ -443,7 +677,7 @@ export function AppointmentDialog({ open, onOpenChange, selectedEvent, selectedS
                         <div className="space-y-2">
                             <Label>Calendario / Especialista</Label>
                             <Select value={selectedCalendarId} onValueChange={setSelectedCalendarId}>
-                                <SelectTrigger className="bg-background h-11">
+                                <SelectTrigger className="h-11 bg-background">
                                     <SelectValue placeholder="Selecciona donde guardar la cita" />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -464,21 +698,181 @@ export function AppointmentDialog({ open, onOpenChange, selectedEvent, selectedS
                         </div>
                     ) : null}
 
-                    {/* Date and Time Row */}
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-[minmax(18rem,1fr)_140px_170px]">
+                        <div className="space-y-2">
+                            <Label>Especialista clinico</Label>
+                            <Select value={selectedSpecialistId} onValueChange={(value) => {
+                                setSelectedSpecialistId(value);
+                                const row = specialists.find((entry) => entry.id === value);
+                                if (row?.googleCalendarSource?.calendarId) {
+                                    setSelectedCalendarId(row.googleCalendarSource.calendarId);
+                                }
+                                if (row?.defaultDurationMinutes) {
+                                    setDuration(String(row.defaultDurationMinutes));
+                                }
+                            }}>
+                                <SelectTrigger className="h-11 w-full bg-background">
+                                    <SelectValue placeholder="Selecciona especialista" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="none">Sin especialista</SelectItem>
+                                    {specialists.map((specialist) => (
+                                        <SelectItem key={specialist.id} value={specialist.id}>
+                                            {specialist.displayName || specialist.name}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label>Tipo de cita</Label>
+                            <Select value={appointmentType} onValueChange={setAppointmentType}>
+                                <SelectTrigger className="h-11 bg-background">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="Consulta">Consulta</SelectItem>
+                                    <SelectItem value="Control">Control</SelectItem>
+                                    <SelectItem value="Estudio">Estudio</SelectItem>
+                                    <SelectItem value="Cirugia">Cirugia</SelectItem>
+                                    <SelectItem value="Urgencia">Urgencia</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label>Modalidad</Label>
+                            <Select value={visitMode} onValueChange={setVisitMode}>
+                                <SelectTrigger className="h-11 bg-background">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="presencial">Presencial</SelectItem>
+                                    <SelectItem value="virtual">Virtual</SelectItem>
+                                    <SelectItem value="hibrida">Hibrida</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    </div>
+
+                    <div className="grid gap-3 sm:grid-cols-2">
+                        <div className="flex min-h-[76px] items-center justify-between rounded-lg border bg-muted/20 px-3 py-3">
+                            <div>
+                                <p className="text-sm font-medium">Primera vez</p>
+                                <p className="text-xs text-muted-foreground">Marca si requiere expediente inicial.</p>
+                            </div>
+                            <Switch checked={isFirstVisit} onCheckedChange={setIsFirstVisit} />
+                        </div>
+                        <div className="flex min-h-[76px] items-center justify-between rounded-lg border bg-muted/20 px-3 py-3">
+                            <div>
+                                <p className="text-sm font-medium">Sobreturno</p>
+                                <p className="text-xs text-muted-foreground">Permite solapar con otra cita.</p>
+                            </div>
+                            <Switch checked={isOverbook} onCheckedChange={setIsOverbook} />
+                        </div>
+                    </div>
+
+                    <label
+                        className={cn(
+                            "flex items-start gap-3 rounded-lg border px-4 py-3",
+                            remindersGloballyEnabled ? "cursor-pointer bg-muted/20" : "bg-muted/30 text-muted-foreground",
+                        )}
+                    >
+                        <Checkbox
+                            checked={sendReminders}
+                            onCheckedChange={(checked) => setSendReminders(Boolean(checked))}
+                            disabled={!remindersGloballyEnabled}
+                            className="mt-1"
+                        />
+                        <span className="min-w-0">
+                            <span className="flex items-center gap-2 text-sm font-medium text-foreground">
+                                <Bell className="h-4 w-4 text-primary" />
+                                Enviar recordatorios automaticos
+                            </span>
+                            <span className="mt-1 block text-xs leading-5 text-muted-foreground">
+                                {remindersGloballyEnabled
+                                    ? "Se programaran los recordatorios configurados en Settings > Calendario al confirmar la cita."
+                                    : "Activa los recordatorios en Settings > Calendario para usar esta opcion."}
+                            </span>
+                        </span>
+                    </label>
+
+                    {["virtual", "hibrida"].includes(visitMode) ? (
+                        <div className="grid gap-3 rounded-lg border bg-muted/20 p-3 sm:grid-cols-[220px_minmax(0,1fr)] sm:items-end">
+                            <div className="flex items-center justify-between rounded-lg border bg-background px-3 py-3">
+                                <div>
+                                    <p className="text-sm font-medium">Google Meet</p>
+                                    <p className="text-xs text-muted-foreground">Crear link al sincronizar.</p>
+                                </div>
+                                <Switch checked={requestGoogleMeet} onCheckedChange={setRequestGoogleMeet} disabled={Boolean(meetLink.trim())} />
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Link de videollamada</Label>
+                                <Input
+                                    value={meetLink}
+                                    onChange={(event) => setMeetLink(event.target.value)}
+                                    className="h-11 bg-background"
+                                    placeholder="https://meet.google.com/..."
+                                />
+                            </div>
+                        </div>
+                    ) : null}
+
+                    <div className="grid gap-4 rounded-lg border bg-muted/20 p-4">
+                        <div className="flex items-center gap-2">
+                            <CreditCard className="h-4 w-4 text-primary" />
+                            <p className="text-sm font-medium">Cobro de la cita</p>
+                        </div>
+                        <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_120px]">
+                            <div className="space-y-2">
+                                <Label>Monto esperado</Label>
+                                <Input
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    value={paymentAmount}
+                                    onChange={(event) => setPaymentAmount(event.target.value)}
+                                    className="h-11 bg-background"
+                                    placeholder="0.00"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Moneda</Label>
+                                <Select value={paymentCurrency} onValueChange={setPaymentCurrency}>
+                                    <SelectTrigger className="h-11 bg-background">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {operationContext.currencies.map((currency) => (
+                                            <SelectItem key={currency} value={currency}>
+                                                {currency}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_170px]">
                         <div className="space-y-2">
                             <Label>Fecha *</Label>
                             <Popover>
                                 <PopoverTrigger asChild>
                                     <Button
-                                        variant={"outline"}
+                                        variant="outline"
                                         className={cn(
-                                            "w-full justify-start text-left font-normal bg-background h-11",
-                                            !date && "text-muted-foreground"
+                                            "h-11 w-full justify-start bg-background text-left font-normal",
+                                            !date && "text-muted-foreground",
                                         )}
                                     >
                                         <CalendarIcon className="mr-2 h-4 w-4" />
-                                        {date ? format(date, "PPP", { locale: es }) : <span>Seleccionar fecha</span>}
+                                        {date ? formatOperationDayLabel(getLocalCalendarDateKey(date), operationContext.locale, businessHours.timeZone, {
+                                            day: "numeric",
+                                            month: "long",
+                                            year: "numeric",
+                                        }) : <span>Seleccionar fecha</span>}
                                     </Button>
                                 </PopoverTrigger>
                                 <PopoverContent className="w-auto p-0">
@@ -486,7 +880,10 @@ export function AppointmentDialog({ open, onOpenChange, selectedEvent, selectedS
                                         mode="single"
                                         selected={date}
                                         onSelect={setDate}
-                                        disabled={(calendarDate) => !isBusinessDayOpen(calendarDate, businessHours)}
+                                        disabled={(calendarDate) => {
+                                            const calendarDateKey = getLocalCalendarDateKey(calendarDate);
+                                            return calendarDateKey < todayKey || !isBusinessDayOpen(operationDateReference(calendarDateKey, businessHours.timeZone), businessHours);
+                                        }}
                                         initialFocus
                                     />
                                 </PopoverContent>
@@ -494,6 +891,18 @@ export function AppointmentDialog({ open, onOpenChange, selectedEvent, selectedS
                         </div>
                         <div className="space-y-2">
                             <Label>Hora *</Label>
+                            <div className="relative">
+                                <Clock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                                <Input
+                                    type="time"
+                                    value={time}
+                                    onChange={(event) => setTime(event.target.value)}
+                                    className="h-11 bg-background pl-9"
+                                    min={selectedDayMinimumTime}
+                                    max={selectedDayEnd}
+                                    disabled={!selectedDaySchedule?.enabled}
+                                />
+                            </div>
                             {selectedDaySchedule?.enabled ? (
                                 <p className="text-xs text-muted-foreground">
                                     Disponible entre {formatTimeLabel(selectedDayStart)} y {formatTimeLabel(selectedDayEnd)}.
@@ -503,63 +912,49 @@ export function AppointmentDialog({ open, onOpenChange, selectedEvent, selectedS
                                     Este dia esta cerrado en el horario comercial.
                                 </p>
                             )}
-                            <div className="relative">
-                                <Clock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                                <Input
-                                    type="time"
-                                    value={time}
-                                    onChange={(e) => setTime(e.target.value)}
-                                    className="pl-9 bg-background h-11"
-                                    min={selectedDayStart}
-                                    max={selectedDayEnd}
-                                    disabled={!selectedDaySchedule?.enabled}
-                                />
-                            </div>
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label>Duracion</Label>
+                            <Select value={duration} onValueChange={setDuration}>
+                                <SelectTrigger className="h-11 bg-background">
+                                    <SelectValue placeholder="Duracion" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="15">15 min</SelectItem>
+                                    <SelectItem value="30">30 min</SelectItem>
+                                    <SelectItem value="45">45 min</SelectItem>
+                                    <SelectItem value="60">1 hora</SelectItem>
+                                    <SelectItem value="90">1.5 horas</SelectItem>
+                                    <SelectItem value="120">2 horas</SelectItem>
+                                </SelectContent>
+                            </Select>
                         </div>
                     </div>
 
-                    {/* Duration */}
                     <div className="space-y-2">
-                        <Label>Duración (minutos)</Label>
-                        <Select value={duration} onValueChange={setDuration}>
-                            <SelectTrigger className="bg-background h-11">
-                                <SelectValue placeholder="Seleccionar duración" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="15">15 minutos</SelectItem>
-                                <SelectItem value="30">30 minutos</SelectItem>
-                                <SelectItem value="45">45 minutos</SelectItem>
-                                <SelectItem value="60">1 hora</SelectItem>
-                                <SelectItem value="90">1.5 horas</SelectItem>
-                                <SelectItem value="120">2 horas</SelectItem>
-                            </SelectContent>
-                        </Select>
-                    </div>
-
-                    {/* Notes */}
-                    <div className="space-y-2">
-                        <Label>Notas / Descripción</Label>
-                        <Input // Or Textarea
+                        <Label>Notas / Descripcion</Label>
+                        <Input
                             value={notes}
-                            onChange={(e) => setNotes(e.target.value)}
-                            className="bg-background h-11"
+                            onChange={(event) => setNotes(event.target.value)}
+                            className="h-11 bg-background"
                             placeholder="Detalles adicionales..."
                         />
                     </div>
                 </div>
 
-                <DialogFooter className="flex justify-between sm:justify-between items-center bg-card p-4 -mx-6 -mb-6 border-t mt-4 rounded-b-lg">
+                <DialogFooter className="-mx-6 -mb-6 mt-4 flex items-center justify-between border-t bg-card p-4 sm:justify-between">
                     {selectedEvent ? (
-                        <Button variant="ghost" className="text-red-500 hover:text-red-600 hover:bg-red-50" onClick={handleDelete} type="button">
+                        <Button variant="ghost" className="text-red-500 hover:bg-red-50 hover:text-red-600" onClick={handleDelete} type="button">
                             Eliminar
                         </Button>
                     ) : (
-                        <div /> // Spacer
+                        <div />
                     )}
                     <div className="flex gap-2">
                         <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
                         <Button onClick={handleSubmit} disabled={isPending} className="bg-blue-600 hover:bg-blue-700">
-                            {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                            {isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                             {selectedEvent ? "Actualizar Cita" : "Agendar Cita"}
                         </Button>
                     </div>

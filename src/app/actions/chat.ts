@@ -140,6 +140,7 @@ type InboundMediaPayload = {
 export type InboundMessageSource = {
     sourceType?: MessageSourceType | null;
     sourceId?: string | null;
+    occurredAt?: Date | null;
 };
 
 const FALLBACK_EXTENSION_BY_MIME: Record<string, string> = {
@@ -424,7 +425,10 @@ async function maybeCreateInboundAdPreviewSystemMessage(
                 startsWith: INBOUND_AD_PREVIEW_PREFIX,
             },
         },
-        orderBy: { createdAt: "desc" },
+        orderBy: [
+            { createdAt: "desc" },
+            { id: "desc" },
+        ],
         select: { content: true },
     });
 
@@ -1672,7 +1676,10 @@ async function maybeSendAutomatedReply(
                         where: {
                             type: { not: "system" },
                         },
-                        orderBy: { createdAt: "desc" },
+                        orderBy: [
+                            { createdAt: "desc" },
+                            { id: "desc" },
+                        ],
                         take: 8,
                         select: {
                             content: true,
@@ -1684,7 +1691,10 @@ async function maybeSendAutomatedReply(
             }),
             prisma.message.findFirst({
                 where: { conversationId },
-                orderBy: { createdAt: "desc" },
+                orderBy: [
+                    { createdAt: "desc" },
+                    { id: "desc" },
+                ],
             }),
             prisma.message.findFirst({
                 where: {
@@ -1692,7 +1702,10 @@ async function maybeSendAutomatedReply(
                     direction: "inbound",
                     id: { not: inboundMessageId },
                 },
-                orderBy: { createdAt: "desc" },
+                orderBy: [
+                    { createdAt: "desc" },
+                    { id: "desc" },
+                ],
                 select: { createdAt: true },
             }),
         ]);
@@ -2126,7 +2139,10 @@ async function waitForBotReplyPacing(params: {
             direction: "inbound",
             type: { not: "system" },
         },
-        orderBy: { createdAt: "desc" },
+        orderBy: [
+            { createdAt: "desc" },
+            { id: "desc" },
+        ],
         select: { id: true },
     });
 
@@ -2139,11 +2155,17 @@ export async function getConversations() {
             include: {
                 contact: true,
                 messages: {
-                    orderBy: { createdAt: "desc" },
+                    orderBy: [
+                        { createdAt: "desc" },
+                        { id: "desc" },
+                    ],
                     take: 1,
                 },
             },
-            orderBy: { updatedAt: "desc" },
+            orderBy: [
+                { updatedAt: "desc" },
+                { id: "desc" },
+            ],
         });
         return conversations;
     } catch (error) {
@@ -2156,7 +2178,10 @@ export async function getMessages(conversationId: string) {
     try {
         const messages = await prisma.message.findMany({
             where: { conversationId },
-            orderBy: { createdAt: "asc" },
+            orderBy: [
+                { createdAt: "asc" },
+                { id: "asc" },
+            ],
         });
         return messages;
     } catch (error) {
@@ -2387,7 +2412,10 @@ export async function processInboundMessage(
                         conversationId: conversation.id,
                         direction: "outbound",
                     },
-                    orderBy: { createdAt: "desc" },
+                    orderBy: [
+                        { createdAt: "desc" },
+                        { id: "desc" },
+                    ],
                     select: {
                         senderType: true,
                     },
@@ -2420,6 +2448,10 @@ export async function processInboundMessage(
         }
 
         // Create inbound message with optional media
+        const messageOccurredAt = source?.occurredAt && !Number.isNaN(source.occurredAt.getTime())
+            ? source.occurredAt
+            : undefined;
+
         const message = await prisma.message.create({
             data: {
                 conversationId: conversation.id,
@@ -2433,6 +2465,7 @@ export async function processInboundMessage(
                 providerMessageId: providerMessageId || null,
                 sourceType: normalizedSourceType,
                 sourceId: inboundSourceId,
+                ...(messageOccurredAt ? { createdAt: messageOccurredAt } : {}),
             },
         });
 
@@ -2440,7 +2473,7 @@ export async function processInboundMessage(
         await prisma.conversation.update({
             where: { id: conversation.id },
             data: {
-                updatedAt: new Date(),
+                updatedAt: messageOccurredAt && messageOccurredAt > conversation.updatedAt ? messageOccurredAt : new Date(),
                 ...(normalizedSourceType === "ycloud"
                     ? { sessionExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000) }
                     : {}),

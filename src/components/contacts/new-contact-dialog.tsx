@@ -17,6 +17,7 @@ import { createContact } from "@/app/actions/contacts";
 import { useState } from "react";
 import { useFormStatus } from "react-dom";
 import { useToast } from "@/components/ui/use-toast";
+import { PhonePrefixInput } from "@/components/shared/phone-prefix-input";
 
 function SubmitButton() {
     const { pending } = useFormStatus();
@@ -29,6 +30,7 @@ function SubmitButton() {
 
 export function NewContactDialog() {
     const [open, setOpen] = useState(false);
+    const [phone, setPhone] = useState("");
 
     const { toast } = useToast();
 
@@ -37,6 +39,7 @@ export function NewContactDialog() {
         if (result && result.success) {
             toast({ title: "Success", description: "Contact created successfully." });
             setOpen(false);
+            setPhone("");
         } else {
             // @ts-ignore
             toast({ title: "Error", description: result?.error || "Failed to create contact.", variant: "destructive" });
@@ -75,7 +78,10 @@ export function NewContactDialog() {
                             <Label htmlFor="phone" className="text-right">
                                 Phone
                             </Label>
-                            <Input id="phone" name="phone" placeholder="+1234567890" className="col-span-3" required />
+                            <div className="col-span-3">
+                                <input type="hidden" name="phone" value={phone} />
+                                <PhonePrefixInput value={phone} onChange={setPhone} required />
+                            </div>
                         </div>
                     </div>
                     <DialogFooter>

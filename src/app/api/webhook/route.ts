@@ -71,6 +71,52 @@ function getNumber(record: JsonObject | null, key: string): number | undefined {
     return undefined;
 }
 
+function parseProviderTimestamp(value: unknown): Date | null {
+    if (value instanceof Date && !Number.isNaN(value.getTime())) {
+        return value;
+    }
+
+    if (typeof value === "number" && Number.isFinite(value)) {
+        const millis = value > 10_000_000_000 ? value : value * 1000;
+        const parsed = new Date(millis);
+        return Number.isNaN(parsed.getTime()) ? null : parsed;
+    }
+
+    if (typeof value === "string") {
+        const normalized = value.trim();
+        if (!normalized) return null;
+
+        if (/^\d+(\.\d+)?$/.test(normalized)) {
+            return parseProviderTimestamp(Number(normalized));
+        }
+
+        const parsed = new Date(normalized);
+        return Number.isNaN(parsed.getTime()) ? null : parsed;
+    }
+
+    return null;
+}
+
+function resolveMessageOccurredAt(info: JsonObject, event: WuzapiWebhookEvent): Date | null {
+    const candidates: unknown[] = [
+        info["Timestamp"],
+        info["timestamp"],
+        info["MessageTimestamp"],
+        info["messageTimestamp"],
+        info["ServerTimestamp"],
+        info["serverTimestamp"],
+        event["Timestamp"],
+        event["timestamp"],
+    ];
+
+    for (const candidate of candidates) {
+        const parsed = parseProviderTimestamp(candidate);
+        if (parsed) return parsed;
+    }
+
+    return null;
+}
+
 function getBoolean(record: JsonObject | null, key: string): boolean | undefined {
     const value = record?.[key];
     if (typeof value === "boolean") {
@@ -1282,6 +1328,7 @@ async function storeOutboundEcho(
     sourceId: string | null,
     customerName?: string,
     providerMessageId?: string,
+    occurredAt?: Date | null,
 ) {
     if (providerMessageId) {
         const existingMessage = await prisma.message.findFirst({
@@ -1298,6 +1345,7 @@ async function storeOutboundEcho(
                 where: { id: existingMessage.id },
                 data: {
                     status: existingMessage.status === "sent" ? existingMessage.status : "sent",
+                    ...(occurredAt ? { createdAt: occurredAt } : {}),
                 },
             });
 
@@ -1381,22 +1429,33 @@ async function storeOutboundEcho(
             sourceType: MESSAGE_SOURCE_WUZAPI,
             OR: [
                 ...(providerMessageId ? [{ providerMessageId }] : []),
-                {
-                    content: text,
-                    direction: "outbound",
-                    type: media.type || "text",
-                    createdAt: { gte: new Date(Date.now() - 15000) },
-                },
+                ...(providerMessageId
+                    ? [{
+                        providerMessageId: null,
+                        content: text,
+                        direction: "outbound",
+                        type: media.type || "text",
+                        createdAt: { gte: new Date(Date.now() - 15000) },
+                    }]
+                    : [{
+                        content: text,
+                        direction: "outbound",
+                        type: media.type || "text",
+                        createdAt: { gte: new Date(Date.now() - 15000) },
+                    }]),
             ],
         },
     });
 
     if (duplicate) {
         const shouldPauseBot = duplicate.senderType !== "bot";
-        if (providerMessageId && !duplicate.providerMessageId) {
+        if ((providerMessageId && !duplicate.providerMessageId) || occurredAt) {
             await prisma.message.update({
                 where: { id: duplicate.id },
-                data: { providerMessageId },
+                data: {
+                    ...(providerMessageId && !duplicate.providerMessageId ? { providerMessageId } : {}),
+                    ...(occurredAt ? { createdAt: occurredAt } : {}),
+                },
             });
         }
 
@@ -1424,6 +1483,7 @@ async function storeOutboundEcho(
             providerMessageId: providerMessageId || null,
             sourceType: MESSAGE_SOURCE_WUZAPI,
             sourceId,
+            ...(occurredAt ? { createdAt: occurredAt } : {}),
         },
     });
 
@@ -1468,6 +1528,7 @@ export async function POST(req: NextRequest) {
         }
 
         const isFromMe = getBoolean(info, "IsFromMe") ?? getBoolean(info, "isFromMe") ?? false;
+        const occurredAt = resolveMessageOccurredAt(info, payload.event);
         const phoneCandidates = resolvePhoneCandidatesFromInfo(info, isFromMe);
         const deleteEvent = extractDeleteEvent(payload.event.Message);
         if (deleteEvent) {
@@ -1512,6 +1573,7 @@ export async function POST(req: NextRequest) {
                 wuzapiSourceId,
                 outboundContactName,
                 providerMessageId,
+                occurredAt,
             );
             return new NextResponse("EVENT_RECEIVED", { status: 200 });
         }
@@ -1530,6 +1592,7 @@ export async function POST(req: NextRequest) {
             {
                 sourceType: MESSAGE_SOURCE_WUZAPI,
                 sourceId: wuzapiSourceId,
+                occurredAt,
             },
         );
         return new NextResponse("EVENT_RECEIVED", { status: 200 });

@@ -26,7 +26,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/use-toast";
 import { TemplatePicker } from "@/components/inbox/template-picker";
 import { WhatsAppTemplatePreview } from "@/components/templates/whatsapp-template-preview";
+import { useOperationContext } from "@/components/shared/use-operation-context";
 import { getContactFullName } from "@/lib/contact-name";
+import { formatDateInOperationZone } from "@/lib/operation-dates";
+import { operationInputValueToUtc } from "@/lib/operation-dates";
 import { renderTemplateContent, type TemplateRecord } from "@/lib/templates";
 import { cn } from "@/lib/utils";
 import type { YCloudCampaignTemplateComponent } from "@/components/settings/bulk-campaign-manager-shared";
@@ -161,6 +164,7 @@ function renderYCloudTemplateText(
     components: YCloudCampaignTemplateComponent[],
     variableValues: Record<string, string>,
     previewContact: CampaignContact | null,
+    fallbackPreviewPhone: string,
 ) {
     const context = {
         contact: previewContact
@@ -172,7 +176,7 @@ function renderYCloudTemplateText(
             : {
                 name: "Karen",
                 company: "Zen Estates",
-                phone: "9991234567",
+                phone: fallbackPreviewPhone,
             },
         agentName: "Equipo Zen CRM",
     };
@@ -233,9 +237,8 @@ const DEFAULT_QUICK_CAMPAIGN_FORM: QuickCampaignFormState = {
     sourceType: "wuzapi",
 };
 
-function buildQuickCampaignName(count: number) {
-    const now = new Date();
-    const stamp = now.toLocaleDateString("es-MX", {
+function buildQuickCampaignName(count: number, locale?: string, timeZone?: string) {
+    const stamp = formatDateInOperationZone(new Date(), locale || undefined, timeZone, {
         day: "2-digit",
         month: "2-digit",
         year: "2-digit",
@@ -248,6 +251,7 @@ export function ContactsBulkCampaignDialog({
     contacts,
     onCreated,
 }: ContactsBulkCampaignDialogProps) {
+    const operationContext = useOperationContext();
     const { toast } = useToast();
     const bodyLayoutRef = useRef<HTMLDivElement | null>(null);
     const [open, setOpen] = useState(false);
@@ -287,6 +291,7 @@ export function ContactsBulkCampaignDialog({
                     form.ycloudTemplateComponents,
                     form.ycloudTemplateVariableValues,
                     previewContact,
+                    operationContext.phoneExample,
                 );
             }
 
@@ -306,6 +311,7 @@ export function ContactsBulkCampaignDialog({
             form.type,
             form.ycloudTemplateComponents,
             form.ycloudTemplateVariableValues,
+            operationContext.phoneExample,
             previewContact,
         ],
     );
@@ -315,13 +321,13 @@ export function ContactsBulkCampaignDialog({
             return "Crear e iniciar";
         }
 
-        const startDate = new Date(form.scheduledStartAt);
-        if (Number.isNaN(startDate.getTime()) || startDate.getTime() <= Date.now()) {
+        const startDate = operationInputValueToUtc(form.scheduledStartAt, operationContext.timeZone);
+        if (!startDate || Number.isNaN(startDate.getTime()) || startDate.getTime() <= Date.now()) {
             return "Crear e iniciar";
         }
 
         return "Programar envio";
-    }, [form.scheduledStartAt]);
+    }, [form.scheduledStartAt, operationContext.timeZone]);
 
     const useTwoColumnBodyLayout = bodyLayoutWidth >= 980;
     const useTwoColumnFieldLayout = bodyLayoutWidth >= 760;
@@ -330,7 +336,7 @@ export function ContactsBulkCampaignDialog({
         if (!open) {
             setForm({
                 ...DEFAULT_QUICK_CAMPAIGN_FORM,
-                name: buildQuickCampaignName(contacts.length),
+                name: buildQuickCampaignName(contacts.length, operationContext.locale, operationContext.timeZone),
             });
             return;
         }
@@ -357,7 +363,7 @@ export function ContactsBulkCampaignDialog({
                 });
             })
             .finally(() => setIsLoadingTemplates(false));
-    }, [contacts.length, isLoadingTemplates, open, templates.length, toast]);
+    }, [contacts.length, isLoadingTemplates, open, operationContext.locale, templates.length, toast]);
 
     useEffect(() => {
         if (!open || form.type !== "template" || isLoadingYCloudTemplates || ycloudTemplates.length > 0) {
@@ -419,7 +425,7 @@ export function ContactsBulkCampaignDialog({
         if (!nextOpen) {
             setForm({
                 ...DEFAULT_QUICK_CAMPAIGN_FORM,
-                name: buildQuickCampaignName(contacts.length),
+                name: buildQuickCampaignName(contacts.length, operationContext.locale, operationContext.timeZone),
             });
         }
     };
@@ -428,7 +434,7 @@ export function ContactsBulkCampaignDialog({
         setForm((current) => ({
             ...current,
             name:
-                current.name.trim() && current.name !== buildQuickCampaignName(contacts.length)
+                current.name.trim() && current.name !== buildQuickCampaignName(contacts.length, operationContext.locale, operationContext.timeZone)
                     ? current.name
                     : `${template.name} - envio rapido`,
             type: (template.type as "text" | "image" | "document") || "text",
@@ -450,7 +456,7 @@ export function ContactsBulkCampaignDialog({
         if (!template) return;
 
         const variableValues = buildDefaultYCloudTemplateVariableValues(template.components);
-        const content = renderYCloudTemplateText(template.components, variableValues, previewContact);
+        const content = renderYCloudTemplateText(template.components, variableValues, previewContact, operationContext.phoneExample);
 
         setForm((current) => ({
             ...current,
@@ -480,7 +486,7 @@ export function ContactsBulkCampaignDialog({
             return {
                 ...current,
                 ycloudTemplateVariableValues: variableValues,
-                content: renderYCloudTemplateText(current.ycloudTemplateComponents, variableValues, previewContact),
+                content: renderYCloudTemplateText(current.ycloudTemplateComponents, variableValues, previewContact, operationContext.phoneExample),
             };
         });
     };
@@ -493,7 +499,7 @@ export function ContactsBulkCampaignDialog({
         if (!form.name.trim()) {
             toast({
                 title: "Ponle un nombre al envio",
-                description: "Nos ayuda a auditar y encontrar la campana despues.",
+                description: "Nos ayuda a auditar y encontrar la campaña despues.",
                 variant: "destructive",
             });
             return;
@@ -567,7 +573,7 @@ export function ContactsBulkCampaignDialog({
                 batchDelayMinutes: form.batchDelayMinutes,
                 randomDelayMinSeconds: form.randomDelayMinSeconds,
                 randomDelayMaxSeconds: form.randomDelayMaxSeconds,
-                scheduledStartAt: form.scheduledStartAt ? new Date(form.scheduledStartAt).toISOString() : null,
+                scheduledStartAt: form.scheduledStartAt ? operationInputValueToUtc(form.scheduledStartAt, operationContext.timeZone)?.toISOString() || null : null,
                 respectBusinessHours: form.respectBusinessHours,
                 stopOnReply: form.stopOnReply,
                 followUpCount: form.type === "template" || form.sourceType === "ycloud" ? 0 : form.followUpCount,
@@ -605,12 +611,12 @@ export function ContactsBulkCampaignDialog({
             const createResult = await createResponse.json();
 
             if (!createResponse.ok) {
-                throw new Error(createResult.error || "No se pudo crear la campana.");
+                throw new Error(createResult.error || "No se pudo crear la campaña.");
             }
 
             const campaignId = createResult.campaign?.id as string | undefined;
             if (!campaignId) {
-                throw new Error("La campana se creo sin un identificador valido.");
+                throw new Error("La campaña se creo sin un identificador valido.");
             }
 
             const controlResponse = await fetch(`/api/bulk-campaigns/${campaignId}/control`, {
@@ -621,7 +627,7 @@ export function ContactsBulkCampaignDialog({
             const controlResult = await controlResponse.json();
 
             if (!controlResponse.ok) {
-                throw new Error(controlResult.error || "La campana se creo, pero no se pudo iniciar.");
+                throw new Error(controlResult.error || "La campaña se creo, pero no se pudo iniciar.");
             }
 
             if (form.selectedTemplateId) {
@@ -632,7 +638,7 @@ export function ContactsBulkCampaignDialog({
 
             toast({
                 title: submitLabel === "Programar envio" ? "Envio programado" : "Envio iniciado",
-                description: `${recipientCount} contacto${recipientCount === 1 ? "" : "s"} quedaron dentro de la campana.`,
+                description: `${recipientCount} contacto${recipientCount === 1 ? "" : "s"} quedaron dentro de la campaña.`,
             });
 
             handleOpenChange(false);
@@ -669,7 +675,7 @@ export function ContactsBulkCampaignDialog({
                             Envio masivo rapido
                         </DialogTitle>
                         <DialogDescription>
-                            Crea una campana sobre la seleccion actual sin salir de Contactos.
+                            Crea una campaña sobre la seleccion actual sin salir de Contactos.
                         </DialogDescription>
                     </DialogHeader>
                 </div>
@@ -718,7 +724,7 @@ export function ContactsBulkCampaignDialog({
 
                             <div className={cn("grid gap-4", useTwoColumnFieldLayout && "grid-cols-2")}>
                                 <div className="space-y-2">
-                                    <Label htmlFor="bulk-contacts-name">Nombre de la campana</Label>
+                                    <Label htmlFor="bulk-contacts-name">Nombre de la campaña</Label>
                                     <Input
                                         id="bulk-contacts-name"
                                         value={form.name}

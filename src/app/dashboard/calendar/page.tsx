@@ -1,13 +1,16 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
+import { useSession } from "next-auth/react";
 import { getAppointments, deleteAppointment } from "@/app/actions/calendar";
 import { getSystemSettings } from "@/app/actions/settings";
+import { getSpecialists } from "@/app/actions/specialists";
 import { BigCalendar } from "@/components/calendar/big-calendar";
 import { AppointmentList } from "@/components/calendar/appointment-list";
 import { AppointmentDialog } from "@/components/calendar/appointment-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
     Plus,
@@ -17,19 +20,12 @@ import {
     CheckCircle,
     CalendarDays,
     Check,
+    Users,
 } from "lucide-react";
 import { toast } from "@/components/ui/use-toast";
-import { isSameWeek, isToday } from "date-fns";
-import { formatBusinessScheduleSummary, normalizeBusinessHours } from "@/lib/calendar/business-hours";
-
-type CalendarSourceFilter = {
-    calendarId: string;
-    summary: string;
-    backgroundColor?: string | null;
-    isSelected: boolean;
-    isSpecialist: boolean;
-    specialistName?: string | null;
-};
+import { formatBusinessScheduleSummary, normalizeBusinessHours, shiftDateKey } from "@/lib/calendar/business-hours";
+import { dateKeyToLocalNoonDate, getOperationDateKey } from "@/lib/operation-dates";
+import { normalizeRole } from "@/lib/permissions";
 
 type CalendarFilterOption = {
     id: string;
@@ -39,8 +35,8 @@ type CalendarFilterOption = {
 };
 
 const DEFAULT_FILTER_COLOR = "#2563EB";
-const INTERNAL_FILTER_COLOR = "#64748B";
 const ALL_FILTER_COLOR = "#0F172A";
+const NO_SPECIALIST_FILTER = "__none__";
 
 function normalizeFilterColor(value?: string | null) {
     return value && /^#[0-9a-f]{6}$/i.test(value) ? value : DEFAULT_FILTER_COLOR;
@@ -56,11 +52,25 @@ function normalizeAppointments(data: any[]) {
     });
 }
 
+function appointmentMatchesSpecialist(appointment: any, specialist: Awaited<ReturnType<typeof getSpecialists>>[number]) {
+    const appointmentSpecialistName = appointment.specialistName || appointment.specialist?.displayName || appointment.specialist?.name;
+    return appointment.specialistId === specialist.id ||
+        appointment.specialist?.id === specialist.id ||
+        appointmentSpecialistName === specialist.displayName ||
+        appointmentSpecialistName === specialist.name;
+}
+
 export default function CalendarPage() {
+    const { data: session, status: sessionStatus } = useSession();
+    const sessionUser = session?.user as { id?: string; role?: string | null } | undefined;
+    const currentUserId = sessionUser?.id || null;
+    const currentRole = sessionStatus === "loading" ? null : normalizeRole(sessionUser?.role);
+    const canChooseSpecialistView = currentRole === "ADMINISTRADOR";
+    const isProfessional = currentRole === "PROFESIONAL";
     const [appointments, setAppointments] = useState<any[]>([]);
-    const [calendarSources, setCalendarSources] = useState<CalendarSourceFilter[]>([]);
-    const [activeCalendarFilter, setActiveCalendarFilter] = useState("all");
-    const [view, setView] = useState("list");
+    const [specialists, setSpecialists] = useState<Awaited<ReturnType<typeof getSpecialists>>>([]);
+    const [activeSpecialistFilter, setActiveSpecialistFilter] = useState("all");
+    const [, setView] = useState("calendar");
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [selectedEvent, setSelectedEvent] = useState<any>(null);
     const [selectedSlot, setSelectedSlot] = useState<{ start: Date; end: Date } | null>(null);
@@ -71,26 +81,27 @@ export default function CalendarPage() {
     }, []);
 
     const fetchAppointments = useCallback(async () => {
-        const calendarStatusPromise = fetch("/api/google-calendar/status", { cache: "no-store" })
-            .then(async (response) => (response.ok ? response.json() : null))
-            .catch(() => null);
-
-        const [data, settings, calendarStatus] = await Promise.all([
+        const [data, settings, specialistsData] = await Promise.all([
             getAppointments(),
             getSystemSettings(),
-            calendarStatusPromise,
+            getSpecialists(),
         ]);
 
         applyAppointmentsState(data);
         setBusinessHours(normalizeBusinessHours(settings));
-        setCalendarSources(Array.isArray(calendarStatus?.sources) ? calendarStatus.sources : []);
+        setSpecialists(specialistsData);
     }, [applyAppointmentsState]);
 
     useEffect(() => {
         void fetchAppointments();
     }, [fetchAppointments]);
 
-    const filterOptions = useMemo<CalendarFilterOption[]>(() => {
+    const currentUserSpecialist = useMemo(
+        () => specialists.find((specialist) => specialist.user?.id === currentUserId) || null,
+        [currentUserId, specialists],
+    );
+
+    const specialistFilterOptions = useMemo<CalendarFilterOption[]>(() => {
         const options: CalendarFilterOption[] = [
             {
                 id: "all",
@@ -100,63 +111,93 @@ export default function CalendarPage() {
             },
         ];
 
-        const selectedSources = calendarSources.filter((source) => source.isSelected);
-        for (const source of selectedSources) {
+        for (const specialist of specialists) {
+            const label = specialist.displayName || specialist.name;
+            const count = appointments.filter((appointment) => appointmentMatchesSpecialist(appointment, specialist)).length;
             options.push({
-                id: source.calendarId,
-                label: source.isSpecialist
-                    ? (source.specialistName || source.summary || source.calendarId)
-                    : (source.summary || source.calendarId),
-                color: normalizeFilterColor(source.backgroundColor),
-                caption: source.isSpecialist ? "Especialista" : "Calendario",
-            });
-        }
-
-        if (appointments.some((apt) => !apt.googleCalendarId)) {
-            options.push({
-                id: "internal",
-                label: "CRM",
-                color: INTERNAL_FILTER_COLOR,
-                caption: "Interno",
+                id: specialist.id,
+                label,
+                color: normalizeFilterColor(specialist.color),
+                caption: `${count} cita${count === 1 ? "" : "s"}`,
             });
         }
 
         return options;
-    }, [appointments, calendarSources]);
+    }, [appointments, specialists]);
 
     useEffect(() => {
-        if (activeCalendarFilter === "all") return;
-        if (!filterOptions.some((option) => option.id === activeCalendarFilter)) {
-            setActiveCalendarFilter("all");
+        if (isProfessional) {
+            setActiveSpecialistFilter(currentUserSpecialist?.id || NO_SPECIALIST_FILTER);
+            return;
         }
-    }, [activeCalendarFilter, filterOptions]);
+
+        if (!canChooseSpecialistView) {
+            setActiveSpecialistFilter("all");
+            return;
+        }
+
+        if (activeSpecialistFilter === "all") return;
+        if (!specialistFilterOptions.some((option) => option.id === activeSpecialistFilter)) {
+            setActiveSpecialistFilter("all");
+        }
+    }, [activeSpecialistFilter, canChooseSpecialistView, currentUserSpecialist?.id, isProfessional, specialistFilterOptions]);
 
     const filteredAppointments = useMemo(() => {
-        if (activeCalendarFilter === "all") {
+        if (!currentRole) {
+            return [];
+        }
+
+        if (isProfessional) {
+            if (!currentUserSpecialist) return [];
+            return appointments.filter((appointment) => appointmentMatchesSpecialist(appointment, currentUserSpecialist));
+        }
+
+        if (activeSpecialistFilter === NO_SPECIALIST_FILTER) {
+            return [];
+        }
+
+        if (activeSpecialistFilter === "all") {
             return appointments;
         }
 
-        if (activeCalendarFilter === "internal") {
-            return appointments.filter((apt) => !apt.googleCalendarId);
-        }
+        const selectedSpecialist = specialists.find((specialist) => specialist.id === activeSpecialistFilter);
+        if (!selectedSpecialist) return appointments;
 
-        return appointments.filter((apt) => apt.googleCalendarId === activeCalendarFilter);
-    }, [activeCalendarFilter, appointments]);
+        return appointments.filter((appointment) => appointmentMatchesSpecialist(appointment, selectedSpecialist));
+    }, [activeSpecialistFilter, appointments, currentRole, currentUserSpecialist, isProfessional, specialists]);
 
-    const activeFilterMeta = useMemo(
-        () => filterOptions.find((option) => option.id === activeCalendarFilter) || filterOptions[0],
-        [activeCalendarFilter, filterOptions],
+    const activeSpecialistMeta = useMemo(
+        () => {
+            if (activeSpecialistFilter === NO_SPECIALIST_FILTER) {
+                return {
+                    id: NO_SPECIALIST_FILTER,
+                    label: "Sin especialista vinculado",
+                    color: DEFAULT_FILTER_COLOR,
+                    caption: "0 citas",
+                };
+            }
+            return specialistFilterOptions.find((option) => option.id === activeSpecialistFilter) || specialistFilterOptions[0];
+        },
+        [activeSpecialistFilter, specialistFilterOptions],
     );
 
     const stats = useMemo(() => {
         const now = new Date();
+        const todayKey = getOperationDateKey(now, businessHours.timeZone);
+        const todayLocal = dateKeyToLocalNoonDate(todayKey);
+        const daysFromMonday = (todayLocal.getDay() + 6) % 7;
+        const weekStartKey = shiftDateKey(todayKey, -daysFromMonday);
+        const weekEndKey = shiftDateKey(weekStartKey, 6);
         return {
-            today: filteredAppointments.filter((apt) => isToday(new Date(apt.startTime))).length,
-            week: filteredAppointments.filter((apt) => isSameWeek(new Date(apt.startTime), now)).length,
+            today: filteredAppointments.filter((apt) => getOperationDateKey(apt.startTime, businessHours.timeZone) === todayKey).length,
+            week: filteredAppointments.filter((apt) => {
+                const appointmentKey = getOperationDateKey(apt.startTime, businessHours.timeZone);
+                return appointmentKey >= weekStartKey && appointmentKey <= weekEndKey;
+            }).length,
             pending: filteredAppointments.filter((apt) => apt.status === "scheduled").length,
             completed: filteredAppointments.filter((apt) => apt.status === "completed").length,
         };
-    }, [filteredAppointments]);
+    }, [businessHours.timeZone, filteredAppointments]);
 
     const handleEdit = (apt: any) => {
         const event = {
@@ -167,10 +208,26 @@ export default function CalendarPage() {
             notes: apt.notes,
             resource: {
                 contact: apt.contact,
+                patient: apt.patient,
+                specialist: apt.specialist,
+                specialistId: apt.specialistId,
+                appointmentType: apt.appointmentType,
+                source: apt.source,
+                isFirstVisit: apt.isFirstVisit,
+                isOverbook: apt.isOverbook,
+                confirmationStatus: apt.confirmationStatus,
                 googleCalendarId: apt.googleCalendarId,
                 googleCalendarName: apt.googleCalendarName,
                 googleCalendarColor: apt.googleCalendarColor,
                 specialistName: apt.specialistName,
+                visitMode: apt.visitMode,
+                meetStatus: apt.meetStatus,
+                meetLink: apt.meetLink,
+                paymentStatus: apt.paymentStatus,
+                paymentAmount: apt.paymentAmount,
+                paymentCurrency: apt.paymentCurrency,
+                paymentLinkUrl: apt.paymentLinkUrl,
+                remindersOptOut: apt.remindersOptOut,
             },
         };
         setSelectedEvent(event);
@@ -229,12 +286,28 @@ export default function CalendarPage() {
                 notes: apt.notes || "",
                 resource: {
                     contact: apt.contact,
+                    patient: apt.patient,
+                    specialist: apt.specialist,
+                    specialistId: apt.specialistId,
                     user: apt.user,
                     status: apt.status,
+                    appointmentType: apt.appointmentType,
+                    source: apt.source,
+                    isFirstVisit: apt.isFirstVisit,
+                    isOverbook: apt.isOverbook,
+                    confirmationStatus: apt.confirmationStatus,
                     googleCalendarId: apt.googleCalendarId,
                     googleCalendarName: apt.googleCalendarName,
                     googleCalendarColor: apt.googleCalendarColor,
                     specialistName: apt.specialistName,
+                    visitMode: apt.visitMode,
+                    meetStatus: apt.meetStatus,
+                    meetLink: apt.meetLink,
+                    paymentStatus: apt.paymentStatus,
+                    paymentAmount: apt.paymentAmount,
+                    paymentCurrency: apt.paymentCurrency,
+                    paymentLinkUrl: apt.paymentLinkUrl,
+                    remindersOptOut: apt.remindersOptOut,
                 },
             })),
         [filteredAppointments],
@@ -245,7 +318,7 @@ export default function CalendarPage() {
             <div className="flex items-center justify-between shrink-0">
                 <div>
                     <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">Gestión de Citas</h1>
-                    <p className="text-muted-foreground text-sm">Gestiona las citas agendadas con tus clientes.</p>
+                    <p className="text-muted-foreground text-sm">Gestiona las citas agendadas con tus pacientes.</p>
                     <p className="text-xs text-muted-foreground mt-1">
                         Horario comercial: {formatBusinessScheduleSummary(businessHours)}
                     </p>
@@ -302,58 +375,79 @@ export default function CalendarPage() {
                 </Card>
             </div>
 
-            <div className="shrink-0 rounded-xl border bg-card/80 p-3 shadow-sm">
-                <div className="flex flex-col gap-2">
-                    <div className="flex items-center justify-between gap-3">
-                        <div>
-                            <p className="text-sm font-semibold text-foreground">Calendarios visibles</p>
-                            <p className="text-xs text-muted-foreground">
-                                Filtra el calendario y la lista por especialista o agenda.
-                            </p>
-                        </div>
-                        <div className="hidden sm:flex items-center gap-2 text-xs text-muted-foreground">
-                            <span
-                                className="h-2.5 w-2.5 rounded-full"
-                                style={{ backgroundColor: activeFilterMeta?.color || DEFAULT_FILTER_COLOR }}
-                            />
-                            <span>Vista actual: {activeFilterMeta?.label || "Todos"}</span>
-                        </div>
-                    </div>
-
-                    <div className="flex flex-wrap gap-2">
-                        {filterOptions.map((option) => {
-                            const isActive = activeCalendarFilter === option.id;
-                            return (
-                                <button
-                                    key={option.id}
-                                    type="button"
-                                    onClick={() => setActiveCalendarFilter(option.id)}
-                                    className={`inline-flex min-w-[140px] items-center gap-3 rounded-xl border px-3 py-2 text-left transition-all ${
-                                        isActive
-                                            ? "border-transparent bg-primary/5 shadow-sm ring-2 ring-primary/10"
-                                            : "border-border bg-background hover:border-primary/20 hover:bg-muted/40"
-                                    }`}
-                                >
+            {canChooseSpecialistView ? (
+                <div className="shrink-0 rounded-xl border bg-card/80 p-3 shadow-sm">
+                    <div className="flex flex-col gap-2">
+                        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                            <div className="flex items-start gap-3">
+                                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                                    <Users className="h-4 w-4" />
+                                </div>
+                                <div>
+                                    <p className="text-sm font-semibold text-foreground">Vista de especialistas</p>
+                                    <p className="text-xs text-muted-foreground">
+                                        Elige ver todas las agendas o solo la agenda de un especialista.
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                                <div className="flex items-center gap-2 text-xs text-muted-foreground">
                                     <span
-                                        className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[6px] border"
-                                        style={{
-                                            borderColor: option.color,
-                                            backgroundColor: isActive ? option.color : "transparent",
-                                            color: isActive ? "#FFFFFF" : option.color,
-                                        }}
+                                        className="h-2.5 w-2.5 rounded-full"
+                                        style={{ backgroundColor: activeSpecialistMeta?.color || DEFAULT_FILTER_COLOR }}
+                                    />
+                                    <span>Vista actual: {activeSpecialistMeta?.label || "Todos"}</span>
+                                </div>
+                                <Select value={activeSpecialistFilter} onValueChange={setActiveSpecialistFilter}>
+                                    <SelectTrigger className="h-10 min-w-[220px] bg-background">
+                                        <SelectValue placeholder="Elegir especialista" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {specialistFilterOptions.map((option) => (
+                                            <SelectItem key={option.id} value={option.id}>
+                                                {option.label}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        </div>
+
+                        <div className="flex flex-wrap gap-2">
+                            {specialistFilterOptions.map((option) => {
+                                const isActive = activeSpecialistFilter === option.id;
+                                return (
+                                    <button
+                                        key={option.id}
+                                        type="button"
+                                        onClick={() => setActiveSpecialistFilter(option.id)}
+                                        className={`inline-flex min-w-[140px] items-center gap-3 rounded-xl border px-3 py-2 text-left transition-all ${
+                                            isActive
+                                                ? "border-transparent bg-primary/5 shadow-sm ring-2 ring-primary/10"
+                                                : "border-border bg-background hover:border-primary/20 hover:bg-muted/40"
+                                        }`}
                                     >
-                                        {isActive ? <Check className="h-3.5 w-3.5" /> : null}
-                                    </span>
-                                    <span className="flex min-w-0 flex-col">
-                                        <span className="truncate text-sm font-medium text-foreground">{option.label}</span>
-                                        <span className="truncate text-[11px] text-muted-foreground">{option.caption}</span>
-                                    </span>
-                                </button>
-                            );
-                        })}
+                                        <span
+                                            className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[6px] border"
+                                            style={{
+                                                borderColor: option.color,
+                                                backgroundColor: isActive ? option.color : "transparent",
+                                                color: isActive ? "#FFFFFF" : option.color,
+                                            }}
+                                        >
+                                            {isActive ? <Check className="h-3.5 w-3.5" /> : null}
+                                        </span>
+                                        <span className="flex min-w-0 flex-col">
+                                            <span className="truncate text-sm font-medium text-foreground">{option.label}</span>
+                                            <span className="truncate text-[11px] text-muted-foreground">{option.caption}</span>
+                                        </span>
+                                    </button>
+                                );
+                            })}
+                        </div>
                     </div>
                 </div>
-            </div>
+            ) : null}
 
             <Tabs defaultValue="calendar" className="flex flex-col flex-1 w-full overflow-hidden" onValueChange={setView}>
                 <div className="flex items-center justify-between mb-2 shrink-0">
@@ -388,6 +482,13 @@ export default function CalendarPage() {
                 onOpenChange={setIsDialogOpen}
                 selectedEvent={selectedEvent}
                 selectedSlot={selectedSlot}
+                defaultSpecialistId={
+                    isProfessional
+                        ? currentUserSpecialist?.id || null
+                        : activeSpecialistFilter === "all" || activeSpecialistFilter === NO_SPECIALIST_FILTER
+                            ? null
+                            : activeSpecialistFilter
+                }
                 onSuccess={fetchAppointments}
                 businessHours={businessHours}
             />

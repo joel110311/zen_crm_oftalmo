@@ -21,6 +21,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/use-toast";
+import { useOperationContext } from "@/components/shared/use-operation-context";
 import type { GoogleCalendarSourceInput, GoogleCalendarSourceSummary, GoogleCalendarStatus } from "@/lib/google-calendar";
 
 type Props = {
@@ -39,13 +40,14 @@ function sortSources(sources: GoogleCalendarSourceSummary[]) {
 }
 
 export function GoogleCalendarPanel(props: Props) {
+    const operationContext = useOperationContext();
     const { toast } = useToast();
     const [status, setStatus] = useState<GoogleCalendarStatus>({
         configured: false,
         connected: false,
         sources: [],
         specialistCount: 0,
-        maxSpecialists: 8,
+        maxSpecialists: 5,
     });
     const [draftSources, setDraftSources] = useState<GoogleCalendarSourceSummary[]>([]);
     const [isWorking, setIsWorking] = useState(false);
@@ -480,7 +482,9 @@ export function GoogleCalendarPanel(props: Props) {
                             <div className="rounded-xl border bg-muted/30 px-4 py-3">
                                 <p className="text-xs text-muted-foreground">Ultima sincronizacion</p>
                                 <p className="text-sm font-medium">
-                                    {status.lastSyncedAt ? new Date(status.lastSyncedAt).toLocaleString("es-MX") : "Aun no se ha sincronizado"}
+                                    {status.lastSyncedAt
+                                        ? new Date(status.lastSyncedAt).toLocaleString(operationContext.locale, { timeZone: operationContext.timeZone })
+                                        : "Aun no se ha sincronizado"}
                                 </p>
                             </div>
                         </CardContent>
@@ -504,7 +508,7 @@ export function GoogleCalendarPanel(props: Props) {
                             </div>
                             <div className="rounded-xl border px-4 py-3">
                                 <p className="font-medium text-foreground">3. Especialistas</p>
-                                <p>Hasta 8 calendarios pueden actuar como especialistas para que la IA agende con Juan, Luis, Patricia, etc.</p>
+                                <p>Hasta {status.maxSpecialists} calendarios pueden actuar como especialistas para que la IA agende con Juan, Luis, Patricia, etc.</p>
                             </div>
                             <div className="rounded-xl border px-4 py-3">
                                 <p className="font-medium text-foreground">4. Calendario de escritura</p>

@@ -17,8 +17,10 @@ import { Button } from "@/components/ui/button";
 import { searchGlobal, type SearchResult } from "@/app/actions/search";
 import { cn } from "@/lib/utils";
 import { getContactFullName } from "@/lib/contact-name";
+import { useOperationContext } from "@/components/shared/use-operation-context";
 
 export function SearchCommand() {
+    const operationContext = useOperationContext();
     const router = useRouter();
     const [open, setOpen] = React.useState(false);
     const [query, setQuery] = React.useState("");
@@ -129,7 +131,7 @@ export function SearchCommand() {
                                             <div className="flex flex-col">
                                                 <span>{deal.title}</span>
                                                 <span className="text-xs text-muted-foreground">
-                                                    {new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format(deal.value)} - {deal.stageName}
+                                                    {operationContext.formatMoney(deal.value, operationContext.defaultCurrency, { maximumFractionDigits: 0 })} - {deal.stageName}
                                                 </span>
                                             </div>
                                         </CommandItem>

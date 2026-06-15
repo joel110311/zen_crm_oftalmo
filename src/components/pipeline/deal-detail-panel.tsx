@@ -4,8 +4,11 @@ import React, { useState, useTransition, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { X, Phone, Mail, Building2, MessageSquare, Calendar, Pencil, Trash2, Save, Plus, Tag as TagIcon } from "lucide-react";
+import { X, Phone, Mail, Building2, Calendar, Pencil, Trash2, Save, Plus, Tag as TagIcon } from "lucide-react";
 import { updateDeal, deleteDeal, getAllTags, createTag, addTagToDeal, removeTagFromDeal, deleteTag } from "@/app/actions/pipeline";
+import { useOperationContext } from "@/components/shared/use-operation-context";
+import { WhatsAppIcon } from "@/components/icons/whatsapp-icon";
+import { formatDateTimeInOperationZone } from "@/lib/operation-dates";
 import type { DealData } from "./pipeline-board";
 
 interface DealDetailPanelProps {
@@ -36,6 +39,7 @@ const LEAD_STEP_LABELS: Record<string, string> = {
 };
 
 export function DealDetailPanel({ deal, onClose, onUpdate, onDelete }: DealDetailPanelProps) {
+    const operationContext = useOperationContext();
     const router = useRouter();
     const [editTitle, setEditTitle] = useState(deal.title);
     const [editValue, setEditValue] = useState(deal.value.toString());
@@ -336,7 +340,7 @@ export function DealDetailPanel({ deal, onClose, onUpdate, onDelete }: DealDetai
                                         onClick={() => router.push(`/dashboard/inbox?contactId=${deal.contact!.id}`)}
                                         className="ml-auto text-xs font-medium px-2 py-1 rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors cursor-pointer"
                                     >
-                                        <MessageSquare className="h-3 w-3 inline mr-1" />
+                                        <WhatsAppIcon className="mr-1 inline h-3 w-3" />
                                         Ir al Chat
                                     </button>
                                 </div>
@@ -480,13 +484,7 @@ export function DealDetailPanel({ deal, onClose, onUpdate, onDelete }: DealDetai
                         <div className="flex items-center gap-2">
                             <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
                             <span className="text-xs text-muted-foreground">
-                                Creado: {new Date(deal.createdAt).toLocaleDateString("es-MX", {
-                                    day: "numeric",
-                                    month: "long",
-                                    year: "numeric",
-                                    hour: "2-digit",
-                                    minute: "2-digit",
-                                })}
+                                Creado: {formatDateTimeInOperationZone(deal.createdAt, operationContext.locale, operationContext.timeZone)}
                             </span>
                         </div>
                         <div className="flex items-center gap-2">

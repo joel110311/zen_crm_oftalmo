@@ -111,14 +111,24 @@ async function storeYCloudOutboundEcho(message: YCloudNormalizedMessage) {
             sourceType: MESSAGE_SOURCE_YCLOUD,
             OR: [
                 ...(message.providerMessageId ? [{ providerMessageId: message.providerMessageId }] : []),
-                {
-                    content: message.text,
-                    direction: "outbound",
-                    type: message.media?.type || "text",
-                    createdAt: {
-                        gte: new Date(Date.now() - 15000),
-                    },
-                },
+                ...(message.providerMessageId
+                    ? [{
+                        providerMessageId: null,
+                        content: message.text,
+                        direction: "outbound",
+                        type: message.media?.type || "text",
+                        createdAt: {
+                            gte: new Date(Date.now() - 15000),
+                        },
+                    }]
+                    : [{
+                        content: message.text,
+                        direction: "outbound",
+                        type: message.media?.type || "text",
+                        createdAt: {
+                            gte: new Date(Date.now() - 15000),
+                        },
+                    }]),
             ],
         },
         orderBy: {

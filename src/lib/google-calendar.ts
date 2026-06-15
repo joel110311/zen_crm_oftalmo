@@ -8,7 +8,7 @@ const GOOGLE_USERINFO_URL = "https://openidconnect.googleapis.com/v1/userinfo";
 const GOOGLE_CALENDAR_API = "https://www.googleapis.com/calendar/v3";
 const GOOGLE_CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar";
 const SYNC_THROTTLE_MS = 60 * 1000;
-const MAX_SPECIALISTS = 8;
+const MAX_SPECIALISTS = 5;
 const WRITABLE_ACCESS_ROLES = new Set(["writer", "owner"]);
 const CALENDAR_COLOR_FALLBACK = "#3B82F6";
 
@@ -30,8 +30,15 @@ type GoogleCalendarEvent = {
     summary?: string;
     description?: string;
     updated?: string;
+    hangoutLink?: string;
     start?: GoogleEventDateTime;
     end?: GoogleEventDateTime;
+    conferenceData?: {
+        entryPoints?: Array<{
+            entryPointType?: string;
+            uri?: string;
+        }>;
+    };
     extendedProperties?: {
         private?: Record<string, string>;
     };
@@ -337,13 +344,24 @@ function buildGoogleCalendarEventPayload(
         notes: string | null;
         startTime: Date;
         endTime: Date;
+        visitMode?: string | null;
+        meetStatus?: string | null;
+        meetLink?: string | null;
         contactId?: string | null;
+        patientId?: string | null;
     },
     timeZone: string,
 ) {
+    const requestMeet = ["virtual", "hibrida"].includes(appointment.visitMode || "") && appointment.meetStatus === "requested" && !appointment.meetLink;
+    const notes = [
+        appointment.notes || "",
+        appointment.meetLink ? `Google Meet: ${appointment.meetLink}` : "",
+    ].filter(Boolean).join("\n\n");
+
     return {
         summary: appointment.title,
-        description: appointment.notes || "",
+        description: notes,
+        ...(appointment.meetLink ? { location: appointment.meetLink } : {}),
         start: {
             dateTime: appointment.startTime.toISOString(),
             timeZone,
@@ -356,9 +374,25 @@ function buildGoogleCalendarEventPayload(
             private: {
                 crmAppointmentId: appointment.id,
                 ...(appointment.contactId ? { crmContactId: appointment.contactId } : {}),
+                ...(appointment.patientId ? { crmPatientId: appointment.patientId } : {}),
             },
         },
+        ...(requestMeet
+            ? {
+                conferenceData: {
+                    createRequest: {
+                        requestId: `zen-${appointment.id}-${Date.now()}`,
+                    },
+                },
+            }
+            : {}),
     };
+}
+
+function extractMeetLink(event?: GoogleCalendarEvent | null) {
+    return event?.hangoutLink ||
+        event?.conferenceData?.entryPoints?.find((entry) => entry.entryPointType === "video" && entry.uri)?.uri ||
+        null;
 }
 
 async function applyGoogleEventToCrm(
@@ -392,19 +426,37 @@ async function applyGoogleEventToCrm(
         return;
     }
 
+    const linkedSpecialist = source.isSpecialist
+        ? await prisma.specialist.findFirst({
+            where: {
+                googleCalendarSourceId: source.id,
+                isActive: true,
+            },
+            select: {
+                id: true,
+                name: true,
+            },
+        })
+        : null;
+
     const data = {
         title: event.summary || "Evento de Google Calendar",
         notes: event.description || null,
         startTime,
         endTime,
         status: "scheduled",
+        source: "google",
         googleEventId: event.id,
         googleCalendarId: source.calendarId,
         googleCalendarName: source.summary,
         googleCalendarColor: normalizeHexColor(source.backgroundColor),
+        meetLink: extractMeetLink(event) || existing?.meetLink || null,
+        meetStatus: extractMeetLink(event) ? "generated" : existing?.meetStatus || "none",
+        visitMode: extractMeetLink(event) ? "virtual" : existing?.visitMode || "presencial",
         specialistName: source.isSpecialist
             ? normalizeSpecialistName(source.specialistName, source.summary)
             : null,
+        specialistId: linkedSpecialist?.id || existing?.specialistId || null,
         googleEventUpdatedAt: event.updated ? new Date(event.updated) : null,
         contactId: getGoogleEventContactId(event) || existing?.contactId || undefined,
         userId: existing?.userId || undefined,
@@ -690,8 +742,62 @@ export async function saveGoogleCalendarSources(inputs: GoogleCalendarSourceInpu
         });
     });
 
+    await syncSpecialistsFromGoogleSources();
     await syncGoogleCalendarToCrm(true);
     return getGoogleCalendarStatus();
+}
+
+export async function syncSpecialistsFromGoogleSources() {
+    const settings = await getGoogleSettingsWithSources();
+    const specialistSources = settings.googleCalendars
+        .filter((source) => source.isSelected && source.isSpecialist && isCalendarWritable(source.accessRole))
+        .slice(0, MAX_SPECIALISTS);
+    const activeSourceIds = specialistSources.map((source) => source.id);
+
+    await prisma.$transaction(async (tx) => {
+        await tx.specialist.updateMany({
+            where: activeSourceIds.length > 0
+                ? {
+                    AND: [
+                        { googleCalendarSourceId: { not: null } },
+                        { googleCalendarSourceId: { notIn: activeSourceIds } },
+                    ],
+                }
+                : {
+                    googleCalendarSourceId: { not: null },
+                },
+            data: { isActive: false },
+        });
+
+        for (const [index, source] of specialistSources.entries()) {
+            const name = normalizeSpecialistName(source.specialistName, source.summary) || source.summary;
+            await tx.specialist.upsert({
+                where: { googleCalendarSourceId: source.id },
+                create: {
+                    name,
+                    displayName: name,
+                    specialty: "Oftalmologia",
+                    color: normalizeHexColor(source.backgroundColor),
+                    sortOrder: index,
+                    isActive: true,
+                    googleCalendarSourceId: source.id,
+                },
+                update: {
+                    name,
+                    displayName: name,
+                    color: normalizeHexColor(source.backgroundColor),
+                    sortOrder: index,
+                    isActive: true,
+                },
+            });
+        }
+    });
+
+    return prisma.specialist.findMany({
+        where: { isActive: true },
+        orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+        include: { googleCalendarSource: true },
+    });
 }
 
 export async function getGoogleCalendarBookingContext(): Promise<GoogleCalendarBookingContext> {
@@ -862,10 +968,22 @@ export async function syncAppointmentToGoogleCalendar(appointmentId: string) {
 
     const appointment = await prisma.appointment.findUnique({
         where: { id: appointmentId },
+        include: {
+            specialist: {
+                include: {
+                    googleCalendarSource: true,
+                },
+            },
+        },
     });
     if (!appointment) return;
 
     const targetSource =
+        (appointment.specialist?.googleCalendarSource &&
+        appointment.specialist.googleCalendarSource.isSelected &&
+        isCalendarWritable(appointment.specialist.googleCalendarSource.accessRole)
+            ? appointment.specialist.googleCalendarSource
+            : null) ||
         (appointment.googleCalendarId
             ? settings.googleCalendars.find((source) => source.calendarId === appointment.googleCalendarId)
             : null) ||
@@ -881,6 +999,7 @@ export async function syncAppointmentToGoogleCalendar(appointmentId: string) {
 
     const targetCalendarId = targetSource?.calendarId || getCalendarId(settings.googleCalendarId);
     const payload = buildGoogleCalendarEventPayload(appointment, settings.businessTimeZone);
+    const wantsMeet = ["virtual", "hibrida"].includes(appointment.visitMode || "") && appointment.meetStatus === "requested" && !appointment.meetLink;
     const shouldMoveEvent =
         Boolean(appointment.googleEventId) &&
         Boolean(appointment.googleCalendarId) &&
@@ -892,14 +1011,14 @@ export async function syncAppointmentToGoogleCalendar(appointmentId: string) {
 
     const { data } = appointment.googleEventId && !shouldMoveEvent
         ? await googleCalendarRequest<GoogleCalendarEvent>(
-            `/calendars/${encodeURIComponent(targetCalendarId)}/events/${encodeURIComponent(appointment.googleEventId)}`,
+            `/calendars/${encodeURIComponent(targetCalendarId)}/events/${encodeURIComponent(appointment.googleEventId)}${wantsMeet ? "?conferenceDataVersion=1" : ""}`,
             {
                 method: "PUT",
                 body: JSON.stringify(payload),
             },
         )
         : await googleCalendarRequest<GoogleCalendarEvent>(
-            `/calendars/${encodeURIComponent(targetCalendarId)}/events`,
+            `/calendars/${encodeURIComponent(targetCalendarId)}/events${wantsMeet ? "?conferenceDataVersion=1" : ""}`,
             {
                 method: "POST",
                 body: JSON.stringify(payload),
@@ -907,6 +1026,17 @@ export async function syncAppointmentToGoogleCalendar(appointmentId: string) {
         );
 
     if (data?.id) {
+        const linkedSpecialist = targetSource?.isSpecialist
+            ? await prisma.specialist.findFirst({
+                where: {
+                    googleCalendarSourceId: targetSource.id,
+                    isActive: true,
+                },
+                select: { id: true },
+            })
+            : null;
+
+        const meetLink = extractMeetLink(data) || appointment.meetLink || null;
         await prisma.appointment.update({
             where: { id: appointment.id },
             data: {
@@ -917,6 +1047,9 @@ export async function syncAppointmentToGoogleCalendar(appointmentId: string) {
                 specialistName: targetSource?.isSpecialist
                     ? normalizeSpecialistName(targetSource.specialistName, targetSource.summary)
                     : appointment.specialistName || null,
+                specialistId: linkedSpecialist?.id || appointment.specialistId || null,
+                meetLink,
+                meetStatus: meetLink ? "generated" : appointment.meetStatus,
                 googleEventUpdatedAt: data.updated ? new Date(data.updated) : null,
             },
         });

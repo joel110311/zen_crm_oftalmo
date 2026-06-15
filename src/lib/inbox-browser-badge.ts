@@ -8,6 +8,7 @@ export const INBOX_UNREAD_EVENT = "zencrm:inbox-unread-change";
 declare global {
     interface Window {
         __zencrmBaseTitle?: string;
+        __zencrmBaseFaviconHref?: string;
     }
 }
 
@@ -49,6 +50,19 @@ function getBaseTitle(): string {
     }
 
     return window.__zencrmBaseTitle;
+}
+
+function getBaseFaviconHref(): string {
+    if (typeof document === "undefined") {
+        return "/brand/zen-favicon.svg";
+    }
+
+    if (!window.__zencrmBaseFaviconHref) {
+        const iconLink = document.querySelector<HTMLLinkElement>('link[rel~="icon"]:not([data-zen-dynamic-favicon="true"])');
+        window.__zencrmBaseFaviconHref = iconLink?.href || "/brand/zen-favicon.svg";
+    }
+
+    return window.__zencrmBaseFaviconHref;
 }
 
 function drawRoundedRect(
@@ -114,8 +128,34 @@ function applyDocumentTitleBadge(totalUnread: number) {
         : baseTitle;
 }
 
-function applyFaviconBadge(totalUnread: number) {
+async function drawConfiguredBaseIcon(ctx: CanvasRenderingContext2D, size: number) {
+    const baseFaviconHref = getBaseFaviconHref();
+
+    try {
+        await new Promise<void>((resolve, reject) => {
+            const image = new Image();
+            image.crossOrigin = "anonymous";
+            image.onload = () => {
+                ctx.clearRect(0, 0, size, size);
+                ctx.drawImage(image, 6, 6, size - 12, size - 12);
+                resolve();
+            };
+            image.onerror = () => reject(new Error("No se pudo cargar el favicon base."));
+            image.src = baseFaviconHref;
+        });
+    } catch {
+        drawBaseIcon(ctx, size);
+    }
+}
+
+async function applyFaviconBadge(totalUnread: number) {
     if (typeof document === "undefined") {
+        return;
+    }
+
+    if (totalUnread <= 0) {
+        const dynamicIcon = document.querySelector<HTMLLinkElement>('link[data-zen-dynamic-favicon="true"]');
+        dynamicIcon?.remove();
         return;
     }
 
@@ -128,28 +168,26 @@ function applyFaviconBadge(totalUnread: number) {
         return;
     }
 
-    drawBaseIcon(ctx, size);
+    await drawConfiguredBaseIcon(ctx, size);
 
-    if (totalUnread > 0) {
-        const badgeRadius = 14;
-        const badgeX = 14;
-        const badgeY = 14;
+    const badgeRadius = 14;
+    const badgeX = 14;
+    const badgeY = 14;
 
-        ctx.beginPath();
-        ctx.fillStyle = "#22c55e";
-        ctx.arc(badgeX, badgeY, badgeRadius, 0, Math.PI * 2);
-        ctx.fill();
+    ctx.beginPath();
+    ctx.fillStyle = "#22c55e";
+    ctx.arc(badgeX, badgeY, badgeRadius, 0, Math.PI * 2);
+    ctx.fill();
 
-        ctx.lineWidth = 3;
-        ctx.strokeStyle = "#ffffff";
-        ctx.stroke();
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = "#ffffff";
+    ctx.stroke();
 
-        ctx.fillStyle = "#ffffff";
-        ctx.font = totalUnread > 9 ? "bold 14px Arial" : "bold 16px Arial";
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.fillText(formatFaviconCount(totalUnread), badgeX, badgeY + 0.5);
-    }
+    ctx.fillStyle = "#ffffff";
+    ctx.font = totalUnread > 9 ? "bold 14px Arial" : "bold 16px Arial";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(formatFaviconCount(totalUnread), badgeX, badgeY + 0.5);
 
     let iconLink = document.querySelector<HTMLLinkElement>('link[data-zen-dynamic-favicon="true"]');
     if (!iconLink) {
@@ -170,7 +208,7 @@ function notifyUnreadCountsChanged(counts: InboxUnreadCounts) {
 
     const totalUnread = getTotalUnreadCount(counts);
     applyDocumentTitleBadge(totalUnread);
-    applyFaviconBadge(totalUnread);
+    void applyFaviconBadge(totalUnread);
     window.dispatchEvent(
         new CustomEvent(INBOX_UNREAD_EVENT, {
             detail: {

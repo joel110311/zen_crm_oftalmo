@@ -2,6 +2,7 @@ import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/db";
+import { normalizePermissions, normalizeRole } from "@/lib/permissions";
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
     trustHost: true,
@@ -39,7 +40,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
                     id: user.id,
                     email: user.email,
                     name: user.name || user.email,
-                    role: user.role,
+                    role: normalizeRole(user.role),
+                    permissions: normalizePermissions(user.permissions),
                 };
             },
         }),
@@ -47,7 +49,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     callbacks: {
         async jwt({ token, user }) {
             if (user) {
-                token.role = (user as any).role;
+                token.role = normalizeRole((user as any).role);
+                token.permissions = normalizePermissions((user as any).permissions);
                 token.id = user.id;
                 // user.name is guaranteed non-null from authorize()
                 token.name = user.name;
@@ -59,12 +62,13 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
                     try {
                         const dbUser = await prisma.user.findUnique({
                             where: { id: token.id as string },
-                            select: { name: true, email: true, role: true },
+                            select: { name: true, email: true, role: true, permissions: true },
                         });
 
                         if (dbUser) {
                             token.name = dbUser.name || dbUser.email || (token.email as string) || "Usuario";
-                            token.role = dbUser.role;
+                            token.role = normalizeRole(dbUser.role);
+                            token.permissions = normalizePermissions(dbUser.permissions);
                         } else if (!token.name) {
                             token.name = (token.email as string) || "Usuario";
                         }
@@ -83,6 +87,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         async session({ session, token }) {
             if (session.user) {
                 (session.user as any).role = token.role;
+                (session.user as any).permissions = normalizePermissions((token as any).permissions);
                 (session.user as any).id = token.id;
                 session.user.name = (token.name as string) || (token.email as string) || "Usuario";
             }

@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Loader2, Check } from "lucide-react";
 import { useDebouncedCallback } from "use-debounce";
 import { updateContact } from "@/app/actions/contacts";
+import { PhonePrefixInput } from "@/components/shared/phone-prefix-input";
 import { cn } from "@/lib/utils";
 
 interface AutoSaveInputProps {
@@ -56,12 +57,21 @@ export function AutoSaveInput({
                 </label>
             )}
             <div className="relative">
-                <Input
-                    value={value}
-                    onChange={(e) => setValue(e.target.value)}
-                    placeholder={placeholder}
-                    className="pr-8 transition-colors focus:bg-background bg-transparent border-transparent hover:border-input focus:border-primary"
-                />
+                {field === "phone" ? (
+                    <PhonePrefixInput
+                        value={value}
+                        onChange={setValue}
+                        placeholder={placeholder || "Telefono"}
+                        inputClassName="pr-8 transition-colors focus:bg-background bg-transparent border-transparent hover:border-input focus:border-primary"
+                    />
+                ) : (
+                    <Input
+                        value={value}
+                        onChange={(e) => setValue(e.target.value)}
+                        placeholder={placeholder}
+                        className="pr-8 transition-colors focus:bg-background bg-transparent border-transparent hover:border-input focus:border-primary"
+                    />
+                )}
                 <div className="absolute right-2 top-1/2 -translate-y-1/2">
                     {status === "saving" && (
                         <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
