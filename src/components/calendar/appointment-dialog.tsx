@@ -74,6 +74,8 @@ interface AppointmentDialogProps {
     onOpenChange: (open: boolean) => void;
     selectedEvent?: SelectedAppointmentEvent | null;
     selectedSlot?: { start: Date; end: Date } | null;
+    defaultPatient?: PatientPickerItem | null;
+    defaultPatientId?: string | null;
     defaultSpecialistId?: string | null;
     onSuccess: () => void;
     businessHours: BusinessHoursConfig;
@@ -100,6 +102,8 @@ export function AppointmentDialog({
     onOpenChange,
     selectedEvent,
     selectedSlot,
+    defaultPatient,
+    defaultPatientId,
     defaultSpecialistId,
     onSuccess,
     businessHours,
@@ -138,6 +142,7 @@ export function AppointmentDialog({
     const [patients, setPatients] = useState<PatientPickerItem[]>([]);
     const [openCombobox, setOpenCombobox] = useState(false);
     const [query, setQuery] = useState("");
+    const initialPatientId = defaultPatient?.id || defaultPatientId || "";
 
     const [isCreatingPatient, setIsCreatingPatient] = useState(false);
     const [newPatientFirstName, setNewPatientFirstName] = useState("");
@@ -240,8 +245,8 @@ export function AppointmentDialog({
             const nextDate = isBusinessDayOpen(referenceDate, businessHours)
                 ? selectedLocalDate
                 : dateKeyToLocalNoonDate(getOperationDateKey(getNextOpenDate(referenceDate, businessHours), businessHours.timeZone));
-            setTitle("");
-            setPatientId("");
+            setTitle(defaultPatient ? `Consulta con ${patientName(defaultPatient)}` : "");
+            setPatientId(initialPatientId);
             setDate(nextDate);
             setTime(clampTimeToSchedule(localTimeInputValue(selectedSlot.start), nextDate));
             setDuration(String(businessHours.defaultDurationMinutes));
@@ -260,8 +265,8 @@ export function AppointmentDialog({
         }
 
         const nextOpenDate = dateKeyToLocalNoonDate(getOperationDateKey(getNextOpenDate(new Date(), businessHours), businessHours.timeZone));
-        setTitle("");
-        setPatientId("");
+        setTitle(defaultPatient ? `Consulta con ${patientName(defaultPatient)}` : "");
+        setPatientId(initialPatientId);
         setDate(nextOpenDate);
         setTime(clampTimeToSchedule(businessHours.start, nextOpenDate));
         setDuration(String(businessHours.defaultDurationMinutes));
@@ -276,7 +281,7 @@ export function AppointmentDialog({
         setPaymentAmount("");
         setPaymentCurrency(operationContext.defaultCurrency);
         setSendReminders(remindersGloballyEnabled);
-    }, [businessHours, clampTimeToSchedule, defaultSpecialistId, open, operationContext.defaultCurrency, remindersGloballyEnabled, selectedEvent, selectedSlot]);
+    }, [businessHours, clampTimeToSchedule, defaultPatient, defaultSpecialistId, initialPatientId, open, operationContext.defaultCurrency, remindersGloballyEnabled, selectedEvent, selectedSlot]);
 
     useEffect(() => {
         if (!open) return;
@@ -354,11 +359,15 @@ export function AppointmentDialog({
 
         const fetchPatients = async () => {
             const results = await getPatientsForPicker(query);
+            if (defaultPatient && !results.some((patient) => patient.id === defaultPatient.id)) {
+                setPatients([defaultPatient, ...results]);
+                return;
+            }
             setPatients(results);
         };
 
         void fetchPatients();
-    }, [open, query]);
+    }, [defaultPatient, open, query]);
 
     useEffect(() => {
         if (!date) return;
@@ -385,7 +394,7 @@ export function AppointmentDialog({
         writableSources.find((source) => source.calendarId === selectedCalendarId) ||
         writableSources.find((source) => source.isWriteTarget) ||
         null;
-    const selectedPatient = patients.find((patient) => patient.id === patientId);
+    const selectedPatient = patients.find((patient) => patient.id === patientId) || (defaultPatient?.id === patientId ? defaultPatient : undefined);
     const selectedSpecialist = specialists.find((specialist) => specialist.id === selectedSpecialistId);
     const specialistCalendar = selectedSpecialist?.googleCalendarSource || null;
 

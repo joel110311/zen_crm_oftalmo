@@ -8,6 +8,7 @@ import {
     ArrowRight,
     Calendar,
     CalendarClock,
+    CalendarPlus,
     Check,
     CheckCircle2,
     ClipboardList,
@@ -58,6 +59,7 @@ import {
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/components/ui/use-toast";
+import { AppointmentDialog } from "@/components/calendar/appointment-dialog";
 import { PhonePrefixInput } from "@/components/shared/phone-prefix-input";
 import { useOperationContext } from "@/components/shared/use-operation-context";
 import { WhatsAppIcon } from "@/components/icons/whatsapp-icon";
@@ -78,7 +80,7 @@ import {
     updateBudgetStatus,
 } from "@/app/actions/patients";
 import { createAppointment, updateAppointmentStatus } from "@/app/actions/calendar";
-import { shiftDateKey } from "@/lib/calendar/business-hours";
+import { normalizeBusinessHours, shiftDateKey } from "@/lib/calendar/business-hours";
 import { INBOX_DRAFT_STORAGE_KEY, type InboxDraftPayload } from "@/lib/inbox-drafts";
 import {
     DEFAULT_OPERATION_TIME_ZONE,
@@ -1078,6 +1080,9 @@ export function PatientWorkspace({
     const [confirmedPatientIds, setConfirmedPatientIds] = useState<string[]>([]);
     const [rescheduleForm, setRescheduleForm] = useState<RescheduleFormState>(() => defaultRescheduleForm(null, operationContext.timeZone));
     const [rescheduleOpen, setRescheduleOpen] = useState(false);
+    const [appointmentDialogOpen, setAppointmentDialogOpen] = useState(false);
+    const [appointmentDialogPatient, setAppointmentDialogPatient] = useState<PatientSummary | PatientDetail | null>(null);
+    const [businessHours, setBusinessHours] = useState(() => normalizeBusinessHours());
     const [isPreparingWorkspaceRecipe, setIsPreparingWorkspaceRecipe] = useState(false);
     const [isPending, startTransition] = useTransition();
     const router = useRouter();
@@ -1086,12 +1091,30 @@ export function PatientWorkspace({
     const selectedAge = ageLabel(selectedPatient?.dob, operationContext.timeZone);
     const activeTabMeta = PATIENT_TABS.find((tab) => tab.id === activeTab) || PATIENT_TABS[0];
 
+    useEffect(() => {
+        let active = true;
+        fetch("/api/settings", { cache: "no-store" })
+            .then(async (response) => (response.ok ? response.json() : null))
+            .then((settings) => {
+                if (active && settings) setBusinessHours(normalizeBusinessHours(settings));
+            })
+            .catch(() => undefined);
+        return () => {
+            active = false;
+        };
+    }, []);
+
     const refreshWorkspace = (selectedId = selectedPatient?.id, nextSearch = search) => {
         startTransition(async () => {
             const payload = await getPatientWorkspace(nextSearch, selectedId);
             setPatients(payload.patients);
             setSelectedPatient(selectedId ? payload.selectedPatient : null);
         });
+    };
+
+    const openAppointmentForPatient = (patient: PatientSummary | PatientDetail) => {
+        setAppointmentDialogPatient(patient);
+        setAppointmentDialogOpen(true);
     };
 
     const handleSearch = (value: string) => {
@@ -1328,6 +1351,7 @@ export function PatientWorkspace({
                     onRefresh={() => refreshWorkspace(undefined, search)}
                     onSelectPatient={(patientId) => selectPatient(patientId, "consultations")}
                     onQuickAction={handlePatientQuickAction}
+                    onSchedulePatient={openAppointmentForPatient}
                 />
             ) : (
                 <>
@@ -1340,6 +1364,7 @@ export function PatientWorkspace({
                         onEdit={openEditPatient}
                         onRefresh={() => refreshWorkspace(selectedPatient.id)}
                         onQuickAction={(action) => handlePatientQuickAction(selectedPatient, action)}
+                        onSchedulePatient={() => openAppointmentForPatient(selectedPatient)}
                         onTabChange={setActiveTab}
                     />
 
@@ -1405,6 +1430,17 @@ export function PatientWorkspace({
                 onFormChange={setRescheduleForm}
                 onSave={handleSaveReschedule}
             />
+            <AppointmentDialog
+                open={appointmentDialogOpen}
+                onOpenChange={(open) => {
+                    setAppointmentDialogOpen(open);
+                    if (!open) setAppointmentDialogPatient(null);
+                }}
+                defaultPatient={appointmentDialogPatient}
+                defaultPatientId={appointmentDialogPatient?.id || null}
+                onSuccess={() => refreshWorkspace(selectedPatient?.id, search)}
+                businessHours={businessHours}
+            />
             {selectedPatient ? (
                 <RecipePrintDialog
                     open={Boolean(workspaceRecipe)}
@@ -1434,6 +1470,7 @@ function PatientDirectoryView({
     onRefresh,
     onSelectPatient,
     onQuickAction,
+    onSchedulePatient,
 }: {
     patients: PatientSummary[];
     search: string;
@@ -1445,6 +1482,7 @@ function PatientDirectoryView({
     onRefresh: () => void;
     onSelectPatient: (patientId: string) => void;
     onQuickAction: (patient: PatientSummary, action: PatientQuickAction) => void;
+    onSchedulePatient: (patient: PatientSummary) => void;
 }) {
     const operationContext = useOperationContext();
     const formatPatientDate = (value?: Date | string | null, fallback = "-") =>
@@ -1571,6 +1609,10 @@ function PatientDirectoryView({
                                         </TableCell>
                                         <TableCell className="text-right" onClick={(event) => event.stopPropagation()}>
                                             <div className="flex justify-end gap-1.5">
+                                                <Button variant="outline" className="h-9 gap-2 rounded-full px-3" onClick={() => onSchedulePatient(patient)} title="Generar cita para este paciente">
+                                                    <CalendarPlus className="h-4 w-4" />
+                                                    Cita
+                                                </Button>
                                                 <Button variant="outline" size="icon" className="h-9 w-9 rounded-full text-primary" onClick={() => onQuickAction(patient, "whatsapp")} title="Abrir chat del paciente">
                                                     <WhatsAppIcon className="h-4 w-4" />
                                                 </Button>
@@ -1628,6 +1670,7 @@ function PatientCareHeader({
     onEdit,
     onRefresh,
     onQuickAction,
+    onSchedulePatient,
     onTabChange,
 }: {
     patient: PatientDetail;
@@ -1638,6 +1681,7 @@ function PatientCareHeader({
     onEdit: () => void;
     onRefresh: () => void;
     onQuickAction: (action: PatientQuickAction) => void;
+    onSchedulePatient: () => void;
     onTabChange: (tab: PatientTabId) => void;
 }) {
     const operationContext = useOperationContext();
@@ -1664,6 +1708,10 @@ function PatientCareHeader({
                     </div>
 
                     <div className="flex flex-wrap gap-2 xl:justify-end">
+                        <Button variant="outline" className="gap-2 rounded-full" onClick={onSchedulePatient}>
+                            <CalendarPlus className="h-4 w-4" />
+                            Cita
+                        </Button>
                         <Button variant="outline" className="gap-2 rounded-full text-primary" onClick={() => onQuickAction("whatsapp")}>
                             <WhatsAppIcon className="h-4 w-4" />
                             WhatsApp
