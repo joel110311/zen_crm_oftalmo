@@ -326,66 +326,267 @@ export default async function DashboardPage({
     });
 
     return (
-        <div className="grid gap-5 xl:grid-cols-[300px_minmax(0,1fr)]">
-            <aside className="space-y-5">
-                <SpecialistProfileCard specialist={data.specialist} fallbackName={userName} />
-                <DirectChatsCard chats={data.directChats} />
-            </aside>
+        <>
+            <MobileDashboard
+                data={data}
+                operationContext={operationContext}
+                userName={userName}
+            />
 
-            <main className="space-y-5">
-                <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-3">
-                    <StatCard
-                        title="Total de Pacientes"
+            <div className="hidden gap-5 lg:grid xl:grid-cols-[300px_minmax(0,1fr)]">
+                <aside className="space-y-5">
+                    <SpecialistProfileCard specialist={data.specialist} fallbackName={userName} />
+                    <DirectChatsCard chats={data.directChats} />
+                </aside>
+
+                <main className="space-y-5">
+                    <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-3">
+                        <StatCard
+                            title="Total de Pacientes"
+                            value={data.stats.totalPatients}
+                            caption={formatDate(new Date(), operationContext)}
+                            icon={Users}
+                            locale={operationContext.locale}
+                        />
+                        <StatCard
+                            title="Visitas de Hoy"
+                            value={data.stats.visitsToday}
+                            caption={formatDate(new Date(), operationContext)}
+                            icon={Stethoscope}
+                            locale={operationContext.locale}
+                        />
+                        <StatCard
+                            title="Citas Recientes"
+                            value={data.stats.appointmentsFromToday}
+                            caption="Desde hoy"
+                            icon={CalendarCheck2}
+                            locale={operationContext.locale}
+                        />
+                        <StatCard
+                            title="Citas Canceladas"
+                            value={data.stats.canceledAppointments}
+                            caption="Historico"
+                            icon={CalendarX2}
+                            locale={operationContext.locale}
+                        />
+                        <StatCard
+                            title="Ingresos de Hoy"
+                            value={formatCurrency(data.stats.incomeToday, operationContext)}
+                            caption={formatDate(new Date(), operationContext)}
+                            icon={CreditCard}
+                            locale={operationContext.locale}
+                        />
+                        <StatCard
+                            title="Gasto Total"
+                            value={formatCurrency(data.stats.budgetTotal, operationContext)}
+                            caption="Presupuesto acumulado"
+                            icon={WalletCards}
+                            locale={operationContext.locale}
+                        />
+                    </div>
+
+                    <AppointmentsPanel
+                        appointments={data.appointments}
+                        appointmentTab={appointmentTab}
+                        query={query}
+                        operationContext={operationContext}
+                    />
+                </main>
+            </div>
+        </>
+    );
+}
+
+function MobileDashboard({
+    data,
+    operationContext,
+    userName,
+}: {
+    data: Awaited<ReturnType<typeof getDashboardData>>;
+    operationContext: DashboardOperationContext;
+    userName: string;
+}) {
+    const firstName = (userName || data.specialist?.displayName || data.specialist?.name || "Doctor").split(/\s+/)[0] || "Doctor";
+    const today = new Date();
+    const todayKey = formatDate(today, operationContext);
+    const todayAppointments = data.appointments
+        .filter((appointment) => formatDate(appointment.startTime, operationContext) === todayKey)
+        .slice(0, 4);
+    const visibleAppointments = todayAppointments.length > 0 ? todayAppointments : data.appointments.slice(0, 4);
+    const agendaTitle = todayAppointments.length > 0 ? "Agenda de hoy" : "Próximas citas";
+    const longDate = formatDate(today, operationContext, {
+        weekday: "long",
+        day: "numeric",
+        month: "long",
+    });
+
+    return (
+        <div className="space-y-4 pb-6 lg:hidden">
+            <section className="rounded-2xl border border-border/70 bg-card p-5 shadow-sm">
+                <div className="flex items-start justify-between gap-4">
+                    <div className="min-w-0">
+                        <p className="text-sm font-medium capitalize text-muted-foreground">{longDate}</p>
+                        <h1 className="mt-1 truncate text-3xl font-black tracking-tight text-foreground">
+                            Hola, {firstName}
+                        </h1>
+                    </div>
+                    <Button size="icon" className="h-11 w-11 shrink-0 rounded-full" asChild>
+                        <Link href="/dashboard/calendar" title="Nueva cita">
+                            <CalendarCheck2 className="h-5 w-5" />
+                        </Link>
+                    </Button>
+                </div>
+
+                <div className="mt-6 grid grid-cols-3 gap-2">
+                    <MobileStatTile
+                        label="Pacientes"
                         value={data.stats.totalPatients}
-                        caption={formatDate(new Date(), operationContext)}
                         icon={Users}
                         locale={operationContext.locale}
                     />
-                    <StatCard
-                        title="Visitas de Hoy"
+                    <MobileStatTile
+                        label="Hoy"
                         value={data.stats.visitsToday}
-                        caption={formatDate(new Date(), operationContext)}
                         icon={Stethoscope}
                         locale={operationContext.locale}
                     />
-                    <StatCard
-                        title="Citas Recientes"
+                    <MobileStatTile
+                        label="Citas"
                         value={data.stats.appointmentsFromToday}
-                        caption="Desde hoy"
                         icon={CalendarCheck2}
                         locale={operationContext.locale}
                     />
-                    <StatCard
-                        title="Citas Canceladas"
-                        value={data.stats.canceledAppointments}
-                        caption="Historico"
-                        icon={CalendarX2}
-                        locale={operationContext.locale}
-                    />
-                    <StatCard
-                        title="Ingresos de Hoy"
-                        value={formatCurrency(data.stats.incomeToday, operationContext)}
-                        caption={formatDate(new Date(), operationContext)}
-                        icon={CreditCard}
-                        locale={operationContext.locale}
-                    />
-                    <StatCard
-                        title="Gasto Total"
-                        value={formatCurrency(data.stats.budgetTotal, operationContext)}
-                        caption="Presupuesto acumulado"
-                        icon={WalletCards}
-                        locale={operationContext.locale}
-                    />
+                </div>
+            </section>
+
+            <section className="rounded-2xl border border-border/70 bg-card p-4 shadow-sm">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                        <h2 className="text-lg font-bold text-foreground">{agendaTitle}</h2>
+                        <p className="text-xs text-muted-foreground">
+                            {visibleAppointments.length} registro{visibleAppointments.length === 1 ? "" : "s"}
+                        </p>
+                    </div>
+                    <Button size="sm" className="rounded-full" asChild>
+                        <Link href="/dashboard/calendar">Nueva cita</Link>
+                    </Button>
                 </div>
 
-                <AppointmentsPanel
-                    appointments={data.appointments}
-                    appointmentTab={appointmentTab}
-                    query={query}
-                    operationContext={operationContext}
-                />
-            </main>
+                {visibleAppointments.length === 0 ? (
+                    <div className="rounded-xl border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">
+                        No hay citas programadas.
+                    </div>
+                ) : (
+                    <div className="divide-y">
+                        {visibleAppointments.map((appointment) => (
+                            <MobileAppointmentRow
+                                key={appointment.id}
+                                appointment={appointment}
+                                operationContext={operationContext}
+                            />
+                        ))}
+                    </div>
+                )}
+            </section>
+
+            <section className="rounded-2xl border border-border/70 bg-card p-4 shadow-sm">
+                <div className="mb-3 flex items-center justify-between">
+                    <h2 className="text-lg font-bold text-foreground">Chats directos</h2>
+                    <Button variant="ghost" size="sm" className="rounded-full text-primary" asChild>
+                        <Link href="/dashboard/inbox">Ver todos</Link>
+                    </Button>
+                </div>
+                {data.directChats.length === 0 ? (
+                    <p className="rounded-xl border border-dashed px-4 py-7 text-center text-sm text-muted-foreground">
+                        No hay conversaciones activas.
+                    </p>
+                ) : (
+                    <div className="space-y-2">
+                        {data.directChats.slice(0, 4).map((chat) => {
+                            const name = getContactFullName(chat.contact, "Contacto");
+                            const lastMessage = chat.messages[0]?.content || "Sin mensajes recientes";
+                            return (
+                                <Link
+                                    key={chat.id}
+                                    href={`/dashboard/inbox?conversationId=${chat.id}`}
+                                    className="flex items-center gap-3 rounded-xl border bg-background px-3 py-3"
+                                >
+                                    <div
+                                        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-muted bg-cover bg-center text-sm font-bold text-primary"
+                                        style={{
+                                            backgroundImage: chat.contact.whatsappAvatarUrl ? `url("${chat.contact.whatsappAvatarUrl}")` : undefined,
+                                        }}
+                                    >
+                                        {chat.contact.whatsappAvatarUrl ? null : getInitials(name)}
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                        <p className="truncate text-sm font-bold text-foreground">{name}</p>
+                                        <p className="truncate text-xs text-muted-foreground">{lastMessage}</p>
+                                    </div>
+                                    <DirectChatUnreadBadge conversationId={chat.id} />
+                                </Link>
+                            );
+                        })}
+                    </div>
+                )}
+            </section>
         </div>
+    );
+}
+
+function MobileStatTile({
+    label,
+    value,
+    icon: Icon,
+    locale,
+}: {
+    label: string;
+    value: number;
+    icon: ComponentType<{ className?: string }>;
+    locale: string;
+}) {
+    return (
+        <div className="rounded-xl border bg-background p-3">
+            <div className="mb-2 flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-primary">
+                <Icon className="h-4 w-4" />
+            </div>
+            <p className="text-2xl font-black leading-none text-foreground">{value.toLocaleString(locale)}</p>
+            <p className="mt-1 truncate text-[11px] font-medium text-muted-foreground">{label}</p>
+        </div>
+    );
+}
+
+function MobileAppointmentRow({
+    appointment,
+    operationContext,
+}: {
+    appointment: Awaited<ReturnType<typeof getDashboardData>>["appointments"][number];
+    operationContext: DashboardOperationContext;
+}) {
+    const displayName = appointment.patient
+        ? getPatientName(appointment.patient)
+        : getContactFullName(appointment.contact, "Contacto");
+    const status = getStatusLabel(appointment.status);
+    const href = appointment.patientId ? "/dashboard/patients" : "/dashboard/calendar";
+
+    return (
+        <Link href={href} className="flex items-center gap-3 py-3">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-black text-primary">
+                {getInitials(displayName)}
+            </div>
+            <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                    <p className="truncate text-sm font-bold text-foreground">{displayName}</p>
+                    <Badge variant="secondary" className="shrink-0 rounded-full px-2 py-0 text-[10px]">
+                        {status}
+                    </Badge>
+                </div>
+                <p className="mt-1 truncate text-xs text-muted-foreground">
+                    {formatTime(appointment.startTime, operationContext)} · {appointment.appointmentType || appointment.title}
+                </p>
+            </div>
+            <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+        </Link>
     );
 }
 
