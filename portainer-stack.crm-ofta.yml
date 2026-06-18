@@ -27,7 +27,9 @@ services:
       - STARTUP_DB_MAX_ATTEMPTS=${STARTUP_DB_MAX_ATTEMPTS:-20}
       - STARTUP_DB_RETRY_MS=${STARTUP_DB_RETRY_MS:-5000}
     networks:
-      - SociosNet
+      SociosNet:
+        aliases:
+          - zencrm-ofta-app
     volumes:
       - zen_crm_uploads:/app/public/uploads
     depends_on:
@@ -78,7 +80,9 @@ services:
       - WEBHOOK_FORMAT=json
       - SESSION_DEVICE_NAME=${SESSION_DEVICE_NAME:-Zen CRM Oftalmo}
     networks:
-      - SociosNet
+      SociosNet:
+        aliases:
+          - ofta-whatsapp-gateway
     depends_on:
       - ofta-whatsapp-db
     deploy:
@@ -100,7 +104,9 @@ services:
     volumes:
       - wuzapi_db_data:/var/lib/postgresql/data
     networks:
-      - SociosNet
+      SociosNet:
+        aliases:
+          - ofta-whatsapp-db
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U wuzapi -d wuzapi"]
       interval: 20s
@@ -126,7 +132,9 @@ services:
     volumes:
       - zen_crm_db_data:/var/lib/postgresql/data
     networks:
-      - SociosNet
+      SociosNet:
+        aliases:
+          - ofta-crm-db
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U zencrm -d zencrm"]
       interval: 20s
