@@ -4,8 +4,8 @@ import { useEffect, useState, type ChangeEvent, type ComponentType } from "react
 import { useSession } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
+    BookOpen,
     CalendarDays,
-    Clock3,
     Globe2,
     Image as ImageIcon,
     Loader2,
@@ -39,29 +39,20 @@ import {
     type NotificationPrefs,
 } from "@/lib/notificationSounds";
 import { WhatsAppGatewayPanel } from "@/components/settings/whatsapp-gateway-panel";
-import { MetaWhatsAppPanel } from "@/components/settings/meta-whatsapp-panel";
 import { GoogleCalendarPanel } from "@/components/settings/google-calendar-panel";
 import { AppointmentReminderSettingsPanel } from "@/components/settings/appointment-reminder-settings-panel";
 import { SpecialistManagerPanel } from "@/components/settings/specialist-manager-panel";
 import { PortalContentPanel } from "@/components/settings/portal-content-panel";
-import { LogoCropDialog } from "@/components/settings/logo-crop-dialog";
 import { UserAccessPanel } from "@/components/settings/user-access-panel";
+import { PhonePrefixInput } from "@/components/shared/phone-prefix-input";
 import { Slider } from "@/components/ui/slider";
 import { WhatsAppIcon } from "@/components/icons/whatsapp-icon";
 import { hasPermission, type PermissionKey } from "@/lib/permissions";
 import { OPERATION_COUNTRIES, getOperationCountry, normalizeCurrencyList } from "@/lib/operation-context";
 import { DEFAULT_BRAND_FAVICON_URL, DEFAULT_BRAND_NAME } from "@/lib/branding";
 import { BrandLogo } from "@/components/brand/brand-logo";
-import {
-    BUSINESS_DAY_KEYS,
-    BUSINESS_DAY_LABELS,
-    normalizeBusinessHours,
-    type BusinessDayKey,
-    type BusinessWeeklySchedule,
-} from "@/lib/calendar/business-hours";
 
 type SectionId = "theme" | "brand" | "operation" | "users" | "ai" | "whatsapp" | "calendar" | "specialists" | "portal" | "chats";
-type LogoCropTarget = "brand" | "clinic";
 
 const SECTIONS: Array<{
     id: SectionId;
@@ -72,20 +63,23 @@ const SECTIONS: Array<{
     permissions?: PermissionKey[];
 }> = [
     { id: "theme", label: "Apariencia", description: "Tema y estilo general del CRM", icon: Palette },
-    { id: "operation", label: "Operación", description: "Marca blanca, datos del negocio y portal de reservas", icon: Globe2, permission: "settings.manage" },
+    { id: "brand", label: "Marca blanca", description: "Nombre, logo y favicon del CRM", icon: ImageIcon, permission: "settings.manage" },
+    { id: "operation", label: "Operacion", description: "Pais, telefono, moneda y zona horaria", icon: Globe2, permission: "settings.manage" },
     { id: "users", label: "Usuarios", description: "Accesos, roles y permisos", icon: Users, permission: "users.manage" },
     { id: "ai", label: "Cerebro IA", description: "Claves y servicios de inteligencia", icon: Sparkles, permission: "ai.manage" },
-    { id: "whatsapp", label: "Canal WhatsApp", description: "WhatsApp API oficial y conexion alternativa por QR", icon: WhatsAppIcon, permission: "integrations.manage" },
+    { id: "whatsapp", label: "Canal WhatsApp", description: "Credenciales YCloud, QR y sincronizacion del numero", icon: WhatsAppIcon, permission: "integrations.manage" },
     { id: "calendar", label: "Calendario", description: "Google Calendar y recordatorios de citas", icon: CalendarDays, permissions: ["calendar.manage", "integrations.manage"] },
-    { id: "specialists", label: "Especialistas", description: "Perfiles, agendas, servicios y bloqueos", icon: Stethoscope, permission: "specialists.manage" },
+    { id: "specialists", label: "Especialistas", description: "Agendas clinicas, portal y bloqueos", icon: Stethoscope, permission: "specialists.manage" },
+    { id: "portal", label: "Portal", description: "Autogestion, pagos y articulos", icon: BookOpen, permission: "portal.manage" },
     { id: "chats", label: "Notificaciones", description: "Sonidos y preferencias del inbox", icon: Volume2 },
 ];
 
 export default function SettingsPage() {
     const [activeSection, setActiveSection] = useState<SectionId>("theme");
-    const [operationTab, setOperationTab] = useState<"brand" | "operation" | "portal">("brand");
     const [openaiKey, setOpenaiKey] = useState("");
     const [geminiKey, setGeminiKey] = useState("");
+    const [ycloudApiKey, setYcloudApiKey] = useState("");
+    const [ycloudPhoneId, setYcloudPhoneId] = useState("");
     const [whatsappBaseUrl, setWhatsappBaseUrl] = useState("");
     const [whatsappAdminToken, setWhatsappAdminToken] = useState("");
     const [whatsappUserToken, setWhatsappUserToken] = useState("");
@@ -95,15 +89,14 @@ export default function SettingsPage() {
     const [operationCountry, setOperationCountry] = useState("MX");
     const [phoneDefaultCountry, setPhoneDefaultCountry] = useState("MX");
     const [businessTimeZone, setBusinessTimeZone] = useState("America/Mexico_City");
-    const [businessWeeklySchedule, setBusinessWeeklySchedule] = useState<BusinessWeeklySchedule>(() => normalizeBusinessHours().weeklySchedule);
     const [paymentDefaultCurrency, setPaymentDefaultCurrency] = useState("MXN");
     const [paymentEnabledCurrencies, setPaymentEnabledCurrencies] = useState<string[]>(["MXN"]);
     const [brandName, setBrandName] = useState(DEFAULT_BRAND_NAME);
     const [brandLogoUrl, setBrandLogoUrl] = useState("");
     const [brandFaviconUrl, setBrandFaviconUrl] = useState(DEFAULT_BRAND_FAVICON_URL);
-    const [clinicName, setClinicName] = useState("Zen CRM Belleza");
-    const [clinicSubtitle, setClinicSubtitle] = useState("Servicios de belleza");
-    const [clinicAddress, setClinicAddress] = useState("Dirección del negocio");
+    const [clinicName, setClinicName] = useState("Zen CRM Oftalmo");
+    const [clinicSubtitle, setClinicSubtitle] = useState("Clinica oftalmologica");
+    const [clinicAddress, setClinicAddress] = useState("Direccion de la clinica");
     const [clinicLogoUrl, setClinicLogoUrl] = useState("");
     const [clinicLogoScale, setClinicLogoScale] = useState(100);
     const [posTaxEnabled, setPosTaxEnabled] = useState(false);
@@ -111,24 +104,23 @@ export default function SettingsPage() {
     const [posTicketEnabled, setPosTicketEnabled] = useState(true);
     const [posTicketShowUnitPrice, setPosTicketShowUnitPrice] = useState(true);
     const [posTicketFullDescription, setPosTicketFullDescription] = useState(false);
-    const [posTicketHeader, setPosTicketHeader] = useState("Zen CRM Belleza\nServicios de belleza\nDirección del negocio");
+    const [posTicketHeader, setPosTicketHeader] = useState("Zen CRM Oftalmo\nClinica oftalmologica\nDireccion de la clinica");
     const [posTicketFooter, setPosTicketFooter] = useState("Gracias por su compra\nRegrese pronto");
     const [googleClientId, setGoogleClientId] = useState("");
     const [googleClientSecret, setGoogleClientSecret] = useState("");
     const [reminderWhatsAppEnabled, setReminderWhatsAppEnabled] = useState(true);
     const [appointmentRemindersEnabled, setAppointmentRemindersEnabled] = useState(true);
     const [appointmentReminderOffsets, setAppointmentReminderOffsets] = useState<number[]>([1440, 240]);
-    const [appointmentReminderProvider, setAppointmentReminderProvider] = useState<"wuzapi" | "meta">("wuzapi");
+    const [appointmentReminderProvider, setAppointmentReminderProvider] = useState<"wuzapi" | "ycloud">("wuzapi");
     const [appointmentReminderSendOnlyConfirmed, setAppointmentReminderSendOnlyConfirmed] = useState(true);
     const [appointmentReminderWuzapiTemplate, setAppointmentReminderWuzapiTemplate] = useState("");
-    const [appointmentReminderMetaTemplate24h, setAppointmentReminderMetaTemplate24h] = useState("");
-    const [appointmentReminderMetaTemplate4h, setAppointmentReminderMetaTemplate4h] = useState("");
-    const [appointmentReminderMetaLanguage, setAppointmentReminderMetaLanguage] = useState("es");
+    const [appointmentReminderYcloudTemplate24h, setAppointmentReminderYcloudTemplate24h] = useState("");
+    const [appointmentReminderYcloudTemplate4h, setAppointmentReminderYcloudTemplate4h] = useState("");
+    const [appointmentReminderYcloudLanguage, setAppointmentReminderYcloudLanguage] = useState("es");
     const [isSaving, setIsSaving] = useState(false);
     const [isUploadingBrandLogo, setIsUploadingBrandLogo] = useState(false);
     const [isUploadingBrandFavicon, setIsUploadingBrandFavicon] = useState(false);
     const [isUploadingClinicLogo, setIsUploadingClinicLogo] = useState(false);
-    const [logoCrop, setLogoCrop] = useState<{ file: File; target: LogoCropTarget } | null>(null);
     const [notifPrefs, setNotifPrefs] = useState<NotificationPrefs>({
         enabled: true,
         soundType: "gentle",
@@ -156,6 +148,8 @@ export default function SettingsPage() {
                 if (!settings) return;
                 setOpenaiKey(settings.openaiApiKey || "");
                 setGeminiKey(settings.geminiApiKey || "");
+                setYcloudApiKey(settings.ycloudApiKey || "");
+                setYcloudPhoneId(settings.ycloudPhoneId || "");
                 setWhatsappBaseUrl(settings.whatsappBaseUrl || "");
                 setWhatsappAdminToken(settings.whatsappAdminToken || "");
                 setWhatsappUserToken(settings.whatsappUserToken || "");
@@ -166,7 +160,6 @@ export default function SettingsPage() {
                 setOperationCountry(country.code);
                 setPhoneDefaultCountry(settings.phoneDefaultCountry || country.code);
                 setBusinessTimeZone(settings.businessTimeZone || country.timeZone);
-                setBusinessWeeklySchedule(normalizeBusinessHours(settings).weeklySchedule);
                 const currencies = normalizeCurrencyList(settings.paymentEnabledCurrencies, country.code);
                 setPaymentEnabledCurrencies(currencies);
                 setPaymentDefaultCurrency(
@@ -177,9 +170,9 @@ export default function SettingsPage() {
                 setBrandName(settings.brandName || DEFAULT_BRAND_NAME);
                 setBrandLogoUrl(settings.brandLogoUrl || "");
                 setBrandFaviconUrl(settings.brandFaviconUrl || DEFAULT_BRAND_FAVICON_URL);
-                setClinicName(/oftalm/i.test(settings.clinicName || "") ? "Zen CRM Belleza" : settings.clinicName || "Zen CRM Belleza");
-                setClinicSubtitle(/oftalm|cl[ií]nica/i.test(settings.clinicSubtitle || "") ? "Servicios de belleza" : settings.clinicSubtitle || "Servicios de belleza");
-                setClinicAddress(settings.clinicAddress || "Dirección del negocio");
+                setClinicName(settings.clinicName || "Zen CRM Oftalmo");
+                setClinicSubtitle(settings.clinicSubtitle || "Clinica oftalmologica");
+                setClinicAddress(settings.clinicAddress || "Direccion de la clinica");
                 setClinicLogoUrl(settings.clinicLogoUrl || "");
                 setClinicLogoScale(Number(settings.clinicLogoScale || 100));
                 setPosTaxEnabled(Boolean(settings.posTaxEnabled));
@@ -187,7 +180,7 @@ export default function SettingsPage() {
                 setPosTicketEnabled(settings.posTicketEnabled !== false);
                 setPosTicketShowUnitPrice(settings.posTicketShowUnitPrice !== false);
                 setPosTicketFullDescription(Boolean(settings.posTicketFullDescription));
-                setPosTicketHeader(settings.posTicketHeader || "Zen CRM Belleza\nServicios de belleza\nDirección del negocio");
+                setPosTicketHeader(settings.posTicketHeader || "Zen CRM Oftalmo\nClinica oftalmologica\nDireccion de la clinica");
                 setPosTicketFooter(settings.posTicketFooter || "Gracias por su compra\nRegrese pronto");
                 setGoogleClientId(settings.googleClientId || "");
                 setGoogleClientSecret(settings.googleClientSecret || "");
@@ -200,12 +193,12 @@ export default function SettingsPage() {
                             .filter((value: number) => Number.isFinite(value) && value > 0)
                         : [1440, 240],
                 );
-                setAppointmentReminderProvider(settings.appointmentReminderProvider === "meta" ? "meta" : "wuzapi");
+                setAppointmentReminderProvider(settings.appointmentReminderProvider === "ycloud" ? "ycloud" : "wuzapi");
                 setAppointmentReminderSendOnlyConfirmed(settings.appointmentReminderSendOnlyConfirmed !== false);
                 setAppointmentReminderWuzapiTemplate(settings.appointmentReminderWuzapiTemplate || "");
-                setAppointmentReminderMetaTemplate24h(settings.appointmentReminderMetaTemplate24h || "");
-                setAppointmentReminderMetaTemplate4h(settings.appointmentReminderMetaTemplate4h || "");
-                setAppointmentReminderMetaLanguage(settings.appointmentReminderMetaLanguage || "es");
+                setAppointmentReminderYcloudTemplate24h(settings.appointmentReminderYcloudTemplate24h || "");
+                setAppointmentReminderYcloudTemplate4h(settings.appointmentReminderYcloudTemplate4h || "");
+                setAppointmentReminderYcloudLanguage(settings.appointmentReminderYcloudLanguage || "es");
             } catch (error) {
                 console.error("Failed to load settings:", error);
             }
@@ -219,20 +212,13 @@ export default function SettingsPage() {
 
     useEffect(() => {
         const requestedSection = searchParams.get("section");
-        const requestedOperationTab = searchParams.get("tab");
         if (requestedSection === "templates") {
             router.replace("/dashboard/templates");
             return;
         }
 
-        if (requestedSection === "brand" || requestedSection === "portal") {
-            setActiveSection("operation");
-            setOperationTab(requestedSection);
-        } else if (requestedSection && SECTIONS.some((section) => section.id === requestedSection)) {
+        if (requestedSection && SECTIONS.some((section) => section.id === requestedSection)) {
             setActiveSection(requestedSection as SectionId);
-            if (requestedSection === "operation" && ["brand", "operation", "portal"].includes(requestedOperationTab || "")) {
-                setOperationTab(requestedOperationTab as "brand" | "operation" | "portal");
-            }
         }
 
         const googleState = searchParams.get("google");
@@ -250,40 +236,28 @@ export default function SettingsPage() {
         }
     }, [router, searchParams, toast]);
 
-    const updateBusinessDay = (day: BusinessDayKey, patch: Partial<BusinessWeeklySchedule[BusinessDayKey]>) => {
-        setBusinessWeeklySchedule((current) => ({
-            ...current,
-            [day]: { ...current[day], ...patch },
-        }));
-    };
-
     const handleSave = async () => {
-        const normalizedHours = normalizeBusinessHours({ businessTimeZone, businessWeeklySchedule });
         setIsSaving(true);
         try {
-            const saveSection = activeSection === "operation" ? operationTab : activeSection;
             const settingsPayload =
-                saveSection === "ai"
+                activeSection === "ai"
                     ? {
                           openaiApiKey: openaiKey,
                           geminiApiKey: geminiKey,
                       }
-                    : saveSection === "brand"
+                    : activeSection === "brand"
                         ? {
                               brandName: brandName.trim() || DEFAULT_BRAND_NAME,
                               brandLogoUrl,
                               brandFaviconUrl: brandFaviconUrl || DEFAULT_BRAND_FAVICON_URL,
                           }
-                    : saveSection === "operation"
+                    : activeSection === "operation"
                         ? {
                               operationCountry,
                               phoneDefaultCountry,
                               paymentDefaultCurrency,
                               paymentEnabledCurrencies,
                               businessTimeZone,
-                              businessHoursStart: normalizedHours.start,
-                              businessHoursEnd: normalizedHours.end,
-                              businessWeeklySchedule: normalizedHours.weeklySchedule,
                               clinicName,
                               clinicSubtitle,
                               clinicAddress,
@@ -297,7 +271,7 @@ export default function SettingsPage() {
                               posTicketHeader,
                               posTicketFooter,
                           }
-                    : saveSection === "calendar"
+                    : activeSection === "calendar"
                         ? {
                               ...(canAccess("integrations.manage")
                                   ? {
@@ -313,13 +287,15 @@ export default function SettingsPage() {
                                         appointmentReminderProvider,
                                         appointmentReminderSendOnlyConfirmed,
                                         appointmentReminderWuzapiTemplate,
-                                        appointmentReminderMetaTemplate24h,
-                                        appointmentReminderMetaTemplate4h,
-                                        appointmentReminderMetaLanguage,
+                                        appointmentReminderYcloudTemplate24h,
+                                        appointmentReminderYcloudTemplate4h,
+                                        appointmentReminderYcloudLanguage,
                                     }
                                   : {}),
                           }
                         : {
+                              ycloudApiKey,
+                              ycloudPhoneId,
                               whatsappBaseUrl,
                               whatsappAdminToken,
                               whatsappUserToken,
@@ -359,41 +335,24 @@ export default function SettingsPage() {
         return result.url as string;
     };
 
-    const handleLogoFileSelected = (target: LogoCropTarget, event: ChangeEvent<HTMLInputElement>) => {
+    const handleBrandLogoUpload = async (event: ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
         event.target.value = "";
         if (!file) return;
-        if (!file.type.startsWith("image/")) {
-            toast({ title: "Selecciona una imagen válida", variant: "destructive" });
-            return;
-        }
-        setLogoCrop({ file, target });
-    };
 
-    const handleCroppedLogoApply = async (croppedFile: File) => {
-        if (!logoCrop) return;
-        const target = logoCrop.target;
-        if (target === "brand") setIsUploadingBrandLogo(true);
-        else setIsUploadingClinicLogo(true);
+        setIsUploadingBrandLogo(true);
         try {
-            const url = await uploadImageAsset(croppedFile);
-            if (target === "brand") {
-                setBrandLogoUrl(url);
-            } else {
-                setClinicLogoUrl(url);
-                setClinicLogoScale(100);
-            }
-            setLogoCrop(null);
-            toast({ title: target === "brand" ? "Logo del CRM ajustado" : "Logotipo del negocio ajustado" });
+            const url = await uploadImageAsset(file);
+            setBrandLogoUrl(url);
+            toast({ title: "Logo del CRM cargado" });
         } catch (error) {
             toast({
-                title: "No se pudo cargar el logotipo",
-                description: error instanceof Error ? error.message : "Inténtalo de nuevo.",
+                title: "No se pudo cargar el logo",
+                description: error instanceof Error ? error.message : "Intentalo de nuevo.",
                 variant: "destructive",
             });
         } finally {
-            if (target === "brand") setIsUploadingBrandLogo(false);
-            else setIsUploadingClinicLogo(false);
+            setIsUploadingBrandLogo(false);
         }
     };
 
@@ -448,6 +407,33 @@ export default function SettingsPage() {
         setPaymentDefaultCurrency(country.defaultCurrency);
     };
 
+    const handleClinicLogoUpload = async (event: ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        event.target.value = "";
+        if (!file) return;
+
+        setIsUploadingClinicLogo(true);
+        try {
+            const formData = new FormData();
+            formData.append("file", file);
+            const response = await fetch("/api/upload", { method: "POST", body: formData });
+            const result = await response.json();
+            if (!response.ok || !result?.success || !result.url) {
+                throw new Error(result?.error || "No se pudo subir el logotipo.");
+            }
+            setClinicLogoUrl(result.url);
+            toast({ title: "Logotipo cargado" });
+        } catch (error) {
+            toast({
+                title: "No se pudo cargar el logotipo",
+                description: error instanceof Error ? error.message : "Intentalo de nuevo.",
+                variant: "destructive",
+            });
+        } finally {
+            setIsUploadingClinicLogo(false);
+        }
+    };
+
     const visibleSections = SECTIONS.filter((section) =>
         (!section.permission || canAccess(section.permission)) &&
         (!section.permissions || section.permissions.some((permission) => canAccess(permission))),
@@ -455,18 +441,10 @@ export default function SettingsPage() {
 
     return (
         <div className="mx-auto max-w-6xl space-y-6">
-            <LogoCropDialog
-                file={logoCrop?.file || null}
-                open={Boolean(logoCrop)}
-                title={logoCrop?.target === "brand" ? "Ajustar logo del CRM" : "Ajustar logotipo del negocio"}
-                isApplying={logoCrop?.target === "brand" ? isUploadingBrandLogo : isUploadingClinicLogo}
-                onOpenChange={(open) => !open && setLogoCrop(null)}
-                onApply={handleCroppedLogoApply}
-            />
             <div>
                 <h1 className="flex items-center gap-2 text-2xl font-bold">
                     <Settings className="h-6 w-6 text-primary" />
-                    Configuración
+                    Configuracion
                 </h1>
                 <p className="mt-1 text-sm text-muted-foreground">
                     Ajusta la apariencia, los canales y las integraciones del CRM sin tocar la operacion diaria del equipo.
@@ -504,29 +482,6 @@ export default function SettingsPage() {
             </div>
 
             <div className="rounded-2xl border bg-card p-4 sm:p-5 md:p-7">
-                {activeSection === "operation" && (
-                    <div className="mb-6 flex w-full max-w-xl rounded-xl bg-muted/60 p-1">
-                        {([
-                            { id: "brand", label: "Marca blanca" },
-                            { id: "operation", label: "Operación" },
-                            { id: "portal", label: "Portal" },
-                        ] as const).map((tab) => (
-                            <button
-                                key={tab.id}
-                                type="button"
-                                onClick={() => setOperationTab(tab.id)}
-                                className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium transition ${
-                                    operationTab === tab.id
-                                        ? "bg-background text-foreground shadow-sm"
-                                        : "text-muted-foreground hover:text-foreground"
-                                }`}
-                            >
-                                {tab.label}
-                            </button>
-                        ))}
-                    </div>
-                )}
-
                 {activeSection === "theme" && (
                     <div className="space-y-6">
                         <div className="space-y-3">
@@ -546,12 +501,12 @@ export default function SettingsPage() {
                     </div>
                 )}
 
-                {activeSection === "operation" && operationTab === "brand" && canAccess("settings.manage") && (
+                {activeSection === "brand" && canAccess("settings.manage") && (
                     <div className="max-w-5xl space-y-5">
                         <div>
                             <h2 className="font-semibold">Marca blanca del CRM</h2>
                             <p className="text-sm text-muted-foreground">
-                                Personaliza el nombre, logo y favicon que verá tu equipo en el CRM.
+                                Personaliza la identidad visible del sistema sin modificar los datos clínicos ni el membrete de recetas.
                             </p>
                         </div>
 
@@ -601,12 +556,12 @@ export default function SettingsPage() {
                                         </div>
                                         <label className="mt-3 flex h-10 cursor-pointer items-center justify-center gap-2 rounded-full border bg-background text-sm font-medium transition hover:bg-muted/50">
                                             {isUploadingBrandLogo ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-                                            Elegir y ajustar
+                                            Subir logo
                                             <input
                                                 type="file"
                                                 accept="image/png,image/jpeg,image/webp,image/svg+xml"
                                                 className="hidden"
-                                                onChange={(event) => handleLogoFileSelected("brand", event)}
+                                                onChange={handleBrandLogoUpload}
                                                 disabled={isUploadingBrandLogo}
                                             />
                                         </label>
@@ -704,7 +659,7 @@ export default function SettingsPage() {
                     </div>
                 )}
 
-                {activeSection === "operation" && operationTab === "operation" && canAccess("settings.manage") && (
+                {activeSection === "operation" && canAccess("settings.manage") && (
                     <div className="max-w-4xl space-y-5">
                         <div>
                             <h2 className="font-semibold">Pais de operacion</h2>
@@ -783,9 +738,9 @@ export default function SettingsPage() {
 
                         <div className="rounded-2xl border bg-muted/10 p-4">
                             <div>
-                                <h2 className="font-semibold">Datos del negocio</h2>
+                                <h2 className="font-semibold">Datos de clinica y recetas</h2>
                                 <p className="text-sm text-muted-foreground">
-                                    Información comercial usada en el portal, comprobantes e impresiones.
+                                    Membrete usado en receta medica, receta optica, historia clinica e impresiones.
                                 </p>
                             </div>
 
@@ -797,7 +752,7 @@ export default function SettingsPage() {
                                             {clinicLogoUrl ? (
                                                 <img
                                                     src={clinicLogoUrl}
-                                                    alt="Logotipo del negocio"
+                                                    alt="Logotipo de la clinica"
                                                     className="object-contain"
                                                     style={{
                                                         width: `${Math.max(50, Math.min(180, clinicLogoScale))}%`,
@@ -811,8 +766,8 @@ export default function SettingsPage() {
                                         <div className="flex w-full gap-2">
                                             <label className="flex h-10 flex-1 cursor-pointer items-center justify-center gap-2 rounded-full border bg-background text-sm font-medium transition hover:bg-muted/50">
                                                 {isUploadingClinicLogo ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-                                                Elegir y ajustar
-                                                <input type="file" accept="image/*" className="hidden" onChange={(event) => handleLogoFileSelected("clinic", event)} disabled={isUploadingClinicLogo} />
+                                                Subir
+                                                <input type="file" accept="image/*" className="hidden" onChange={handleClinicLogoUpload} disabled={isUploadingClinicLogo} />
                                             </label>
                                             {clinicLogoUrl ? (
                                                 <Button type="button" variant="outline" size="icon" className="rounded-full text-destructive" onClick={() => setClinicLogoUrl("")}>
@@ -839,53 +794,19 @@ export default function SettingsPage() {
                                 <div className="grid gap-4 md:grid-cols-2">
                                     <div className="space-y-2">
                                         <Label>Nombre comercial</Label>
-                                        <Input value={clinicName} onChange={(event) => setClinicName(event.target.value)} placeholder="Nombre del negocio" />
+                                        <Input value={clinicName} onChange={(event) => setClinicName(event.target.value)} placeholder="Zen CRM Oftalmo" />
                                     </div>
                                     <div className="space-y-2">
-                                        <Label>Subtítulo / giro</Label>
-                                        <Input value={clinicSubtitle} onChange={(event) => setClinicSubtitle(event.target.value)} placeholder="Salón, barbería, spa..." />
+                                        <Label>Subtitulo / especialidad</Label>
+                                        <Input value={clinicSubtitle} onChange={(event) => setClinicSubtitle(event.target.value)} placeholder="Clinica oftalmologica" />
                                     </div>
                                     <div className="space-y-2 md:col-span-2">
-                                        <Label>Dirección del negocio</Label>
-                                        <Input value={clinicAddress} onChange={(event) => setClinicAddress(event.target.value)} placeholder="Dirección, teléfono, ciudad..." />
+                                        <Label>Direccion de la clinica</Label>
+                                        <Input value={clinicAddress} onChange={(event) => setClinicAddress(event.target.value)} placeholder="Direccion, telefono, ciudad..." />
                                     </div>
                                     <div className="rounded-2xl border bg-primary/5 p-4 text-sm text-muted-foreground md:col-span-2">
-                                        Los perfiles, horarios y servicios de cada profesional se editan en la sección Especialistas.
+                                        Los datos del profesional, titulo, cedula y foto se editan en la seccion Especialistas. Operacion solo define los datos generales de la clinica.
                                     </div>
-                                </div>
-                            </div>
-
-                            <div className="mt-5 rounded-2xl border bg-background p-4">
-                                <div className="flex items-start gap-3">
-                                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                                        <Clock3 className="h-4 w-4" />
-                                    </span>
-                                    <div>
-                                        <h3 className="font-semibold">Horario de atención del negocio</h3>
-                                        <p className="text-sm text-muted-foreground">Es la fuente única para la disponibilidad del portal y del calendario.</p>
-                                    </div>
-                                </div>
-                                <div className="mt-4 divide-y rounded-xl border">
-                                    {BUSINESS_DAY_KEYS.map((day) => {
-                                        const schedule = businessWeeklySchedule[day];
-                                        return (
-                                            <div key={day} className="grid items-center gap-3 px-3 py-3 sm:grid-cols-[110px_1fr]">
-                                                <label className="flex items-center gap-2 text-sm font-medium">
-                                                    <Switch checked={schedule.enabled} onCheckedChange={(enabled) => updateBusinessDay(day, { enabled })} />
-                                                    {BUSINESS_DAY_LABELS[day]}
-                                                </label>
-                                                {schedule.enabled ? (
-                                                    <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
-                                                        <Input type="time" value={schedule.start} onChange={(event) => updateBusinessDay(day, { start: event.target.value })} aria-label={`Apertura ${BUSINESS_DAY_LABELS[day]}`} />
-                                                        <span className="text-xs text-muted-foreground">a</span>
-                                                        <Input type="time" value={schedule.end} onChange={(event) => updateBusinessDay(day, { end: event.target.value })} aria-label={`Cierre ${BUSINESS_DAY_LABELS[day]}`} />
-                                                    </div>
-                                                ) : (
-                                                    <span className="text-sm text-muted-foreground">Cerrado</span>
-                                                )}
-                                            </div>
-                                        );
-                                    })}
                                 </div>
                             </div>
                         </div>
@@ -1042,7 +963,50 @@ export default function SettingsPage() {
 
                 {activeSection === "whatsapp" && canAccess("integrations.manage") && (
                     <div className="space-y-6">
-                        <MetaWhatsAppPanel />
+                        <div className="max-w-3xl space-y-4 rounded-2xl border bg-muted/15 p-5">
+                            <div>
+                                <h2 className="font-semibold">WhatsApp via YCloud</h2>
+                                <p className="text-sm text-muted-foreground">
+                                    Conecta tu cuenta de YCloud para enviar y recibir mensajes por API oficial.
+                                </p>
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label htmlFor="ycloud-api-key">YCloud API key</Label>
+                                <Input
+                                    id="ycloud-api-key"
+                                    type="password"
+                                    value={ycloudApiKey}
+                                    onChange={(event) => setYcloudApiKey(event.target.value)}
+                                    placeholder="Tu API key de YCloud..."
+                                />
+                                <p className="text-xs text-muted-foreground">
+                                    Obten tu API key en YCloud Dashboard -&gt; Developer -&gt; API Keys.
+                                </p>
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label htmlFor="ycloud-phone-id">YCloud Phone Number ID</Label>
+                                <PhonePrefixInput
+                                    value={ycloudPhoneId}
+                                    onChange={setYcloudPhoneId}
+                                    defaultCountry={phoneDefaultCountry}
+                                    placeholder="Telefono YCloud"
+                                />
+                                <p className="text-xs text-muted-foreground">
+                                    Se usa para envio oficial por API y como source_id del feed YCloud.
+                                </p>
+                            </div>
+
+                            <Button onClick={handleSave} disabled={isSaving}>
+                                {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                                Guardar cambios
+                            </Button>
+
+                            <p className="text-xs text-muted-foreground">
+                                Configura el webhook de YCloud apuntando a <code className="rounded bg-muted px-1 py-0.5">/api/webhooks/ycloud</code>.
+                            </p>
+                        </div>
 
                         <WhatsAppGatewayPanel
                             whatsappBaseUrl={whatsappBaseUrl}
@@ -1074,9 +1038,9 @@ export default function SettingsPage() {
                                 provider={appointmentReminderProvider}
                                 sendOnlyConfirmed={appointmentReminderSendOnlyConfirmed}
                                 wuzapiTemplate={appointmentReminderWuzapiTemplate}
-                                metaTemplate24h={appointmentReminderMetaTemplate24h}
-                                metaTemplate4h={appointmentReminderMetaTemplate4h}
-                                metaLanguage={appointmentReminderMetaLanguage}
+                                ycloudTemplate24h={appointmentReminderYcloudTemplate24h}
+                                ycloudTemplate4h={appointmentReminderYcloudTemplate4h}
+                                ycloudLanguage={appointmentReminderYcloudLanguage}
                                 onEnabledChange={(value) => {
                                     setAppointmentRemindersEnabled(value);
                                     setReminderWhatsAppEnabled(value);
@@ -1085,9 +1049,9 @@ export default function SettingsPage() {
                                 onProviderChange={setAppointmentReminderProvider}
                                 onSendOnlyConfirmedChange={setAppointmentReminderSendOnlyConfirmed}
                                 onWuzapiTemplateChange={setAppointmentReminderWuzapiTemplate}
-                                onMetaTemplate24hChange={setAppointmentReminderMetaTemplate24h}
-                                onMetaTemplate4hChange={setAppointmentReminderMetaTemplate4h}
-                                onMetaLanguageChange={setAppointmentReminderMetaLanguage}
+                                onYcloudTemplate24hChange={setAppointmentReminderYcloudTemplate24h}
+                                onYcloudTemplate4hChange={setAppointmentReminderYcloudTemplate4h}
+                                onYcloudLanguageChange={setAppointmentReminderYcloudLanguage}
                                 onSave={handleSave}
                                 isSaving={isSaving}
                             />
@@ -1112,7 +1076,7 @@ export default function SettingsPage() {
                     <SpecialistManagerPanel />
                 )}
 
-                {activeSection === "operation" && operationTab === "portal" && canAccess("portal.manage") && (
+                {activeSection === "portal" && canAccess("portal.manage") && (
                     <PortalContentPanel />
                 )}
 

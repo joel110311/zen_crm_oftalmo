@@ -29,7 +29,6 @@ const APPOINTMENT_INCLUDE = {
     contact: true,
     patient: true,
     specialist: true,
-    service: true,
 } as const;
 
 function revalidateCalendarSurfaces() {
@@ -112,7 +111,6 @@ export async function createAppointment(data: {
     contactId?: string;
     patientId?: string;
     specialistId?: string;
-    serviceId?: string;
     userId?: string;
     appointmentType?: string;
     source?: string;
@@ -163,7 +161,6 @@ export async function updateAppointment(id: string, data: {
     contactId?: string;
     patientId?: string;
     specialistId?: string;
-    serviceId?: string;
     userId?: string;
     status?: string;
     appointmentType?: string;
@@ -225,53 +222,6 @@ export async function getReceptionAppointments(date?: string | Date) {
             ...APPOINTMENT_INCLUDE,
             appointmentReminders: {
                 orderBy: { offsetMinutes: "desc" },
-            },
-        },
-    });
-}
-
-export async function getAppointmentRemindersByDate(date?: string | Date) {
-    await requireAnyPermission(["reception.manage", "calendar.manage"]);
-
-    const settings = await getSystemSettingsOrDefaults();
-    const operationContext = buildOperationContext(settings);
-    const { start, end } = businessDayBounds(date, operationContext.timeZone);
-
-    return prisma.appointmentReminder.findMany({
-        where: {
-            scheduledFor: { gte: start, lt: end },
-        },
-        orderBy: [{ scheduledFor: "asc" }, { createdAt: "asc" }],
-        include: {
-            appointment: {
-                select: {
-                    id: true,
-                    title: true,
-                    startTime: true,
-                    endTime: true,
-                    status: true,
-                    confirmationStatus: true,
-                    patient: {
-                        select: {
-                            firstName: true,
-                            lastName: true,
-                            phone: true,
-                        },
-                    },
-                    contact: {
-                        select: {
-                            name: true,
-                            lastName: true,
-                            phone: true,
-                        },
-                    },
-                    specialist: {
-                        select: {
-                            name: true,
-                            displayName: true,
-                        },
-                    },
-                },
             },
         },
     });

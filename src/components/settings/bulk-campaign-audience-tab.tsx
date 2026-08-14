@@ -215,11 +215,11 @@ export function BulkCampaignAudienceTab({
                             </div>
                         </div>
 
-                        {form.sourceType === "meta" ? (
+                        {form.sourceType === "ycloud" ? (
                             <div className="mt-4 rounded-xl border border-sky-200/70 bg-sky-50/70 p-4 text-sky-950 dark:border-sky-500/25 dark:bg-sky-500/10 dark:text-sky-100">
                                 <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                                     <div>
-                                        <p className="text-sm font-semibold">Seguimiento por ventana abierta de WhatsApp API</p>
+                                        <p className="text-sm font-semibold">Seguimiento YCloud por ventana abierta</p>
                                         <p className="mt-1 text-xs leading-5 opacity-80">
                                             Filtra contactos que escribieron al número API en un rango específico y que todavía tienen ventana de 24h abierta.
                                         </p>
@@ -351,9 +351,9 @@ export function BulkCampaignAudienceTab({
                         <p className="mt-1 text-sm text-muted-foreground">
                             Un número por línea. Puedes usar <span className="font-medium text-foreground">Nombre | teléfono</span> o solo teléfono.
                         </p>
-                        {form.sourceType === "meta" ? (
+                        {form.sourceType === "ycloud" ? (
                             <div className="mt-3 rounded-xl border border-amber-200/70 bg-amber-50/80 px-3 py-2 text-xs leading-5 text-amber-900">
-                                Con WhatsApp API y mensaje libre solo se consideran contactos con ventana abierta. Los numeros manuales se omiten para respetar las reglas de Meta; para ellos usa una plantilla aprobada.
+                                En YCloud con mensaje libre solo se consideran contactos que ya tienen conversación API con ventana abierta. Los números manuales se omiten para evitar envíos fuera de regla; para ellos usa Plantillas YCloud.
                             </div>
                         ) : null}
                         <Textarea

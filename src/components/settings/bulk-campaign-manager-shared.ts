@@ -19,7 +19,7 @@ export type CampaignAudienceFilters = {
     tags?: string[];
     query?: string;
     limit?: number | null;
-    sourceType?: "any" | "wuzapi" | "meta";
+    sourceType?: "any" | "wuzapi" | "ycloud";
     sourceId?: string;
     onlyOpenYCloudWindow?: boolean;
     lastInboundFrom?: string;
@@ -43,7 +43,7 @@ export type CampaignRecord = {
     description: string | null;
     status: string;
     audienceFilters: CampaignAudienceFilters | null;
-    sourceType?: "wuzapi" | "meta";
+    sourceType?: "wuzapi" | "ycloud";
     sourceId?: string | null;
     type: CampaignMessageType;
     mediaUrl: string | null;
@@ -156,7 +156,7 @@ export type CampaignFormState = {
     stopOnReply: boolean;
     followUpCount: number;
     followUpDelayDays: number;
-    sourceType: "wuzapi" | "meta";
+    sourceType: "wuzapi" | "ycloud";
     sourceId: string;
     audienceMode: BulkCampaignAudienceMode;
     audienceStatuses: string[];

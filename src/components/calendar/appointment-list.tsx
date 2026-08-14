@@ -19,7 +19,7 @@ export function AppointmentList({ appointments, onEdit, onDelete }: AppointmentL
     if (!appointments || appointments.length === 0) {
         return (
             <div className="text-center py-10 text-muted-foreground bg-white rounded-lg border">
-                No hay citas de hoy ni citas pendientes próximas.
+                No hay citas programadas.
             </div>
         );
     }
@@ -45,10 +45,9 @@ export function AppointmentList({ appointments, onEdit, onDelete }: AppointmentL
                         const calendarColor = apt.googleCalendarColor || "#2563EB";
                         const patientLabel = apt.patient
                             ? [apt.patient.firstName, apt.patient.lastName].filter(Boolean).join(" ")
-                            : "Cliente no vinculado";
-                        const isReserved = apt.status === "scheduled" && apt.confirmationStatus === "pending";
+                            : "Paciente no vinculado";
                         const statusLabel = apt.status === "scheduled"
-                            ? isReserved ? "Apartado" : "Agendada"
+                            ? "Agendada"
                             : apt.status === "completed"
                                 ? "Completada"
                                 : apt.status === "waiting"
@@ -140,7 +139,7 @@ export function AppointmentList({ appointments, onEdit, onDelete }: AppointmentL
                                     <Badge
                                         variant={apt.status === "completed" ? "default" : "secondary"}
                                         className={
-                                            isReserved
+                                            apt.status === "scheduled"
                                                 ? "bg-yellow-100 text-yellow-700 hover:bg-yellow-200 border-none shadow-none"
                                                 : apt.status === "completed"
                                                     ? "bg-green-100 text-green-700 hover:bg-green-200 border-none shadow-none"

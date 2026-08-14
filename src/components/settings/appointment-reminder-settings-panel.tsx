@@ -17,7 +17,7 @@ export const REMINDER_PRESETS = [
     { key: "2", label: "Solo 2 horas antes", offsets: [120] },
 ] as const;
 
-type ReminderProvider = "wuzapi" | "meta";
+type ReminderProvider = "wuzapi" | "ycloud";
 
 type Props = {
     enabled: boolean;
@@ -25,17 +25,17 @@ type Props = {
     provider: ReminderProvider;
     sendOnlyConfirmed: boolean;
     wuzapiTemplate: string;
-    metaTemplate24h: string;
-    metaTemplate4h: string;
-    metaLanguage: string;
+    ycloudTemplate24h: string;
+    ycloudTemplate4h: string;
+    ycloudLanguage: string;
     onEnabledChange: (value: boolean) => void;
     onOffsetsChange: (value: number[]) => void;
     onProviderChange: (value: ReminderProvider) => void;
     onSendOnlyConfirmedChange: (value: boolean) => void;
     onWuzapiTemplateChange: (value: string) => void;
-    onMetaTemplate24hChange: (value: string) => void;
-    onMetaTemplate4hChange: (value: string) => void;
-    onMetaLanguageChange: (value: string) => void;
+    onYcloudTemplate24hChange: (value: string) => void;
+    onYcloudTemplate4hChange: (value: string) => void;
+    onYcloudLanguageChange: (value: string) => void;
     onSave: () => void | boolean | Promise<void | boolean>;
     isSaving: boolean;
 };
@@ -65,17 +65,17 @@ export function AppointmentReminderSettingsPanel({
     provider,
     sendOnlyConfirmed,
     wuzapiTemplate,
-    metaTemplate24h,
-    metaTemplate4h,
-    metaLanguage,
+    ycloudTemplate24h,
+    ycloudTemplate4h,
+    ycloudLanguage,
     onEnabledChange,
     onOffsetsChange,
     onProviderChange,
     onSendOnlyConfirmedChange,
     onWuzapiTemplateChange,
-    onMetaTemplate24hChange,
-    onMetaTemplate4hChange,
-    onMetaLanguageChange,
+    onYcloudTemplate24hChange,
+    onYcloudTemplate4hChange,
+    onYcloudLanguageChange,
     onSave,
     isSaving,
 }: Props) {
@@ -142,11 +142,11 @@ export function AppointmentReminderSettingsPanel({
                         </SelectTrigger>
                         <SelectContent>
                             <SelectItem value="wuzapi">WuzAPI - mensaje normal</SelectItem>
-                            <SelectItem value="meta">WhatsApp API - plantilla Meta</SelectItem>
+                            <SelectItem value="ycloud">YCloud - plantilla Meta</SelectItem>
                         </SelectContent>
                     </Select>
                     <p className="text-xs text-muted-foreground">
-                        El canal QR usa texto editable; WhatsApp API requiere una plantilla aprobada fuera de la ventana de 24 horas.
+                        WuzAPI usa texto editable; YCloud requiere plantilla aprobada.
                     </p>
                 </div>
 
@@ -181,8 +181,8 @@ export function AppointmentReminderSettingsPanel({
                     <div className="space-y-2">
                         <Label>Plantilla para 24h</Label>
                         <Input
-                            value={metaTemplate24h}
-                            onChange={(event) => onMetaTemplate24hChange(event.target.value)}
+                            value={ycloudTemplate24h}
+                            onChange={(event) => onYcloudTemplate24hChange(event.target.value)}
                             placeholder="recordatorio_cita_24h"
                             className="h-11 bg-background"
                         />
@@ -190,8 +190,8 @@ export function AppointmentReminderSettingsPanel({
                     <div className="space-y-2">
                         <Label>Plantilla mismo dia</Label>
                         <Input
-                            value={metaTemplate4h}
-                            onChange={(event) => onMetaTemplate4hChange(event.target.value)}
+                            value={ycloudTemplate4h}
+                            onChange={(event) => onYcloudTemplate4hChange(event.target.value)}
                             placeholder="recordatorio_cita_mismo_dia"
                             className="h-11 bg-background"
                         />
@@ -199,8 +199,8 @@ export function AppointmentReminderSettingsPanel({
                     <div className="space-y-2">
                         <Label>Idioma</Label>
                         <Input
-                            value={metaLanguage}
-                            onChange={(event) => onMetaLanguageChange(event.target.value)}
+                            value={ycloudLanguage}
+                            onChange={(event) => onYcloudLanguageChange(event.target.value)}
                             placeholder="es"
                             className="h-11 bg-background"
                         />

@@ -6,7 +6,6 @@ import {
     closeCashDesk,
     createPaymentLink,
     deleteCashMovement,
-    getBillableServices,
     getCashDesk,
     markPaymentLinkPaid,
     saveCashMovement,
@@ -19,11 +18,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
+import { TREATMENT_CATALOG, type ClinicalService } from "@/lib/clinical-services";
 import { getOperationTodayKey } from "@/lib/operation-dates";
 
 type CashDeskData = Awaited<ReturnType<typeof getCashDesk>>;
-type BillableService = Awaited<ReturnType<typeof getBillableServices>>[number];
-type SaleItem = BillableService & {
+type SaleItem = ClinicalService & {
     tempId: string;
     quantity: number;
 };
@@ -33,10 +32,9 @@ export default function BillingPage() {
     const [isPending, startTransition] = useTransition();
     const [selectedDate, setSelectedDate] = useState(getOperationTodayKey());
     const [desk, setDesk] = useState<CashDeskData | null>(null);
-    const [services, setServices] = useState<BillableService[]>([]);
     const [movementForm, setMovementForm] = useState({
         type: "income",
-        concept: "",
+        concept: "Consulta oftalmologica",
         amount: "",
         currency: "MXN",
         paymentMethod: "efectivo",
@@ -49,7 +47,7 @@ export default function BillingPage() {
         price: "",
     });
     const [linkForm, setLinkForm] = useState({
-        title: "Servicio",
+        title: "Consulta oftalmologica",
         amount: "",
         currency: "MXN",
         url: "",
@@ -63,12 +61,8 @@ export default function BillingPage() {
     const dateTouchedRef = useRef(false);
 
     const load = useCallback(async () => {
-        const [data, catalog] = await Promise.all([
-            getCashDesk(selectedDate),
-            getBillableServices(),
-        ]);
+        const data = await getCashDesk(selectedDate);
         setDesk(data);
-        setServices(catalog);
     }, [selectedDate]);
 
     const formatMoney = useCallback(
@@ -82,11 +76,11 @@ export default function BillingPage() {
 
     const filteredServices = useMemo(() => {
         const query = serviceSearch.trim().toLowerCase();
-        if (!query) return services;
-        return services.filter((service) =>
-            [service.name, service.description || "", service.category].some((value) => value.toLowerCase().includes(query)),
+        if (!query) return TREATMENT_CATALOG;
+        return TREATMENT_CATALOG.filter((service) =>
+            [service.name, service.code, service.category].some((value) => value.toLowerCase().includes(query)),
         );
-    }, [serviceSearch, services]);
+    }, [serviceSearch]);
 
     const saleSubtotal = useMemo(
         () => saleItems.reduce((sum, item) => sum + item.price * item.quantity, 0),
@@ -122,13 +116,9 @@ export default function BillingPage() {
                 setLinkForm((current) => ({ ...current, currency: currencies.includes(current.currency) ? current.currency : defaultCurrency }));
             }
 
-            const [data, catalog] = await Promise.all([
-                getCashDesk(effectiveDate),
-                getBillableServices(),
-            ]);
+            const data = await getCashDesk(effectiveDate);
             if (!active) return;
             setDesk(data);
-            setServices(catalog);
         };
 
         void loadInitial();
@@ -274,10 +264,10 @@ export default function BillingPage() {
         });
     };
 
-    const addSaleItem = (service: BillableService) => {
+    const addSaleItem = (service: ClinicalService) => {
         setMovementForm((current) => ({ ...current, type: "income" }));
         setSaleItems((current) => {
-            const existing = current.find((item) => item.id === service.id);
+            const existing = current.find((item) => item.id === service.id && item.code !== "LIBRE");
             if (existing) {
                 return current.map((item) =>
                     item.tempId === existing.tempId ? { ...item, quantity: item.quantity + 1 } : item,
@@ -311,12 +301,10 @@ export default function BillingPage() {
         }
         addSaleItem({
             id: `custom-${Date.now()}`,
+            code: "LIBRE",
             name,
-            description: null,
             category: customItem.category.trim() || "Otro",
             price,
-            currency: movementForm.currency,
-            durationMinutes: 0,
         });
         setCustomItem({ name: "", category: "Otro", price: "" });
     };
@@ -326,7 +314,7 @@ export default function BillingPage() {
             ? saleItems.map((item) => `${item.quantity}x ${item.name}`).join(", ")
             : movementForm.concept;
         const saleNotes = saleItems.length > 0
-            ? saleItems.map((item) => `${item.quantity} x ${item.name} - ${formatMoney(item.price * item.quantity, item.currency)}`).join("\n")
+            ? saleItems.map((item) => `${item.quantity} x ${item.name} (${item.code}) - ${formatMoney(item.price * item.quantity, movementForm.currency)}`).join("\n")
             : undefined;
         runAction(
             () => saveCashMovement({
@@ -616,52 +604,31 @@ export default function BillingPage() {
                                         <ShoppingCart className="h-4 w-4 text-primary" />
                                         Agregar servicios al cobro
                                     </div>
-                                    {services.length > 0 ? (
-                                        <>
-                                            <div className="relative">
-                                                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                                                <Input
-                                                    value={serviceSearch}
-                                                    onChange={(event) => setServiceSearch(event.target.value)}
-                                                    placeholder="Buscar servicio..."
-                                                    className="pl-9"
-                                                />
-                                            </div>
-                                            <div className="max-h-64 space-y-2 overflow-y-auto pr-1">
-                                                {filteredServices.slice(0, 10).map((service) => (
-                                                    <button
-                                                        key={service.id}
-                                                        type="button"
-                                                        onClick={() => addSaleItem(service)}
-                                                        className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-xl border bg-background px-3 py-2 text-left hover:border-primary/40 hover:bg-primary/5"
-                                                    >
-                                                        <span className="min-w-0">
-                                                            <span className="block truncate text-sm font-semibold">{service.name}</span>
-                                                            <span className="block truncate text-xs text-muted-foreground">
-                                                                {service.category} · {service.durationMinutes} min
-                                                            </span>
-                                                        </span>
-                                                        <span className="text-sm font-bold text-emerald-600">{formatMoney(service.price, service.currency)}</span>
-                                                    </button>
-                                                ))}
-                                                {filteredServices.length === 0 ? (
-                                                    <div className="rounded-xl border border-dashed px-3 py-5 text-center text-sm text-muted-foreground">
-                                                        No hay servicios que coincidan con la búsqueda.
-                                                    </div>
-                                                ) : null}
-                                            </div>
-                                        </>
-                                    ) : (
-                                        <div className="rounded-xl border border-dashed bg-background px-4 py-5 text-center">
-                                            <p className="text-sm font-semibold">Aún no hay servicios capturados</p>
-                                            <p className="mt-1 text-xs text-muted-foreground">
-                                                Los servicios activos que registres en el catálogo aparecerán aquí automáticamente.
-                                            </p>
-                                            <Button type="button" variant="outline" size="sm" className="mt-3" asChild>
-                                                <a href="/dashboard/services">Ir a Servicios</a>
-                                            </Button>
-                                        </div>
-                                    )}
+                                    <div className="relative">
+                                        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                                        <Input
+                                            value={serviceSearch}
+                                            onChange={(event) => setServiceSearch(event.target.value)}
+                                            placeholder="Buscar servicio..."
+                                            className="pl-9"
+                                        />
+                                    </div>
+                                    <div className="max-h-64 space-y-2 overflow-y-auto pr-1">
+                                        {filteredServices.slice(0, 10).map((service) => (
+                                            <button
+                                                key={service.id}
+                                                type="button"
+                                                onClick={() => addSaleItem(service)}
+                                                className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-xl border bg-background px-3 py-2 text-left hover:border-primary/40 hover:bg-primary/5"
+                                            >
+                                                <span className="min-w-0">
+                                                    <span className="block truncate text-sm font-semibold">{service.name}</span>
+                                                    <span className="block truncate text-xs text-muted-foreground">{service.code} - {service.category}</span>
+                                                </span>
+                                                <span className="text-sm font-bold text-emerald-600">{formatMoney(service.price, movementForm.currency)}</span>
+                                            </button>
+                                        ))}
+                                    </div>
                                     <div className="rounded-xl border bg-background p-3">
                                         <p className="text-sm font-semibold">Concepto libre</p>
                                         <div className="mt-2 grid gap-2">

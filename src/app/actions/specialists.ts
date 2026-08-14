@@ -143,7 +143,7 @@ export async function saveSpecialist(input: SpecialistInput) {
         const data = {
             name,
             displayName: nullableText(input.displayName) || name,
-            specialty: nullableText(input.specialty) || "Belleza",
+            specialty: nullableText(input.specialty) || "Oftalmologia",
             email: nullableText(input.email),
             phone: nullableText(input.phone),
             professionalTitle: nullableText(input.professionalTitle),
@@ -191,72 +191,6 @@ export async function deactivateSpecialist(id: string) {
     } catch (error) {
         console.error("Failed to deactivate specialist:", error);
         return { success: false, error: "No se pudo desactivar el especialista." };
-    }
-}
-
-export async function deleteSpecialist(id: string) {
-    await requirePermission("specialists.manage");
-
-    try {
-        const specialist = await prisma.specialist.findUnique({
-            where: { id },
-            select: {
-                id: true,
-                displayName: true,
-                name: true,
-                isActive: true,
-                googleCalendarSourceId: true,
-                _count: {
-                    select: {
-                        appointments: true,
-                        patientConsultations: true,
-                        cashMovements: true,
-                        paymentLinks: true,
-                    },
-                },
-            },
-        });
-
-        if (!specialist) {
-            return { success: false, error: "El especialista ya no existe." };
-        }
-
-        if (specialist.isActive) {
-            return { success: false, error: "Primero desactiva al especialista y después podrás eliminarlo." };
-        }
-
-        const historicalRecords =
-            specialist._count.appointments
-            + specialist._count.patientConsultations
-            + specialist._count.cashMovements
-            + specialist._count.paymentLinks;
-
-        if (historicalRecords > 0) {
-            return {
-                success: false,
-                error: `No se puede eliminar porque conserva ${historicalRecords} registro${historicalRecords === 1 ? "" : "s"} de citas, atención o cobros. Déjalo inactivo para preservar el historial.`,
-            };
-        }
-
-        await prisma.$transaction(async (tx) => {
-            if (specialist.googleCalendarSourceId) {
-                await tx.googleCalendarSource.update({
-                    where: { id: specialist.googleCalendarSourceId },
-                    data: {
-                        isSpecialist: false,
-                        specialistName: null,
-                    },
-                });
-            }
-
-            await tx.specialist.delete({ where: { id } });
-        });
-
-        revalidateSpecialistSurfaces();
-        return { success: true };
-    } catch (error) {
-        console.error("Failed to delete specialist:", error);
-        return { success: false, error: "No se pudo eliminar el especialista." };
     }
 }
 

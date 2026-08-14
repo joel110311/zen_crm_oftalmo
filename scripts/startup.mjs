@@ -98,37 +98,6 @@ async function runPrismaDbPush() {
     });
 }
 
-async function migrateLegacyOfficialWhatsAppData(pool) {
-    console.log("[Startup] Migrating legacy official WhatsApp data to Meta Cloud API...");
-
-    // Preserve useful reminder/template configuration before Prisma removes the old provider columns.
-    await runSafeQuery(pool, 'ALTER TABLE "SystemSettings" ADD COLUMN IF NOT EXISTS "appointmentReminderMetaTemplate24h" TEXT');
-    await runSafeQuery(pool, 'ALTER TABLE "SystemSettings" ADD COLUMN IF NOT EXISTS "appointmentReminderMetaTemplate4h" TEXT');
-    await runSafeQuery(pool, 'ALTER TABLE "SystemSettings" ADD COLUMN IF NOT EXISTS "appointmentReminderMetaLanguage" TEXT DEFAULT \'es\'');
-    await runSafeQuery(pool, `
-        DO $$
-        BEGIN
-            IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'SystemSettings' AND column_name = 'appointmentReminderYcloudTemplate24h') THEN
-                EXECUTE 'UPDATE "SystemSettings" SET "appointmentReminderMetaTemplate24h" = COALESCE("appointmentReminderMetaTemplate24h", "appointmentReminderYcloudTemplate24h")';
-            END IF;
-            IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'SystemSettings' AND column_name = 'appointmentReminderYcloudTemplate4h') THEN
-                EXECUTE 'UPDATE "SystemSettings" SET "appointmentReminderMetaTemplate4h" = COALESCE("appointmentReminderMetaTemplate4h", "appointmentReminderYcloudTemplate4h")';
-            END IF;
-            IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'SystemSettings' AND column_name = 'appointmentReminderYcloudLanguage') THEN
-                EXECUTE 'UPDATE "SystemSettings" SET "appointmentReminderMetaLanguage" = COALESCE("appointmentReminderMetaLanguage", "appointmentReminderYcloudLanguage", ''es'')';
-            END IF;
-        END $$;
-    `);
-
-    // Old databases restricted these values with CHECK constraints; remove them before renaming the source.
-    await runSafeQuery(pool, 'ALTER TABLE "Message" DROP CONSTRAINT IF EXISTS "Message_source_type_check"');
-    await runSafeQuery(pool, 'ALTER TABLE "Conversation" DROP CONSTRAINT IF EXISTS "Conversation_source_type_check"');
-    await runSafeQuery(pool, 'UPDATE "Message" SET "source_type" = \'meta\' WHERE "source_type" = \'ycloud\'');
-    await runSafeQuery(pool, 'UPDATE "Conversation" SET "source_type" = \'meta\' WHERE "source_type" = \'ycloud\'');
-    await runSafeQuery(pool, 'UPDATE "BulkCampaign" SET "source_type" = \'meta\' WHERE "source_type" = \'ycloud\'');
-    await runSafeQuery(pool, 'UPDATE "SystemSettings" SET "appointmentReminderProvider" = \'meta\' WHERE "appointmentReminderProvider" = \'ycloud\'');
-}
-
 async function startup() {
     if (!DATABASE_URL) {
         console.warn("[Startup] No DATABASE_URL, skipping DB setup.");
@@ -139,7 +108,6 @@ async function startup() {
 
     try {
         await waitForDatabase(pool);
-        await migrateLegacyOfficialWhatsAppData(pool);
         await runPrismaDbPush();
         console.log("[Startup] Checking schema...");
 

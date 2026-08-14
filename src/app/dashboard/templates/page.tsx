@@ -7,7 +7,7 @@ import { LayoutTemplate, Loader2, Megaphone, ShieldAlert, MessageSquare, Receipt
 import { QuoteBuilderPanel } from "@/components/quotes/quote-builder-panel";
 import { BulkCampaignManagerPanel } from "@/components/settings/bulk-campaign-manager-panel";
 import { TemplateManagerPanel } from "@/components/settings/template-manager-panel";
-import { MetaTemplateRequestPanel } from "@/components/templates/ycloud-template-request-panel";
+import { YCloudTemplateRequestPanel } from "@/components/templates/ycloud-template-request-panel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { hasPermission, type PermissionKey } from "@/lib/permissions";
 
@@ -18,7 +18,7 @@ const TEMPLATE_TAB_ITEMS: Array<{
     permission: PermissionKey;
 }> = [
     { value: "templates", label: "Respuestas guardadas", icon: LayoutTemplate, permission: "templates.manage" },
-    { value: "meta", label: "Plantillas WhatsApp API", icon: MessageSquare, permission: "templates.manage" },
+    { value: "ycloud", label: "Plantillas YCloud", icon: MessageSquare, permission: "templates.manage" },
     { value: "campaigns", label: "Envios masivos", icon: Megaphone, permission: "campaigns.manage" },
     { value: "quotes", label: "Cotizaciones", icon: ReceiptText, permission: "templates.manage" },
 ];
@@ -117,8 +117,8 @@ export default function TemplatesPage() {
                             <TemplateManagerPanel />
                         </TabsContent>
 
-                        <TabsContent value="meta" className="mt-0">
-                            <MetaTemplateRequestPanel />
+                        <TabsContent value="ycloud" className="mt-0">
+                            <YCloudTemplateRequestPanel />
                         </TabsContent>
 
                         <TabsContent value="quotes" className="mt-0">

@@ -1,6 +1,5 @@
 "use server";
 
-import crypto from "crypto";
 import type { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
@@ -10,7 +9,7 @@ import {
 } from "@/lib/whatsapp-avatar";
 import { resolveMessageSourceId } from "@/lib/message-source";
 import { getSystemSettingsOrDefaults } from "@/lib/system-settings";
-import { requireAnyPermission } from "@/lib/authz";
+import { requirePermission } from "@/lib/authz";
 
 const CONTACT_LIST_INCLUDE = {
     conversations: {
@@ -47,63 +46,6 @@ const CONTACT_LIST_INCLUDE = {
             },
         },
     },
-    appointments: {
-        orderBy: { startTime: "desc" },
-        select: {
-            id: true,
-            title: true,
-            appointmentType: true,
-            serviceId: true,
-            patientId: true,
-            specialistId: true,
-            notes: true,
-            source: true,
-            isOverbook: true,
-            visitMode: true,
-            meetStatus: true,
-            meetLink: true,
-            paymentStatus: true,
-            paymentAmount: true,
-            paymentCurrency: true,
-            remindersOptOut: true,
-            googleCalendarId: true,
-            startTime: true,
-            endTime: true,
-            status: true,
-            confirmationStatus: true,
-        },
-    },
-    patients: {
-        select: {
-            id: true,
-            appointments: {
-                orderBy: { startTime: "desc" },
-                select: {
-                    id: true,
-                    title: true,
-                    appointmentType: true,
-                    serviceId: true,
-                    patientId: true,
-                    specialistId: true,
-                    notes: true,
-                    source: true,
-                    isOverbook: true,
-                    visitMode: true,
-                    meetStatus: true,
-                    meetLink: true,
-                    paymentStatus: true,
-                    paymentAmount: true,
-                    paymentCurrency: true,
-                    remindersOptOut: true,
-                    googleCalendarId: true,
-                    startTime: true,
-                    endTime: true,
-                    status: true,
-                    confirmationStatus: true,
-                },
-            },
-        },
-    },
 } satisfies Prisma.ContactInclude;
 
 export type ContactListItem = Prisma.ContactGetPayload<{
@@ -128,83 +70,6 @@ function buildContactSearchWhere(query?: string): Prisma.ContactWhereInput {
 
 function normalizeContactIds(contactIds: string[]) {
     return [...new Set(contactIds.map((value) => value.trim()).filter(Boolean))];
-}
-
-function makeInternalClientNumber() {
-    return `CLI-${crypto.randomUUID().replace(/-/g, "").slice(0, 12).toUpperCase()}`;
-}
-
-async function requireClientAccess() {
-    return requireAnyPermission(["contacts.manage", "patients.manage"]);
-}
-
-async function synchronizeClientRecords() {
-    const orphanPatients = await prisma.patient.findMany({
-        where: {
-            contactId: null,
-            phone: { not: null },
-        },
-        select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            phone: true,
-        },
-    });
-
-    for (const patient of orphanPatients) {
-        if (!patient.phone) continue;
-        const contact = await prisma.contact.upsert({
-            where: { phone: patient.phone },
-            create: {
-                phone: patient.phone,
-                name: patient.firstName,
-                lastName: patient.lastName || null,
-                status: "customer",
-                tags: ["Cliente"],
-            },
-            update: { status: "customer" },
-            select: { id: true },
-        });
-        await prisma.patient.update({
-            where: { id: patient.id },
-            data: { contactId: contact.id },
-        });
-    }
-
-    const contactsWithoutPatient = await prisma.contact.findMany({
-        where: { patients: { none: {} } },
-        select: {
-            id: true,
-            name: true,
-            lastName: true,
-            phone: true,
-        },
-    });
-
-    for (const contact of contactsWithoutPatient) {
-        const matchingPatient = await prisma.patient.findFirst({
-            where: { phone: contact.phone },
-            select: { id: true },
-        });
-        if (matchingPatient) {
-            await prisma.patient.update({
-                where: { id: matchingPatient.id },
-                data: { contactId: contact.id },
-            });
-            continue;
-        }
-
-        await prisma.patient.create({
-            data: {
-                patientNumber: makeInternalClientNumber(),
-                firstName: contact.name?.trim() || "Cliente",
-                lastName: contact.lastName?.trim() || "",
-                phone: contact.phone,
-                contactId: contact.id,
-            },
-        });
-    }
 }
 
 function revalidateContactSurfaces(contactIds: string[] = []) {
@@ -255,11 +120,6 @@ async function deleteContactsGraph(contactIds: string[]) {
     });
 
     const conversationIds = conversations.map((conversation) => conversation.id);
-    const patients = await prisma.patient.findMany({
-        where: { contactId: { in: ids } },
-        select: { id: true },
-    });
-    const patientIds = patients.map((patient) => patient.id);
     let deletedCount = 0;
 
     await prisma.$transaction(async (tx) => {
@@ -302,10 +162,9 @@ async function deleteContactsGraph(contactIds: string[]) {
 
         await tx.appointment.deleteMany({
             where: {
-                OR: [
-                    { contactId: { in: ids } },
-                    ...(patientIds.length > 0 ? [{ patientId: { in: patientIds } }] : []),
-                ],
+                contactId: {
+                    in: ids,
+                },
             },
         });
 
@@ -316,12 +175,6 @@ async function deleteContactsGraph(contactIds: string[]) {
                 },
             },
         });
-
-        if (patientIds.length > 0) {
-            await tx.patient.deleteMany({
-                where: { id: { in: patientIds } },
-            });
-        }
 
         const deletedContacts = await tx.contact.deleteMany({
             where: {
@@ -338,10 +191,9 @@ async function deleteContactsGraph(contactIds: string[]) {
 }
 
 export async function getContacts(query?: string) {
-    await requireClientAccess();
+    await requirePermission("contacts.manage");
 
     try {
-        await synchronizeClientRecords();
         const contacts = await prisma.contact.findMany({
             where: buildContactSearchWhere(query),
             orderBy: { createdAt: "desc" },
@@ -361,7 +213,7 @@ export async function getContacts(query?: string) {
 }
 
 export async function getContact(id: string) {
-    await requireClientAccess();
+    await requirePermission("contacts.manage");
 
     try {
         await refreshWhatsAppAvatarForContact(id).catch((error) => {
@@ -392,13 +244,16 @@ export async function getContact(id: string) {
 }
 
 export async function createContact(formData: FormData) {
-    await requireClientAccess();
+    await requirePermission("contacts.manage");
 
-    const name = String(formData.get("name") || "").trim();
-    const phone = String(formData.get("phone") || "").trim();
+    const name = formData.get("name") as string;
+    const email = formData.get("email") as string;
+    const phone = formData.get("phone") as string;
+    const company = formData.get("company") as string;
+    const status = (formData.get("status") as string) || "lead";
 
-    if (!name || !phone) {
-        return { success: false, error: "El nombre y el teléfono son obligatorios." };
+    if (!phone) {
+        return { success: false, error: "El telefono es obligatorio" };
     }
 
     try {
@@ -408,19 +263,11 @@ export async function createContact(formData: FormData) {
             const createdContact = await tx.contact.create({
                 data: {
                     name,
+                    email,
                     phone,
-                    status: "customer",
-                    tags: ["Cliente"],
-                },
-            });
-
-            await tx.patient.create({
-                data: {
-                    patientNumber: makeInternalClientNumber(),
-                    firstName: name,
-                    lastName: "",
-                    phone,
-                    contactId: createdContact.id,
+                    company,
+                    status,
+                    tags: ["Nuevo"],
                 },
             });
 
@@ -437,14 +284,14 @@ export async function createContact(formData: FormData) {
             return createdContact;
         });
 
-        revalidateContactSurfaces([contact.id]);
+        revalidatePath("/dashboard/contacts");
         return { success: true, contact };
     } catch (error) {
         console.error("Failed to create contact:", error);
         if (isPhoneUniqueConstraintError(error)) {
-            return { success: false, error: "Ya existe un cliente con este número de teléfono." };
+            return { success: false, error: "Ya existe un contacto con este numero de telefono." };
         }
-        return { success: false, error: "No se pudo crear el cliente." };
+        return { success: false, error: "Error al crear el contacto." };
     }
 }
 
@@ -461,7 +308,7 @@ export async function updateContact(
         tags: string[];
     }>,
 ) {
-    await requireClientAccess();
+    await requirePermission("contacts.manage");
 
     try {
         const contact = await prisma.contact.update({
@@ -475,7 +322,7 @@ export async function updateContact(
     } catch (error) {
         console.error("Failed to update contact:", error);
         if (isPhoneUniqueConstraintError(error)) {
-            return { success: false, error: "Ya existe un cliente con este número de teléfono." };
+            return { success: false, error: "Ya existe un contacto con este numero de telefono." };
         }
         return {
             success: false,
@@ -485,30 +332,30 @@ export async function updateContact(
 }
 
 export async function deleteContact(id: string) {
-    await requireClientAccess();
+    await requirePermission("contacts.manage");
 
     try {
         const deletedCount = await deleteContactsGraph([id]);
         revalidateContactSurfaces([id]);
 
         if (deletedCount === 0) {
-            return { success: false, error: "No se encontró el cliente." };
+            return { success: false, error: "No se encontro el contacto." };
         }
 
         return { success: true };
     } catch (error) {
         console.error("Failed to delete contact:", error);
-        return { success: false, error: "Error al eliminar el cliente." };
+        return { success: false, error: "Error al eliminar el contacto." };
     }
 }
 
 export async function deleteContactsBulk(contactIds: string[]) {
-    await requireClientAccess();
+    await requirePermission("contacts.manage");
 
     try {
         const ids = normalizeContactIds(contactIds);
         if (ids.length === 0) {
-            return { success: false, error: "Selecciona al menos un cliente." };
+            return { success: false, error: "Selecciona al menos un contacto." };
         }
 
         const deletedCount = await deleteContactsGraph(ids);
@@ -522,13 +369,13 @@ export async function deleteContactsBulk(contactIds: string[]) {
         console.error("Failed to bulk delete contacts:", error);
         return {
             success: false,
-            error: "Error al eliminar los clientes seleccionados.",
+            error: "Error al eliminar los contactos seleccionados.",
         };
     }
 }
 
 export async function addContactTag(contactId: string, tag: string) {
-    await requireClientAccess();
+    await requirePermission("contacts.manage");
 
     try {
         const contact = await prisma.contact.findUnique({ where: { id: contactId } });
@@ -552,7 +399,7 @@ export async function addContactTag(contactId: string, tag: string) {
 }
 
 export async function removeContactTag(contactId: string, tag: string) {
-    await requireClientAccess();
+    await requirePermission("contacts.manage");
 
     try {
         const contact = await prisma.contact.findUnique({ where: { id: contactId } });

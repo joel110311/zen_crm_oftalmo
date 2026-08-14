@@ -22,19 +22,19 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/components/ui/use-toast";
 
-type MetaTemplateComponent = {
+type YCloudTemplateComponent = {
     type?: string;
     text?: string;
     buttons?: Array<{ type?: string; text?: string }>;
 };
 
-type MetaTemplateItem = {
+type YCloudTemplateItem = {
     id?: string;
     name?: string;
     language?: string;
     status?: string;
     category?: string;
-    components?: MetaTemplateComponent[];
+    components?: YCloudTemplateComponent[];
 };
 
 type Props = {
@@ -58,7 +58,7 @@ function categoryLabel(value?: string) {
     return value || "Sin categoria";
 }
 
-function extractComponentText(template: MetaTemplateItem, type: "HEADER" | "BODY" | "FOOTER") {
+function extractComponentText(template: YCloudTemplateItem, type: "HEADER" | "BODY" | "FOOTER") {
     const component = (template.components || []).find((entry) => (entry.type || "").toUpperCase() === type);
     return (component?.text || "").trim();
 }
@@ -72,11 +72,11 @@ function replaceVariables(text: string, values: Record<string, string>) {
     return text.replace(/\{\{\s*(\d+)\s*\}\}/g, (_, key: string) => values[key] || `{{${key}}}`);
 }
 
-function joinTemplateKey(template: MetaTemplateItem) {
+function joinTemplateKey(template: YCloudTemplateItem) {
     return `${template.name || ""}::${template.language || "es"}`;
 }
 
-export function MetaTemplateSendModal({
+export function YCloudTemplateSendModal({
     open,
     onOpenChange,
     conversationId,
@@ -89,20 +89,20 @@ export function MetaTemplateSendModal({
     const [sending, setSending] = useState(false);
     const [query, setQuery] = useState("");
     const [categoryFilter, setCategoryFilter] = useState("all");
-    const [templates, setTemplates] = useState<MetaTemplateItem[]>([]);
+    const [templates, setTemplates] = useState<YCloudTemplateItem[]>([]);
     const [selectedKey, setSelectedKey] = useState("");
     const [variableValues, setVariableValues] = useState<Record<string, string>>({});
 
     const loadTemplates = useCallback(async () => {
         setLoading(true);
         try {
-            const response = await fetch("/api/templates/meta?limit=100", { cache: "no-store" });
+            const response = await fetch("/api/templates/ycloud?limit=100", { cache: "no-store" });
             const result = await response.json();
             if (!response.ok) {
-                throw new Error(result.error || "No se pudieron cargar las plantillas de WhatsApp API.");
+                throw new Error(result.error || "No se pudieron cargar las plantillas de YCloud.");
             }
 
-            const items = Array.isArray(result.items) ? (result.items as MetaTemplateItem[]) : [];
+            const items = Array.isArray(result.items) ? (result.items as YCloudTemplateItem[]) : [];
             const approved = items.filter((template) => normalizeStatus(template.status) === "APPROVED");
             setTemplates(approved);
         } catch (error) {
@@ -224,7 +224,7 @@ export function MetaTemplateSendModal({
                 });
             }
 
-            const response = await fetch("/api/templates/meta/send", {
+            const response = await fetch("/api/templates/ycloud/send", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -243,7 +243,7 @@ export function MetaTemplateSendModal({
 
             toast({
                 title: "Plantilla enviada",
-                description: "El mensaje plantilla se envio correctamente por WhatsApp API.",
+                description: "El mensaje plantilla se envio correctamente por YCloud.",
             });
 
             if (result.message) {
@@ -270,7 +270,7 @@ export function MetaTemplateSendModal({
                         Agregar plantilla
                     </DialogTitle>
                     <DialogDescription>
-                        {contactName || "Contacto"} {contactPhone ? `(${contactPhone})` : ""}. Selecciona una plantilla aprobada en Meta.
+                        {contactName || "Contacto"} {contactPhone ? `(${contactPhone})` : ""}. Selecciona una plantilla aprobada en YCloud.
                     </DialogDescription>
                 </DialogHeader>
 

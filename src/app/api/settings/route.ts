@@ -50,21 +50,15 @@ const SETTINGS_FIELD_PERMISSIONS: Record<string, PermissionKey> = {
     whatsappInstanceName: "integrations.manage",
     whatsappProxyEnabled: "integrations.manage",
     whatsappProxyUrl: "integrations.manage",
-    whatsappMetaAppId: "integrations.manage",
-    whatsappMetaAppSecret: "integrations.manage",
-    whatsappEmbeddedSignupConfigId: "integrations.manage",
-    whatsappTechProviderSolutionId: "integrations.manage",
-    whatsappGraphApiVersion: "integrations.manage",
-    whatsappRegistrationPin: "integrations.manage",
-    whatsappWebhookVerifyToken: "integrations.manage",
-    whatsappWebhookBaseUrl: "integrations.manage",
+    ycloudApiKey: "integrations.manage",
+    ycloudPhoneId: "integrations.manage",
     googleClientId: "integrations.manage",
     googleClientSecret: "integrations.manage",
     googleCalendarId: "integrations.manage",
-    businessHoursStart: "settings.manage",
-    businessHoursEnd: "settings.manage",
+    businessHoursStart: "calendar.manage",
+    businessHoursEnd: "calendar.manage",
     businessTimeZone: "settings.manage",
-    businessWeeklySchedule: "settings.manage",
+    businessWeeklySchedule: "calendar.manage",
     appointmentDurationMinutes: "calendar.manage",
     brandName: "settings.manage",
     brandLogoUrl: "settings.manage",
@@ -85,9 +79,9 @@ const SETTINGS_FIELD_PERMISSIONS: Record<string, PermissionKey> = {
     appointmentReminderProvider: "calendar.manage",
     appointmentReminderSendOnlyConfirmed: "calendar.manage",
     appointmentReminderWuzapiTemplate: "calendar.manage",
-    appointmentReminderMetaTemplate24h: "calendar.manage",
-    appointmentReminderMetaTemplate4h: "calendar.manage",
-    appointmentReminderMetaLanguage: "calendar.manage",
+    appointmentReminderYcloudTemplate24h: "calendar.manage",
+    appointmentReminderYcloudTemplate4h: "calendar.manage",
+    appointmentReminderYcloudLanguage: "calendar.manage",
     portalEnabled: "portal.manage",
     portalSlug: "portal.manage",
     portalClinicName: "portal.manage",
@@ -106,15 +100,6 @@ const SETTINGS_FIELD_PERMISSIONS: Record<string, PermissionKey> = {
     googleMeetDefaultVirtual: "portal.manage",
 };
 
-const META_CONNECTION_FIELDS = new Set([
-    "whatsappWabaId",
-    "whatsappPhoneNumberId",
-    "whatsappDisplayPhoneNumber",
-    "whatsappAccessToken",
-    "whatsappBusinessId",
-    "whatsappConnectedAt",
-]);
-
 export async function GET() {
     console.log("[API] GET /api/settings called");
     try {
@@ -126,14 +111,8 @@ export async function GET() {
             return NextResponse.json({ error: "No tienes permiso para ver la configuracion." }, { status: 403 });
         }
 
-        const settings = withSettingsDefaults(await prisma.systemSettings.findFirst());
-        return NextResponse.json({
-            ...settings,
-            whatsappAccessToken: undefined,
-            whatsappMetaAppSecret: undefined,
-            whatsappRegistrationPin: undefined,
-            whatsappWebhookVerifyToken: undefined,
-        });
+        const settings = await prisma.systemSettings.findFirst();
+        return NextResponse.json(withSettingsDefaults(settings));
     } catch (error) {
         console.error("[API] Failed to get settings:", error);
         return NextResponse.json({ error: "Failed to get settings" }, { status: 500 });
@@ -150,12 +129,6 @@ export async function POST(request: NextRequest) {
         const data = await request.json();
         const subject = getSessionAccessSubject(session);
         const requestedFields = Object.keys(data);
-        if (requestedFields.some((field) => META_CONNECTION_FIELDS.has(field))) {
-            return NextResponse.json(
-                { error: "Los datos de conexion de Meta solo se actualizan mediante Embedded Signup." },
-                { status: 400 },
-            );
-        }
         const deniedField = requestedFields.find((field) => {
             const permission = SETTINGS_FIELD_PERMISSIONS[field] || "settings.manage";
             return !hasPermission(subject, permission);
@@ -169,10 +142,7 @@ export async function POST(request: NextRequest) {
             ...data,
             openaiApiKey: data.openaiApiKey ? "***" : undefined,
             geminiApiKey: data.geminiApiKey ? "***" : undefined,
-            whatsappMetaAppSecret: data.whatsappMetaAppSecret ? "***" : undefined,
-            whatsappRegistrationPin: data.whatsappRegistrationPin ? "***" : undefined,
-            whatsappWebhookVerifyToken: data.whatsappWebhookVerifyToken ? "***" : undefined,
-            whatsappAccessToken: data.whatsappAccessToken ? "***" : undefined,
+            ycloudApiKey: data.ycloudApiKey ? "***" : undefined,
             whatsappAdminToken: data.whatsappAdminToken ? "***" : undefined,
             whatsappUserToken: data.whatsappUserToken ? "***" : undefined,
             whatsappProxyUrl: data.whatsappProxyUrl ? "***" : undefined,
@@ -184,10 +154,7 @@ export async function POST(request: NextRequest) {
         const secretFields = [
             "openaiApiKey",
             "geminiApiKey",
-            "whatsappMetaAppSecret",
-            "whatsappRegistrationPin",
-            "whatsappWebhookVerifyToken",
-            "whatsappAccessToken",
+            "ycloudApiKey",
             "whatsappAdminToken",
             "whatsappUserToken",
             "whatsappProxyUrl",

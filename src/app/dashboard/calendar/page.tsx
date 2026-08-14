@@ -2,38 +2,45 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useSession } from "next-auth/react";
-import { useSearchParams } from "next/navigation";
-import { deleteAppointment, getAppointments } from "@/app/actions/calendar";
+import { getAppointments, deleteAppointment } from "@/app/actions/calendar";
 import { getSystemSettings } from "@/app/actions/settings";
 import { getSpecialists } from "@/app/actions/specialists";
 import { BigCalendar } from "@/components/calendar/big-calendar";
 import { AppointmentList } from "@/components/calendar/appointment-list";
 import { AppointmentDialog } from "@/components/calendar/appointment-dialog";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Calendar as CalendarIcon, Filter, LayoutList, Plus } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+    Plus,
+    LayoutList,
+    Calendar as CalendarIcon,
+    Clock,
+    CheckCircle,
+    CalendarDays,
+    Check,
+    Users,
+} from "lucide-react";
 import { toast } from "@/components/ui/use-toast";
-import { normalizeBusinessHours } from "@/lib/calendar/business-hours";
-import { getOperationDateKey } from "@/lib/operation-dates";
+import { formatBusinessScheduleSummary, normalizeBusinessHours, shiftDateKey } from "@/lib/calendar/business-hours";
+import { dateKeyToLocalNoonDate, getOperationDateKey } from "@/lib/operation-dates";
 import { normalizeRole } from "@/lib/permissions";
 
 type CalendarFilterOption = {
     id: string;
     label: string;
+    color: string;
+    caption: string;
 };
 
+const DEFAULT_FILTER_COLOR = "#2563EB";
+const ALL_FILTER_COLOR = "#0F172A";
 const NO_SPECIALIST_FILTER = "__none__";
-const FINISHED_APPOINTMENT_STATUSES = new Set(["completed", "cancelled", "no_show"]);
-const STATUS_FILTER_OPTIONS = [
-    { id: "all", label: "Todos los estados" },
-    { id: "reserved", label: "Apartados" },
-    { id: "scheduled", label: "Agendadas" },
-    { id: "waiting", label: "En sala" },
-    { id: "in_progress", label: "En consulta" },
-    { id: "completed", label: "Completadas" },
-    { id: "cancelled", label: "Canceladas" },
-    { id: "no_show", label: "No asistió" },
-] as const;
+
+function normalizeFilterColor(value?: string | null) {
+    return value && /^#[0-9a-f]{6}$/i.test(value) ? value : DEFAULT_FILTER_COLOR;
+}
 
 function normalizeAppointments(data: any[]) {
     const now = new Date();
@@ -53,19 +60,7 @@ function appointmentMatchesSpecialist(appointment: any, specialist: Awaited<Retu
         appointmentSpecialistName === specialist.name;
 }
 
-function parseCalendarDate(value: string | null) {
-    const match = value?.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-    if (!match) return undefined;
-    const year = Number(match[1]);
-    const month = Number(match[2]);
-    const day = Number(match[3]);
-    const date = new Date(year, month - 1, day, 12, 0, 0);
-    return Number.isNaN(date.getTime()) ? undefined : date;
-}
-
 export default function CalendarPage() {
-    const searchParams = useSearchParams();
-    const initialCalendarDate = useMemo(() => parseCalendarDate(searchParams.get("date")), [searchParams]);
     const { data: session, status: sessionStatus } = useSession();
     const sessionUser = session?.user as { id?: string; role?: string | null } | undefined;
     const currentUserId = sessionUser?.id || null;
@@ -75,8 +70,7 @@ export default function CalendarPage() {
     const [appointments, setAppointments] = useState<any[]>([]);
     const [specialists, setSpecialists] = useState<Awaited<ReturnType<typeof getSpecialists>>>([]);
     const [activeSpecialistFilter, setActiveSpecialistFilter] = useState("all");
-    const [activeStatusFilter, setActiveStatusFilter] = useState("all");
-    const [activeView, setActiveView] = useState<"list" | "calendar">("calendar");
+    const [, setView] = useState("calendar");
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [selectedEvent, setSelectedEvent] = useState<any>(null);
     const [selectedSlot, setSelectedSlot] = useState<{ start: Date; end: Date } | null>(null);
@@ -111,20 +105,25 @@ export default function CalendarPage() {
         const options: CalendarFilterOption[] = [
             {
                 id: "all",
-                label: "Todos los profesionales",
+                label: "Todos",
+                color: ALL_FILTER_COLOR,
+                caption: `${appointments.length} citas`,
             },
         ];
 
         for (const specialist of specialists) {
             const label = specialist.displayName || specialist.name;
+            const count = appointments.filter((appointment) => appointmentMatchesSpecialist(appointment, specialist)).length;
             options.push({
                 id: specialist.id,
                 label,
+                color: normalizeFilterColor(specialist.color),
+                caption: `${count} cita${count === 1 ? "" : "s"}`,
             });
         }
 
         return options;
-    }, [specialists]);
+    }, [appointments, specialists]);
 
     useEffect(() => {
         if (isProfessional) {
@@ -143,7 +142,7 @@ export default function CalendarPage() {
         }
     }, [activeSpecialistFilter, canChooseSpecialistView, currentUserSpecialist?.id, isProfessional, specialistFilterOptions]);
 
-    const specialistFilteredAppointments = useMemo(() => {
+    const filteredAppointments = useMemo(() => {
         if (!currentRole) {
             return [];
         }
@@ -167,65 +166,71 @@ export default function CalendarPage() {
         return appointments.filter((appointment) => appointmentMatchesSpecialist(appointment, selectedSpecialist));
     }, [activeSpecialistFilter, appointments, currentRole, currentUserSpecialist, isProfessional, specialists]);
 
-    const filteredAppointments = useMemo(() => {
-        if (activeStatusFilter === "all") return specialistFilteredAppointments;
-        if (activeStatusFilter === "reserved") {
-            return specialistFilteredAppointments.filter(
-                (appointment) => appointment.status === "scheduled" && appointment.confirmationStatus === "pending",
-            );
-        }
-        if (activeStatusFilter === "scheduled") {
-            return specialistFilteredAppointments.filter(
-                (appointment) => appointment.status === "scheduled" && appointment.confirmationStatus === "confirmed",
-            );
-        }
-        return specialistFilteredAppointments.filter((appointment) => appointment.status === activeStatusFilter);
-    }, [activeStatusFilter, specialistFilteredAppointments]);
+    const activeSpecialistMeta = useMemo(
+        () => {
+            if (activeSpecialistFilter === NO_SPECIALIST_FILTER) {
+                return {
+                    id: NO_SPECIALIST_FILTER,
+                    label: "Sin especialista vinculado",
+                    color: DEFAULT_FILTER_COLOR,
+                    caption: "0 citas",
+                };
+            }
+            return specialistFilterOptions.find((option) => option.id === activeSpecialistFilter) || specialistFilterOptions[0];
+        },
+        [activeSpecialistFilter, specialistFilterOptions],
+    );
 
-    const visibleListAppointments = useMemo(() => {
-        const todayKey = getOperationDateKey(new Date(), businessHours.timeZone);
-        return filteredAppointments
-            .filter((appointment) => {
-                const appointmentKey = getOperationDateKey(appointment.startTime, businessHours.timeZone);
-                return appointmentKey === todayKey || (
-                    appointmentKey > todayKey && !FINISHED_APPOINTMENT_STATUSES.has(appointment.status)
-                );
-            })
-            .sort((left, right) => new Date(left.startTime).getTime() - new Date(right.startTime).getTime());
+    const stats = useMemo(() => {
+        const now = new Date();
+        const todayKey = getOperationDateKey(now, businessHours.timeZone);
+        const todayLocal = dateKeyToLocalNoonDate(todayKey);
+        const daysFromMonday = (todayLocal.getDay() + 6) % 7;
+        const weekStartKey = shiftDateKey(todayKey, -daysFromMonday);
+        const weekEndKey = shiftDateKey(weekStartKey, 6);
+        return {
+            today: filteredAppointments.filter((apt) => getOperationDateKey(apt.startTime, businessHours.timeZone) === todayKey).length,
+            week: filteredAppointments.filter((apt) => {
+                const appointmentKey = getOperationDateKey(apt.startTime, businessHours.timeZone);
+                return appointmentKey >= weekStartKey && appointmentKey <= weekEndKey;
+            }).length,
+            pending: filteredAppointments.filter((apt) => apt.status === "scheduled").length,
+            completed: filteredAppointments.filter((apt) => apt.status === "completed").length,
+        };
     }, [businessHours.timeZone, filteredAppointments]);
 
-    const handleEdit = (appointment: any) => {
-        setSelectedEvent({
-            id: appointment.id,
-            title: appointment.title,
-            start: new Date(appointment.startTime),
-            end: new Date(appointment.endTime),
-            notes: appointment.notes,
+    const handleEdit = (apt: any) => {
+        const event = {
+            id: apt.id,
+            title: apt.title,
+            start: new Date(apt.startTime),
+            end: new Date(apt.endTime),
+            notes: apt.notes,
             resource: {
-                contact: appointment.contact,
-                patient: appointment.patient,
-                specialist: appointment.specialist,
-                specialistId: appointment.specialistId,
-                serviceId: appointment.serviceId,
-                appointmentType: appointment.appointmentType,
-                source: appointment.source,
-                isFirstVisit: appointment.isFirstVisit,
-                isOverbook: appointment.isOverbook,
-                confirmationStatus: appointment.confirmationStatus,
-                googleCalendarId: appointment.googleCalendarId,
-                googleCalendarName: appointment.googleCalendarName,
-                googleCalendarColor: appointment.googleCalendarColor,
-                specialistName: appointment.specialistName,
-                visitMode: appointment.visitMode,
-                meetStatus: appointment.meetStatus,
-                meetLink: appointment.meetLink,
-                paymentStatus: appointment.paymentStatus,
-                paymentAmount: appointment.paymentAmount,
-                paymentCurrency: appointment.paymentCurrency,
-                paymentLinkUrl: appointment.paymentLinkUrl,
-                remindersOptOut: appointment.remindersOptOut,
+                contact: apt.contact,
+                patient: apt.patient,
+                specialist: apt.specialist,
+                specialistId: apt.specialistId,
+                appointmentType: apt.appointmentType,
+                source: apt.source,
+                isFirstVisit: apt.isFirstVisit,
+                isOverbook: apt.isOverbook,
+                confirmationStatus: apt.confirmationStatus,
+                googleCalendarId: apt.googleCalendarId,
+                googleCalendarName: apt.googleCalendarName,
+                googleCalendarColor: apt.googleCalendarColor,
+                specialistName: apt.specialistName,
+                visitMode: apt.visitMode,
+                meetStatus: apt.meetStatus,
+                meetLink: apt.meetLink,
+                paymentStatus: apt.paymentStatus,
+                paymentAmount: apt.paymentAmount,
+                paymentCurrency: apt.paymentCurrency,
+                paymentLinkUrl: apt.paymentLinkUrl,
+                remindersOptOut: apt.remindersOptOut,
             },
-        });
+        };
+        setSelectedEvent(event);
         setSelectedSlot(null);
         setIsDialogOpen(true);
     };
@@ -309,92 +314,168 @@ export default function CalendarPage() {
     );
 
     return (
-        <div className="flex h-full min-h-0 flex-col bg-background">
-            <div className="flex shrink-0 items-start justify-between gap-4 pb-3">
+        <div className="flex h-full flex-col gap-2 bg-background">
+            <div className="flex items-center justify-between shrink-0">
                 <div>
-                    <h1 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">Agenda</h1>
-                    <p className="text-sm text-muted-foreground">Calendario de citas — selecciona un horario para agendar.</p>
+                    <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">Gestión de Citas</h1>
+                    <p className="text-muted-foreground text-sm">Gestiona las citas agendadas con tus pacientes.</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                        Horario comercial: {formatBusinessScheduleSummary(businessHours)}
+                    </p>
                 </div>
-                <Button onClick={handleNew} size="sm" className="shrink-0 shadow-sm">
-                    <Plus className="mr-2 h-4 w-4" /> Nueva cita
+                <Button onClick={handleNew} size="sm" className="shadow-sm">
+                    <Plus className="mr-2 h-4 w-4" /> Nueva Cita
                 </Button>
             </div>
 
-            <div className="flex shrink-0 flex-col gap-2 border-y border-border/80 py-2.5 sm:flex-row sm:items-center sm:justify-between">
-                <div className="inline-flex w-fit rounded-xl border bg-card p-1 shadow-sm">
-                    <Button
-                        type="button"
-                        variant={activeView === "list" ? "secondary" : "ghost"}
-                        size="sm"
-                        onClick={() => setActiveView("list")}
-                        className="h-8 rounded-lg px-3"
-                    >
-                        <LayoutList className="mr-2 h-4 w-4" /> Lista
-                    </Button>
-                    <Button
-                        type="button"
-                        variant={activeView === "calendar" ? "secondary" : "ghost"}
-                        size="sm"
-                        onClick={() => setActiveView("calendar")}
-                        className="h-8 rounded-lg px-3"
-                    >
-                        <CalendarIcon className="mr-2 h-4 w-4" /> Calendario
-                    </Button>
-                </div>
-                <div className="flex items-center gap-2 text-muted-foreground">
-                    <Filter className="hidden h-4 w-4 sm:block" />
-                    <Select
-                        value={activeSpecialistFilter}
-                        onValueChange={setActiveSpecialistFilter}
-                        disabled={!canChooseSpecialistView}
-                    >
-                        <SelectTrigger aria-label="Filtrar por profesional" className="h-9 w-full bg-card sm:w-[220px]">
-                            <SelectValue placeholder="Todos los profesionales" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            {specialistFilterOptions.map((option) => (
-                                <SelectItem key={option.id} value={option.id}>
-                                    {option.label}
-                                </SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
-                    <Select value={activeStatusFilter} onValueChange={setActiveStatusFilter}>
-                        <SelectTrigger aria-label="Filtrar por estado" className="h-9 w-full bg-card sm:w-[190px]">
-                            <SelectValue placeholder="Todos los estados" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            {STATUS_FILTER_OPTIONS.map((option) => (
-                                <SelectItem key={option.id} value={option.id}>
-                                    {option.label}
-                                </SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
-                </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 shrink-0">
+                <Card className="border-none shadow-sm bg-card">
+                    <CardContent className="flex items-center justify-between p-3">
+                        <div>
+                            <p className="text-xs font-medium text-muted-foreground">Hoy</p>
+                            <h2 className="text-xl font-bold text-foreground">{stats.today}</h2>
+                        </div>
+                        <div className="h-8 w-8 bg-primary/10 text-primary rounded-lg flex items-center justify-center">
+                            <CalendarDays className="h-4 w-4" />
+                        </div>
+                    </CardContent>
+                </Card>
+                <Card className="border-none shadow-sm bg-card">
+                    <CardContent className="flex items-center justify-between p-3">
+                        <div>
+                            <p className="text-xs font-medium text-muted-foreground">Semana</p>
+                            <h2 className="text-xl font-bold text-foreground">{stats.week}</h2>
+                        </div>
+                        <div className="h-8 w-8 bg-primary/10 text-primary rounded-lg flex items-center justify-center">
+                            <CalendarIcon className="h-4 w-4" />
+                        </div>
+                    </CardContent>
+                </Card>
+                <Card className="border-none shadow-sm bg-card">
+                    <CardContent className="flex items-center justify-between p-3">
+                        <div>
+                            <p className="text-xs font-medium text-muted-foreground">Pendientes</p>
+                            <h2 className="text-xl font-bold text-foreground">{stats.pending}</h2>
+                        </div>
+                        <div className="h-8 w-8 bg-primary/10 text-primary rounded-lg flex items-center justify-center">
+                            <Clock className="h-4 w-4" />
+                        </div>
+                    </CardContent>
+                </Card>
+                <Card className="border-none shadow-sm bg-card">
+                    <CardContent className="flex items-center justify-between p-3">
+                        <div>
+                            <p className="text-xs font-medium text-muted-foreground">Completadas</p>
+                            <h2 className="text-xl font-bold text-foreground">{stats.completed}</h2>
+                        </div>
+                        <div className="h-8 w-8 bg-primary/10 text-primary rounded-lg flex items-center justify-center">
+                            <CheckCircle className="h-4 w-4" />
+                        </div>
+                    </CardContent>
+                </Card>
             </div>
 
-            {activeView === "list" ? (
-                <div className="mt-3 min-h-0 flex-1 overflow-auto rounded-xl border bg-card shadow-sm">
-                    <AppointmentList
-                        appointments={visibleListAppointments}
-                        onEdit={handleEdit}
-                        onDelete={handleDelete}
-                    />
+            {canChooseSpecialistView ? (
+                <div className="shrink-0 rounded-xl border bg-card/80 p-3 shadow-sm">
+                    <div className="flex flex-col gap-2">
+                        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                            <div className="flex items-start gap-3">
+                                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                                    <Users className="h-4 w-4" />
+                                </div>
+                                <div>
+                                    <p className="text-sm font-semibold text-foreground">Vista de especialistas</p>
+                                    <p className="text-xs text-muted-foreground">
+                                        Elige ver todas las agendas o solo la agenda de un especialista.
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                    <span
+                                        className="h-2.5 w-2.5 rounded-full"
+                                        style={{ backgroundColor: activeSpecialistMeta?.color || DEFAULT_FILTER_COLOR }}
+                                    />
+                                    <span>Vista actual: {activeSpecialistMeta?.label || "Todos"}</span>
+                                </div>
+                                <Select value={activeSpecialistFilter} onValueChange={setActiveSpecialistFilter}>
+                                    <SelectTrigger className="h-10 min-w-[220px] bg-background">
+                                        <SelectValue placeholder="Elegir especialista" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {specialistFilterOptions.map((option) => (
+                                            <SelectItem key={option.id} value={option.id}>
+                                                {option.label}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        </div>
+
+                        <div className="flex flex-wrap gap-2">
+                            {specialistFilterOptions.map((option) => {
+                                const isActive = activeSpecialistFilter === option.id;
+                                return (
+                                    <button
+                                        key={option.id}
+                                        type="button"
+                                        onClick={() => setActiveSpecialistFilter(option.id)}
+                                        className={`inline-flex min-w-[140px] items-center gap-3 rounded-xl border px-3 py-2 text-left transition-all ${
+                                            isActive
+                                                ? "border-transparent bg-primary/5 shadow-sm ring-2 ring-primary/10"
+                                                : "border-border bg-background hover:border-primary/20 hover:bg-muted/40"
+                                        }`}
+                                    >
+                                        <span
+                                            className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[6px] border"
+                                            style={{
+                                                borderColor: option.color,
+                                                backgroundColor: isActive ? option.color : "transparent",
+                                                color: isActive ? "#FFFFFF" : option.color,
+                                            }}
+                                        >
+                                            {isActive ? <Check className="h-3.5 w-3.5" /> : null}
+                                        </span>
+                                        <span className="flex min-w-0 flex-col">
+                                            <span className="truncate text-sm font-medium text-foreground">{option.label}</span>
+                                            <span className="truncate text-[11px] text-muted-foreground">{option.caption}</span>
+                                        </span>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </div>
                 </div>
-            ) : (
-                <div className="mt-3 flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border bg-card p-2 shadow-sm sm:p-3">
+            ) : null}
+
+            <Tabs defaultValue="calendar" className="flex flex-col flex-1 w-full overflow-hidden" onValueChange={setView}>
+                <div className="flex items-center justify-between mb-2 shrink-0">
+                    <TabsList className="bg-card border h-8">
+                        <TabsTrigger value="list" className="text-xs h-6 data-[state=active]:bg-primary/10 data-[state=active]:text-primary">
+                            <LayoutList className="mr-2 h-3 w-3" /> Lista
+                        </TabsTrigger>
+                        <TabsTrigger value="calendar" className="text-xs h-6 data-[state=active]:bg-primary/10 data-[state=active]:text-primary">
+                            <CalendarIcon className="mr-2 h-3 w-3" /> Calendario
+                        </TabsTrigger>
+                    </TabsList>
+                </div>
+
+                <TabsContent value="list" className="mt-0 flex-1 overflow-auto border rounded-lg bg-card">
+                    <AppointmentList appointments={filteredAppointments} onEdit={handleEdit} onDelete={handleDelete} />
+                </TabsContent>
+
+                <TabsContent value="calendar" className="mt-0 flex-1 bg-card rounded-lg border p-2 overflow-hidden flex flex-col">
                     <BigCalendar
                         initialEvents={events}
-                        initialDate={initialCalendarDate}
                         onSelectSlot={handleSelectSlot}
                         onSelectEvent={handleSelectEvent}
                         onAppointmentTimeChange={handleAppointmentTimeChange}
                         onMutationSettled={fetchAppointments}
                         businessHours={businessHours}
                     />
-                </div>
-            )}
+                </TabsContent>
+            </Tabs>
 
             <AppointmentDialog
                 open={isDialogOpen}

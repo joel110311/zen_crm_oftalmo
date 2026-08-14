@@ -1,12 +1,12 @@
 "use client";
 
 import { useActionState, useEffect, useState } from "react";
-import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { BrandLogo } from "@/components/brand/brand-logo";
 import { resolveBranding, type BrandingSettings } from "@/lib/branding";
+import { Loader2, Eye, EyeOff } from "lucide-react";
 import { loginAction } from "./actions";
 
 export default function LoginPage() {
@@ -32,134 +32,107 @@ export default function LoginPage() {
     }, []);
 
     return (
-        <div className="relative min-h-dvh overflow-hidden bg-[#f7f8f6] text-foreground">
-            <div aria-hidden="true" className="pointer-events-none absolute inset-0">
-                <div className="absolute -left-40 top-1/3 h-80 w-80 rounded-full bg-primary/[0.045] blur-3xl sm:h-[30rem] sm:w-[30rem]" />
-                <div className="absolute -right-40 bottom-0 h-96 w-96 rounded-full bg-[#dfe8df]/50 blur-3xl sm:h-[34rem] sm:w-[34rem]" />
-                <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-border to-transparent" />
+        <div className="min-h-screen flex items-center justify-center bg-background relative overflow-hidden px-4">
+            {/* Subtle background accent */}
+            <div className="absolute inset-0 pointer-events-none">
+                <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-primary/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/4" />
+                <div className="absolute bottom-0 left-0 w-[400px] h-[400px] bg-primary/3 rounded-full blur-3xl translate-y-1/3 -translate-x-1/4" />
             </div>
 
-            <main className="relative z-10 mx-auto grid min-h-dvh w-full max-w-[1280px] items-center gap-10 px-5 py-8 sm:px-8 sm:py-10 lg:grid-cols-[0.9fr_1.1fr] lg:gap-16 lg:px-12 xl:gap-24">
-                <section className="hidden max-w-xl lg:block">
-                    <p className="text-xs font-semibold uppercase tracking-[0.24em] text-primary">
-                        Gestión para negocios de belleza
-                    </p>
-                    <h1 className="mt-5 text-balance text-5xl font-semibold leading-[1.06] tracking-[-0.04em] xl:text-6xl">
-                        Tu negocio, organizado y siempre cerca de tus clientes.
+            <div className="relative z-10 w-full max-w-md">
+                {/* Logo and branding */}
+                <div className="text-center mb-8 sm:mb-10">
+                    <div className="flex justify-center mb-5">
+                        <BrandLogo
+                            brandName={branding.brandName}
+                            logoUrl={branding.brandLogoUrl}
+                            className="h-20 w-20 text-foreground sm:h-28 sm:w-28"
+                        />
+                    </div>
+                    <h1 className="text-2xl sm:text-3xl font-bold text-foreground tracking-tight">
+                        {branding.brandName}
                     </h1>
-                    <p className="mt-6 max-w-lg text-lg leading-8 text-muted-foreground">
-                        Administra citas, clientes y conversaciones desde un solo espacio diseñado para trabajar con claridad.
+                    <p className="text-sm sm:text-base text-muted-foreground mt-1">
+                        Gestión inteligente de clientes con IA
                     </p>
-                    <div className="mt-8 flex flex-wrap items-center gap-x-3 gap-y-2 text-sm font-medium text-foreground/75">
-                        <span>Agenda</span>
-                        <span className="h-1 w-1 rounded-full bg-primary/60" />
-                        <span>Clientes</span>
-                        <span className="h-1 w-1 rounded-full bg-primary/60" />
-                        <span>Conversaciones</span>
-                    </div>
-                </section>
+                </div>
 
-                <section className="mx-auto w-full max-w-[540px]">
-                    <div className="text-center">
-                        <div className="flex items-center justify-center gap-3">
-                            <BrandLogo
-                                brandName={branding.brandName}
-                                logoUrl={branding.brandLogoUrl}
-                                className="h-12 w-12 shrink-0 text-foreground sm:h-14 sm:w-14"
+                {/* Login card */}
+                <div className="bg-card border border-border rounded-2xl p-6 sm:p-8 shadow-premium">
+                    <div className="mb-5 sm:mb-6">
+                        <h2 className="text-lg sm:text-xl font-semibold text-foreground">Iniciar Sesión</h2>
+                        <p className="text-sm text-muted-foreground mt-0.5">Ingresa tus credenciales para continuar</p>
+                    </div>
+
+                    <form action={formAction} className="space-y-4 sm:space-y-5">
+                        {/* Hidden redirectTo field for Auth.js */}
+                        <input type="hidden" name="redirectTo" value="/dashboard" />
+
+                        <div className="space-y-1.5">
+                            <Label htmlFor="email" className="text-foreground text-sm font-medium">
+                                Correo Electrónico
+                            </Label>
+                            <Input
+                                id="email"
+                                name="email"
+                                type="email"
+                                placeholder="tu@email.com"
+                                required
+                                className="bg-secondary border-border text-foreground placeholder:text-muted-foreground focus:border-primary focus:ring-primary/20 h-12 text-base"
                             />
-                            <div className="min-w-0 text-left">
-                                <p className="truncate text-sm font-semibold sm:text-base">{branding.brandName}</p>
-                                <p className="text-xs text-muted-foreground">CRM para belleza</p>
-                            </div>
-                        </div>
-                        <h2 className="mt-6 text-balance text-3xl font-semibold tracking-[-0.03em] sm:text-4xl">
-                            Bienvenido a {branding.brandName}
-                        </h2>
-                        <p className="mt-2 text-sm text-muted-foreground sm:text-base">
-                            Gestión inteligente de clientes con IA
-                        </p>
-                    </div>
-
-                    <div className="mt-7 rounded-[1.5rem] border border-black/[0.08] bg-white p-5 shadow-[0_24px_70px_-28px_rgba(22,28,18,0.28)] sm:mt-8 sm:p-8">
-                        <div className="mb-6">
-                            <h3 className="text-xl font-semibold tracking-tight sm:text-2xl">Iniciar sesión</h3>
-                            <p className="mt-1 text-sm text-muted-foreground">Ingresa tus credenciales para continuar</p>
                         </div>
 
-                        <form action={formAction} className="space-y-5">
-                            <input type="hidden" name="redirectTo" value="/dashboard" />
-
-                            <div className="space-y-2">
-                                <Label htmlFor="email" className="text-sm font-semibold">
-                                    Correo electrónico
-                                </Label>
+                        <div className="space-y-1.5">
+                            <Label htmlFor="password" className="text-foreground text-sm font-medium">
+                                Contraseña
+                            </Label>
+                            <div className="relative">
                                 <Input
-                                    id="email"
-                                    name="email"
-                                    type="email"
-                                    autoComplete="email"
-                                    placeholder="tu@email.com"
+                                    id="password"
+                                    name="password"
+                                    type={showPassword ? "text" : "password"}
+                                    placeholder="••••••••"
                                     required
-                                    className="h-12 rounded-xl border-black/[0.08] bg-[#f2f5f8] px-4 text-base shadow-none placeholder:text-muted-foreground/70 focus-visible:border-primary focus-visible:ring-primary/15 sm:h-13"
+                                    className="bg-secondary border-border text-foreground placeholder:text-muted-foreground focus:border-primary focus:ring-primary/20 h-12 text-base pr-11"
                                 />
+                                <button
+                                    type="button"
+                                    onClick={() => setShowPassword(!showPassword)}
+                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition"
+                                >
+                                    {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                                </button>
                             </div>
+                        </div>
 
-                            <div className="space-y-2">
-                                <Label htmlFor="password" className="text-sm font-semibold">
-                                    Contraseña
-                                </Label>
-                                <div className="relative">
-                                    <Input
-                                        id="password"
-                                        name="password"
-                                        type={showPassword ? "text" : "password"}
-                                        autoComplete="current-password"
-                                        placeholder="••••••••"
-                                        required
-                                        className="h-12 rounded-xl border-black/[0.08] bg-[#f2f5f8] px-4 pr-12 text-base shadow-none placeholder:text-muted-foreground/70 focus-visible:border-primary focus-visible:ring-primary/15 sm:h-13"
-                                    />
-                                    <button
-                                        type="button"
-                                        onClick={() => setShowPassword((current) => !current)}
-                                        aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
-                                        className="absolute right-1 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-lg text-muted-foreground transition hover:bg-black/5 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
-                                    >
-                                        {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
-                                    </button>
-                                </div>
+                        {errorMessage && (
+                            <div className="text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-4 py-3">
+                                {errorMessage}
                             </div>
+                        )}
 
-                            {errorMessage ? (
-                                <div role="alert" className="rounded-xl border border-destructive/20 bg-destructive/[0.07] px-4 py-3 text-sm text-destructive">
-                                    {errorMessage}
-                                </div>
-                            ) : null}
+                        <Button
+                            type="submit"
+                            disabled={isPending}
+                            className="w-full h-12 bg-primary hover:bg-primary/90 text-primary-foreground font-medium rounded-lg shadow-md transition-all duration-200 text-base"
+                        >
+                            {isPending ? (
+                                <>
+                                    <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                                    Verificando...
+                                </>
+                            ) : (
+                                "Iniciar Sesión"
+                            )}
+                        </Button>
+                    </form>
+                </div>
 
-                            <Button
-                                type="submit"
-                                disabled={isPending}
-                                className="h-12 w-full rounded-xl bg-primary text-base font-semibold text-primary-foreground shadow-none transition hover:bg-primary/90 sm:h-13"
-                            >
-                                {isPending ? (
-                                    <>
-                                        <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                                        Verificando...
-                                    </>
-                                ) : (
-                                    "Iniciar sesión"
-                                )}
-                            </Button>
-                        </form>
-                    </div>
-
-                    <p className="mt-6 text-center text-xs text-muted-foreground sm:mt-7">
-                        v1.0 · © 2026 {branding.brandName}
-                    </p>
-                    <p className="mt-4 text-center text-xs font-medium text-foreground/55 lg:hidden">
-                        Agenda · Clientes · Conversaciones
-                    </p>
-                </section>
-            </main>
+                {/* Footer */}
+                <p className="text-center text-xs text-muted-foreground mt-6 sm:mt-8">
+                    v1.0 · © 2026 {branding.brandName}
+                </p>
+            </div>
         </div>
     );
 }

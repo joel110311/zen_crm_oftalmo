@@ -22,7 +22,7 @@ import { buildInboundMediaContext, shouldSkipAutoReplyText } from "@/lib/ai/medi
 import { maybeHandleAppointmentBooking } from "@/lib/ai/appointment-booking";
 import { processLeadAutomationTurn } from "@/lib/ai/lead-intelligence";
 import { buildPhoneMatchClauses, normalizePhoneDigits } from "@/lib/phone";
-import { sendMetaMediaMessage, sendMetaTextMessage } from "@/lib/meta-whatsapp";
+import { sendYCloudMediaMessage, sendYCloudTextMessage } from "@/lib/ycloud";
 import {
     normalizeMessageSourceType,
     resolveMessageSourceId,
@@ -1098,7 +1098,7 @@ function buildPublicMediaUrl(mediaUrl: string) {
 
     const appBaseUrl = (process.env.APP_BASE_URL || process.env.AUTH_URL || "").trim();
     if (!appBaseUrl) {
-        throw new Error("APP_BASE_URL o AUTH_URL es requerido para enviar multimedia por WhatsApp API.");
+        throw new Error("APP_BASE_URL o AUTH_URL es requerido para enviar multimedia por YCloud.");
     }
 
     return `${appBaseUrl.replace(/\/+$/, "")}${mediaUrl.startsWith("/") ? "" : "/"}${mediaUrl}`;
@@ -1202,8 +1202,8 @@ async function sendAutomatedBotText(params: {
     const source = await getAutomatedConversationSource(params.conversationId);
 
     try {
-        const transportResult = source.sourceType === "meta"
-            ? await sendMetaTextMessage(params.phone, content)
+        const transportResult = source.sourceType === "ycloud"
+            ? await sendYCloudTextMessage(params.phone, content)
             : await sendWuzapiTextMessage(params.phone, content);
 
         await prisma.message.create({
@@ -1263,8 +1263,8 @@ async function sendAutomatedBotMedia(params: {
             console.warn("[Catalog] Failed to persist automated media locally:", persistError);
         }
 
-        const result = source.sourceType === "meta"
-            ? await sendMetaMediaMessage({
+        const result = source.sourceType === "ycloud"
+            ? await sendYCloudMediaMessage({
                 to: params.phone,
                 mediaType: params.mediaCategory,
                 link: buildPublicMediaUrl(storedMediaUrl),
@@ -2204,9 +2204,6 @@ export async function sendMessage(conversationId: string, content: string, direc
         }
 
         const isHumanOutbound = direction === "outbound";
-        const sourceType = normalizeMessageSourceType(conversation.sourceType);
-        const sourceSettings = await getSystemSettingsOrDefaults();
-        const sourceId = conversation.sourceId || resolveMessageSourceId(sourceType, sourceSettings);
 
         // Create message in database first
         const message = await prisma.message.create({
@@ -2217,8 +2214,6 @@ export async function sendMessage(conversationId: string, content: string, direc
                 status: "sending",
                 type: "text",
                 senderType: isHumanOutbound ? "human" : null,
-                sourceType,
-                sourceId,
             },
         });
 
@@ -2228,11 +2223,10 @@ export async function sendMessage(conversationId: string, content: string, direc
 
         // If outbound, send via WhatsApp QR gateway
         if (direction === "outbound" && conversation.contact?.phone) {
-            console.log("[SendMessage] Attempting to send via WhatsApp...", sourceType);
+            console.log("[SendMessage] Attempting to send via WuzAPI...");
             try {
-                const result = sourceType === "meta"
-                    ? await sendMetaTextMessage(conversation.contact.phone, content)
-                    : await sendWuzapiTextMessage(conversation.contact.phone, content);
+                const result = await sendWuzapiTextMessage(conversation.contact.phone, content);
+                console.log("[SendMessage] WuzAPI result:", result);
 
                 // Update message status to sent
                 await prisma.message.update({
@@ -2480,7 +2474,7 @@ export async function processInboundMessage(
             where: { id: conversation.id },
             data: {
                 updatedAt: messageOccurredAt && messageOccurredAt > conversation.updatedAt ? messageOccurredAt : new Date(),
-                ...(normalizedSourceType === "meta"
+                ...(normalizedSourceType === "ycloud"
                     ? { sessionExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000) }
                     : {}),
             },

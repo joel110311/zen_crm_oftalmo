@@ -25,7 +25,6 @@ type AppointmentInput = {
     contactId?: string;
     patientId?: string;
     specialistId?: string;
-    serviceId?: string;
     userId?: string;
     status?: string;
     appointmentType?: string;
@@ -41,7 +40,6 @@ type AppointmentInput = {
     paymentStatus?: string;
     paymentAmount?: number;
     paymentCurrency?: string;
-    paymentMethod?: string;
     paymentLinkUrl?: string;
     googleCalendarId?: string | null;
     googleCalendarName?: string | null;
@@ -493,7 +491,6 @@ export async function createManagedAppointment(input: AppointmentInput) {
             contactId: input.contactId,
             patientId: input.patientId,
             specialistId: input.specialistId,
-            serviceId: input.serviceId,
             userId: input.userId,
             status: input.status || "scheduled",
             appointmentType: input.appointmentType || "Consulta",
@@ -509,7 +506,6 @@ export async function createManagedAppointment(input: AppointmentInput) {
             paymentStatus: input.paymentStatus || "unpaid",
             paymentAmount: Number(input.paymentAmount || 0),
             paymentCurrency: input.paymentCurrency || defaultPaymentCurrency,
-            paymentMethod: input.paymentMethod || "local",
             paymentLinkUrl: input.paymentLinkUrl,
             googleCalendarId: input.googleCalendarId || resolvedWriteTarget?.calendarId || null,
             googleCalendarName: input.googleCalendarName || resolvedWriteTarget?.summary || null,
@@ -594,7 +590,6 @@ export async function updateManagedAppointment(id: string, input: Partial<Appoin
     if (input.contactId !== undefined) updateData.contactId = input.contactId || null;
     if (input.patientId !== undefined) updateData.patientId = input.patientId || null;
     if (input.specialistId !== undefined) updateData.specialistId = input.specialistId || null;
-    if (input.serviceId !== undefined) updateData.serviceId = input.serviceId || null;
     if (input.userId !== undefined) updateData.userId = input.userId || null;
     if (input.status !== undefined) updateData.status = input.status;
     if (input.appointmentType !== undefined) updateData.appointmentType = input.appointmentType;
@@ -610,7 +605,6 @@ export async function updateManagedAppointment(id: string, input: Partial<Appoin
     if (input.paymentStatus !== undefined) updateData.paymentStatus = input.paymentStatus;
     if (input.paymentAmount !== undefined) updateData.paymentAmount = Number(input.paymentAmount || 0);
     if (input.paymentCurrency !== undefined) updateData.paymentCurrency = input.paymentCurrency || defaultPaymentCurrency;
-    if (input.paymentMethod !== undefined) updateData.paymentMethod = input.paymentMethod || "local";
     if (input.paymentLinkUrl !== undefined) updateData.paymentLinkUrl = input.paymentLinkUrl || null;
     if (input.googleCalendarId !== undefined) updateData.googleCalendarId = input.googleCalendarId || null;
     if (input.googleCalendarName !== undefined) updateData.googleCalendarName = input.googleCalendarName || null;

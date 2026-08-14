@@ -22,7 +22,6 @@ type Props = {
         paymentStatus?: string | null;
         paymentAmount?: number | null;
         paymentCurrency?: string | null;
-        paymentMethod?: string | null;
         paymentLinkUrl?: string | null;
         patient?: {
             firstName: string;
@@ -50,17 +49,6 @@ function money(amount?: number | null, currency = "MXN", locale = "es-MX") {
     }).format(amount || 0);
 }
 
-function paymentMethodLabel(method?: string | null) {
-    const labels: Record<string, string> = {
-        local: "Pago en el local",
-        efectivo: "Efectivo",
-        tarjeta: "Tarjeta",
-        transferencia: "Transferencia",
-        link: "Enlace de pago",
-    };
-    return labels[method || ""] || method || "Por definir";
-}
-
 export function AppointmentConfirmation({ token, appointment }: Props) {
     const { toast } = useToast();
     const [isPending, startTransition] = useTransition();
@@ -75,7 +63,7 @@ export function AppointmentConfirmation({ token, appointment }: Props) {
         confirmationStatus: appointment.confirmationStatus,
         cancellationReason: appointment.cancellationReason || "",
     });
-    const patientName = [appointment.patient?.firstName, appointment.patient?.lastName].filter(Boolean).join(" ") || "Cliente";
+    const patientName = [appointment.patient?.firstName, appointment.patient?.lastName].filter(Boolean).join(" ") || "Paciente";
     const specialistName = appointment.specialist?.displayName || appointment.specialist?.name || appointment.specialistName;
 
     useEffect(() => {
@@ -124,7 +112,7 @@ export function AppointmentConfirmation({ token, appointment }: Props) {
                         </h1>
                         {localState.status !== "cancelled" && localState.confirmationStatus !== "confirmed" ? (
                             <p className="mt-2 text-sm text-muted-foreground">
-                                El negocio revisará tu solicitud y te confirmará por WhatsApp.
+                                La clinica revisara tu solicitud y te confirmara por WhatsApp.
                             </p>
                         ) : null}
                     </div>
@@ -135,7 +123,7 @@ export function AppointmentConfirmation({ token, appointment }: Props) {
 
                 <div className="mt-5 space-y-4 rounded-2xl border bg-muted/20 p-4">
                     <div>
-                        <p className="text-xs text-muted-foreground">Cliente</p>
+                        <p className="text-xs text-muted-foreground">Paciente</p>
                         <p className="font-semibold">{patientName}</p>
                     </div>
                     <div>
@@ -181,7 +169,6 @@ export function AppointmentConfirmation({ token, appointment }: Props) {
                             <p className="font-semibold">
                                 {money(appointment.paymentAmount, appointment.paymentCurrency || operationContext.defaultCurrency, operationContext.locale)} - {appointment.paymentStatus === "paid" ? "pagado" : "pendiente"}
                             </p>
-                            <p className="mt-1 text-sm text-muted-foreground">{paymentMethodLabel(appointment.paymentMethod)}</p>
                             {appointment.paymentLinkUrl && appointment.paymentStatus !== "paid" ? (
                                 <Button className="mt-2" size="sm" variant="outline" asChild>
                                     <a href={appointment.paymentLinkUrl} target="_blank" rel="noreferrer">

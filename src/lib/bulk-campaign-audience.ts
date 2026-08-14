@@ -3,7 +3,7 @@ import { normalizePhoneForOperation } from "@/lib/operation-context";
 
 export const MAX_BULK_CAMPAIGN_AUDIENCE_LIMIT = 5000;
 export const BULK_CAMPAIGN_AUDIENCE_MODES = ["filters", "selected", "mixed"] as const;
-export const BULK_CAMPAIGN_AUDIENCE_SOURCES = ["any", "wuzapi", "meta"] as const;
+export const BULK_CAMPAIGN_AUDIENCE_SOURCES = ["any", "wuzapi", "ycloud"] as const;
 
 export type BulkCampaignAudienceMode = (typeof BULK_CAMPAIGN_AUDIENCE_MODES)[number];
 export type BulkCampaignAudienceSource = (typeof BULK_CAMPAIGN_AUDIENCE_SOURCES)[number];
