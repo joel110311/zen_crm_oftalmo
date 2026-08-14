@@ -80,7 +80,7 @@ export default async function ContactDetailsPage(props: { params: Promise<{ id: 
                                         variant="outline"
                                         disabled
                                         className="h-10 w-10 rounded-full"
-                                        title="Este contacto no tiene telefono"
+                                        title="Este cliente no tiene teléfono"
                                     >
                                         <WhatsAppIcon className="h-5 w-5 text-muted-foreground" />
                                     </Button>
@@ -94,35 +94,6 @@ export default async function ContactDetailsPage(props: { params: Promise<{ id: 
                                     label="Nombre"
                                     initialValue={contact.name || ""}
                                     className="font-medium"
-                                />
-                                <AutoSaveInput
-                                    id={contact.id}
-                                    field="lastName"
-                                    label="Apellidos"
-                                    initialValue={contact.lastName || ""}
-                                />
-                                <AutoSaveInput
-                                    id={contact.id}
-                                    field="company"
-                                    label="Compañía / Origen"
-                                    initialValue={contact.company}
-                                    placeholder="Ej. Facebook Ads"
-                                />
-                                <AutoSaveInput
-                                    id={contact.id}
-                                    field="role"
-                                    label="Cargo / Puesto"
-                                    initialValue={contact.role || ""}
-                                    placeholder="Ej. Gerente de Ventas"
-                                />
-
-                                <div className="h-px bg-gray-100 my-2" />
-
-                                <AutoSaveInput
-                                    id={contact.id}
-                                    field="email"
-                                    label="Correo Electrónico"
-                                    initialValue={contact.email}
                                 />
                                 <AutoSaveInput
                                     id={contact.id}
@@ -149,7 +120,7 @@ export default async function ContactDetailsPage(props: { params: Promise<{ id: 
                 {/* Right Column: Timeline / History */}
                 <div className="md:col-span-8 lg:col-span-9 flex flex-col bg-gray-50 rounded-xl border p-6">
                     <div className="flex items-center justify-between mb-6">
-                        <h2 className="text-lg font-semibold">Historial</h2>
+                        <h2 className="text-lg font-semibold">Actividad del cliente</h2>
                         <div className="flex gap-2">
                             <Button variant="outline" size="sm" className="h-8">Notas</Button>
                             <Button variant="outline" size="sm" className="h-8">Tareas</Button>
@@ -164,7 +135,7 @@ export default async function ContactDetailsPage(props: { params: Promise<{ id: 
                                 <div className="w-px h-full bg-gray-200 my-1" />
                             </div>
                             <div className="pb-8">
-                                <p className="text-sm font-medium">Contacto Creado</p>
+                                <p className="text-sm font-medium">Cliente creado</p>
                                 <p className="text-xs text-gray-500 mt-1">
                                     {format(new Date(contact.createdAt), "PP p", { locale: es })}
                                 </p>

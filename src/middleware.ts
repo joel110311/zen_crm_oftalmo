@@ -51,7 +51,11 @@ export async function middleware(req: NextRequest) {
     }
 
     if (pathname.startsWith("/dashboard/pipeline")) {
-        return NextResponse.redirect(new URL("/dashboard/patients", req.url));
+        return NextResponse.redirect(new URL("/dashboard/contacts", req.url));
+    }
+
+    if (pathname.startsWith("/dashboard/patients")) {
+        return NextResponse.redirect(new URL("/dashboard/contacts", req.url));
     }
 
     const matchedRoute = protectedRoutes.find((route) => pathname.startsWith(route.prefix));

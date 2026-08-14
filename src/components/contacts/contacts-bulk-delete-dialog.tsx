@@ -65,15 +65,15 @@ export function ContactsBulkDeleteDialog({
             if (!result.success) {
                 toast({
                     title: "No se pudieron eliminar",
-                    description: result.error || "Ocurrio un error al borrar los contactos seleccionados.",
+                    description: result.error || "Ocurrió un error al borrar los clientes seleccionados.",
                     variant: "destructive",
                 });
                 return;
             }
 
             toast({
-                title: "Contactos eliminados",
-                description: `Se eliminaron ${result.deletedCount} contacto${result.deletedCount === 1 ? "" : "s"}.`,
+                title: "Clientes eliminados",
+                description: `Se eliminaron ${result.deletedCount} cliente${result.deletedCount === 1 ? "" : "s"}.`,
             });
 
             handleOpenChange(false);
@@ -103,9 +103,9 @@ export function ContactsBulkDeleteDialog({
                                 <AlertTriangle className="h-5 w-5" />
                             </div>
                             <div>
-                                <DialogTitle>Eliminar contactos seleccionados</DialogTitle>
+                                <DialogTitle>Eliminar clientes seleccionados</DialogTitle>
                                 <DialogDescription className="mt-1">
-                                    Esta accion eliminara contactos, conversaciones, mensajes, citas y deals relacionados.
+                                    Esta acción eliminará clientes, conversaciones, mensajes, citas y oportunidades relacionadas.
                                 </DialogDescription>
                             </div>
                         </div>
@@ -114,7 +114,7 @@ export function ContactsBulkDeleteDialog({
 
                 <div className="space-y-4 px-6 py-5">
                     <div className="rounded-2xl border border-destructive/20 bg-destructive/5 p-4 text-sm text-destructive/90">
-                        Vas a eliminar <span className="font-semibold">{contacts.length}</span> contacto{contacts.length === 1 ? "" : "s"}.
+                        Vas a eliminar <span className="font-semibold">{contacts.length}</span> cliente{contacts.length === 1 ? "" : "s"}.
                     </div>
 
                     <div className="rounded-2xl border bg-muted/20 p-4">

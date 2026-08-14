@@ -140,7 +140,7 @@ function extractVariables(text: string): string[] {
 }
 
 /* ──────────────────── Main Page ──────────────────── */
-export function YCloudTemplateRequestPanel() {
+export function MetaTemplateRequestPanel() {
     const operationContext = useOperationContext();
     const [templates, setTemplates] = useState<Template[]>([]);
     const [search, setSearch] = useState("");
@@ -168,7 +168,7 @@ export function YCloudTemplateRequestPanel() {
         setLoading(true);
         setError(null);
         try {
-            const res = await fetch("/api/templates/ycloud?limit=100", { cache: "no-store" });
+            const res = await fetch("/api/templates/meta?limit=100", { cache: "no-store" });
             if (!res.ok) { const d = await res.json(); throw new Error(d.error || `Error ${res.status}`); }
             const data = await res.json();
             setTemplates(data.items || data || []);
@@ -242,7 +242,7 @@ export function YCloudTemplateRequestPanel() {
                 });
             }
 
-            const res = await fetch("/api/templates/ycloud/send", {
+            const res = await fetch("/api/templates/meta/send", {
                 method: "POST", headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     templateName: selectedTemplate.name,
@@ -262,7 +262,7 @@ export function YCloudTemplateRequestPanel() {
     const handleDelete = async (tpl: Template) => {
         if (!confirm(`¿Eliminar la plantilla "${tpl.name}"? Esta acción no se puede deshacer.`)) return;
         try {
-            const res = await fetch(`/api/templates/ycloud?name=${encodeURIComponent(tpl.name)}&wabaId=${encodeURIComponent(tpl.wabaId)}&language=${encodeURIComponent(tpl.language || "")}`, { method: "DELETE" });
+            const res = await fetch(`/api/templates/meta?name=${encodeURIComponent(tpl.name)}`, { method: "DELETE" });
             if (res.ok) fetchTemplates();
         } catch { /* silently fail */ }
     };
@@ -288,7 +288,7 @@ export function YCloudTemplateRequestPanel() {
                         Plantillas de WhatsApp
                     </h1>
                     <p className="text-sm text-muted-foreground mt-1">
-                        Gestiona, crea y envía plantillas aprobadas por Meta a través de YCloud
+                        Gestiona, crea, visualiza y envia plantillas directamente con WhatsApp Cloud API
                     </p>
                 </div>
                 <div className="flex items-center gap-2">
@@ -590,7 +590,7 @@ function CreateTemplatePage({ onBack, wabaId }: { onBack: () => void; wabaId: st
     // Submit
     const handleCreate = async () => {
         if (!name.trim() || !bodyText.trim() || nameError) return;
-        if (!wabaId.trim()) { setError("No se detecto el WABA ID. Actualiza la lista de plantillas primero o configura YCloud."); return; }
+        if (!wabaId.trim()) { setError("No se detecto el WABA ID. Conecta primero WhatsApp API y actualiza la lista."); return; }
         setSaving(true); setError(null);
         try {
             const components: Array<Record<string, unknown>> = [];
@@ -616,7 +616,7 @@ function CreateTemplatePage({ onBack, wabaId }: { onBack: () => void; wabaId: st
                 }
             }
 
-            const res = await fetch("/api/templates/ycloud", {
+            const res = await fetch("/api/templates/meta", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ wabaId: wabaId.trim(), name: name.trim(), language, category, components }),

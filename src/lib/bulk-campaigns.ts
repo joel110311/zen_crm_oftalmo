@@ -10,10 +10,10 @@ import {
     type OutboundMessageType,
     sendOutboundConversationMessage,
 } from "@/lib/outbound-messages";
-import { sendYCloudTemplateMessage } from "@/lib/ycloud";
+import { sendMetaTemplateMessage } from "@/lib/meta-whatsapp";
 import { findOrCreateActiveConversationForContactSource } from "@/lib/source-conversations";
 import {
-    MESSAGE_SOURCE_YCLOUD,
+    MESSAGE_SOURCE_META,
     MESSAGE_SOURCE_WUZAPI,
     normalizeMessageSourceType,
     resolveMessageSourceId,
@@ -145,7 +145,7 @@ type YCloudTemplateComponentRecord = {
     text?: unknown;
 };
 
-type YCloudTemplateSendComponents = NonNullable<Parameters<typeof sendYCloudTemplateMessage>[0]["components"]>;
+type YCloudTemplateSendComponents = NonNullable<Parameters<typeof sendMetaTemplateMessage>[0]["components"]>;
 
 function getYCloudTemplateComponents(value: unknown): YCloudTemplateComponentRecord[] {
     return Array.isArray(value)
@@ -339,7 +339,7 @@ export function normalizeBulkCampaignPayload(value: unknown): BulkCampaignUpsert
     const type = normalizeCampaignType(record.type);
     const sourceType = normalizeCampaignSourceType(record.sourceType);
     const sourceId = normalizeCampaignSourceId(record.sourceId);
-    const isYCloudTemplate = sourceType === MESSAGE_SOURCE_YCLOUD && type === "template";
+    const isYCloudTemplate = sourceType === MESSAGE_SOURCE_META && type === "template";
     const audienceFilters = normalizeBulkCampaignAudienceFilters(
         record.audienceFilters,
         MAX_BULK_CAMPAIGN_AUDIENCE_LIMIT,
@@ -353,11 +353,11 @@ export function normalizeBulkCampaignPayload(value: unknown): BulkCampaignUpsert
 
     const normalizedAudienceFilters = {
         ...audienceFilters,
-        sourceType: sourceType === MESSAGE_SOURCE_YCLOUD && !isYCloudTemplate ? MESSAGE_SOURCE_YCLOUD : audienceFilters.sourceType,
-        sourceId: sourceType === MESSAGE_SOURCE_YCLOUD && !isYCloudTemplate
+        sourceType: sourceType === MESSAGE_SOURCE_META && !isYCloudTemplate ? MESSAGE_SOURCE_META : audienceFilters.sourceType,
+        sourceId: sourceType === MESSAGE_SOURCE_META && !isYCloudTemplate
             ? (sourceId || audienceFilters.sourceId) || ""
             : audienceFilters.sourceId,
-        onlyOpenYCloudWindow: sourceType === MESSAGE_SOURCE_YCLOUD && !isYCloudTemplate
+        onlyOpenYCloudWindow: sourceType === MESSAGE_SOURCE_META && !isYCloudTemplate
             ? true
             : audienceFilters.onlyOpenYCloudWindow,
     };
@@ -411,19 +411,19 @@ function ensureCampaignDraftIsValid(input: BulkCampaignUpsertInput) {
     }
 
     if (input.type === "template") {
-        if (input.sourceType !== MESSAGE_SOURCE_YCLOUD) {
-            throw new Error("Las plantillas Meta solo se pueden enviar por YCloud");
+        if (input.sourceType !== MESSAGE_SOURCE_META) {
+            throw new Error("Las plantillas Meta solo se pueden enviar por WhatsApp API");
         }
 
         if (!input.ycloudTemplateName || !input.ycloudTemplateLanguage) {
-            throw new Error("Selecciona una plantilla YCloud aprobada antes de guardar");
+            throw new Error("Selecciona una plantilla de WhatsApp API aprobada antes de guardar");
         }
 
         const missingVariables = listYCloudTemplateRequiredVariableKeys(input.ycloudTemplateComponents)
             .filter((key) => !input.ycloudTemplateVariableValues[key]?.trim());
 
         if (missingVariables.length > 0) {
-            throw new Error("Completa las variables de la plantilla YCloud antes de guardar");
+            throw new Error("Completa las variables de la plantilla antes de guardar");
         }
     }
 
@@ -442,12 +442,12 @@ function ensureCampaignCanLaunch(campaign: BulkCampaignRecord) {
     }
 
     if (campaign.type === "template") {
-        if (campaign.sourceType !== MESSAGE_SOURCE_YCLOUD) {
-            throw new Error("Las plantillas Meta solo se pueden enviar por YCloud");
+        if (campaign.sourceType !== MESSAGE_SOURCE_META) {
+            throw new Error("Las plantillas Meta solo se pueden enviar por WhatsApp API");
         }
 
         if (!campaign.ycloudTemplateName || !campaign.ycloudTemplateLanguage) {
-            throw new Error("Selecciona una plantilla YCloud aprobada antes de iniciar");
+            throw new Error("Selecciona una plantilla de WhatsApp API aprobada antes de iniciar");
         }
     }
 
@@ -463,7 +463,7 @@ function ensureCampaignCanLaunch(campaign: BulkCampaignRecord) {
 
 function needsYCloudAudienceConstraint(filters: BulkCampaignAudienceFilters) {
     return (
-        filters.sourceType === MESSAGE_SOURCE_YCLOUD ||
+        filters.sourceType === MESSAGE_SOURCE_META ||
         filters.onlyOpenYCloudWindow ||
         Boolean(filters.lastInboundFrom || filters.lastInboundTo)
     );
@@ -482,7 +482,7 @@ async function loadEligibleYCloudContactIds(filters: BulkCampaignAudienceFilters
 
     const conversations = await prisma.conversation.findMany({
         where: {
-            sourceType: MESSAGE_SOURCE_YCLOUD,
+            sourceType: MESSAGE_SOURCE_META,
             ...(filters.sourceId ? { sourceId: filters.sourceId } : {}),
             ...(filters.onlyOpenYCloudWindow
                 ? {
@@ -496,7 +496,7 @@ async function loadEligibleYCloudContactIds(filters: BulkCampaignAudienceFilters
                     messages: {
                         some: {
                             direction: "inbound",
-                            sourceType: MESSAGE_SOURCE_YCLOUD,
+                            sourceType: MESSAGE_SOURCE_META,
                             createdAt,
                         },
                     },
@@ -1723,8 +1723,8 @@ async function processClaimedCampaign(campaignId: string, lockId: string) {
                     });
 
                 if (campaignMessageType === "template") {
-                    if (campaignSourceType !== MESSAGE_SOURCE_YCLOUD) {
-                        throw new Error("Las plantillas Meta solo se pueden enviar por YCloud");
+                    if (campaignSourceType !== MESSAGE_SOURCE_META) {
+                        throw new Error("Las plantillas Meta solo se pueden enviar por WhatsApp API");
                     }
 
                     if (!recipient.contact.phone) {
@@ -1739,7 +1739,7 @@ async function processClaimedCampaign(campaignId: string, lockId: string) {
                         agentName: settings.agentName,
                     });
 
-                    const ycloudResult = await sendYCloudTemplateMessage({
+                    const ycloudResult = await sendMetaTemplateMessage({
                         to: recipient.contact.phone,
                         templateName: campaign.ycloudTemplateName || "",
                         languageCode: campaign.ycloudTemplateLanguage || "es",
@@ -1759,7 +1759,7 @@ async function processClaimedCampaign(campaignId: string, lockId: string) {
                             status: "sent",
                             type: "template",
                             senderType: "human",
-                            sourceType: MESSAGE_SOURCE_YCLOUD,
+                            sourceType: MESSAGE_SOURCE_META,
                             sourceId: campaignSourceId,
                             providerMessageId: ycloudResult.Id || null,
                         },
@@ -1809,7 +1809,7 @@ async function processClaimedCampaign(campaignId: string, lockId: string) {
                 }
 
                 if (
-                    campaignSourceType === MESSAGE_SOURCE_YCLOUD &&
+                    campaignSourceType === MESSAGE_SOURCE_META &&
                     (!activeConversation.sessionExpiresAt ||
                         activeConversation.sessionExpiresAt.getTime() <= Date.now() + YCLOUD_OPEN_WINDOW_GRACE_MS)
                 ) {
@@ -1818,7 +1818,7 @@ async function processClaimedCampaign(campaignId: string, lockId: string) {
                         data: {
                             status: "skipped",
                             conversationId: activeConversation.id,
-                            lastError: "Ventana YCloud cerrada; usa una plantilla aprobada para este contacto.",
+                            lastError: "Ventana de WhatsApp API cerrada; usa una plantilla aprobada para este contacto.",
                         },
                     });
 

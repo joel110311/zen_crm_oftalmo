@@ -181,3 +181,24 @@ docker compose -f docker-compose.local.yml up -d --build
 ```
 
 El compose local deja `ALLOW_ENV_AI_FALLBACK=true` para facilitar pruebas con variables de entorno.
+# WhatsApp Cloud API oficial (Embedded Signup v4)
+
+El CRM integra directamente WhatsApp Cloud API de Meta y conserva como alternativa el canal por QR. No usa YCloud y no solicita permisos de Messenger ni Instagram.
+
+## Configuracion en Meta
+
+1. La app debe pertenecer a un Tech Provider o Solution Partner y estar en modo **Live**.
+2. Crea una configuracion nueva de **Facebook Login for Business** con **WhatsApp Embedded Signup v4** y selecciona solamente Cloud API / WhatsApp Business Accounts.
+3. Solicita acceso avanzado a `whatsapp_business_management` y `whatsapp_business_messaging`.
+4. Autoriza el dominio HTTPS del CRM y la URL OAuth indicada por Meta. El callback de mensajes es `https://TU-DOMINIO/api/webhooks/whatsapp`.
+5. Define en Portainer las variables `META_APP_ID`, `META_APP_SECRET`, `META_EMBEDDED_SIGNUP_CONFIG_ID`, `META_TECH_PROVIDER_SOLUTION_ID`, `META_GRAPH_API_VERSION`, `META_WHATSAPP_REGISTRATION_PIN` y `META_WEBHOOK_VERIFY_TOKEN`.
+6. Abre **Configuracion > Canal WhatsApp** y pulsa **Conectar mi WhatsApp**.
+
+El servidor intercambia inmediatamente el codigo temporal, suscribe el WABA a `messages`, `account_update` y `message_template_status_update`, registra el numero con el PIN y verifica cada webhook con `X-Hub-Signature-256`.
+
+Documentacion oficial consultada:
+
+- https://developers.facebook.com/documentation/business-messaging/whatsapp/embedded-signup/implementation
+- https://developers.facebook.com/documentation/business-messaging/whatsapp/embedded-signup/version-4/
+- https://developers.facebook.com/documentation/business-messaging/whatsapp/embedded-signup/onboarding-customers-as-a-tech-provider/
+- https://developers.facebook.com/documentation/business-messaging/whatsapp/webhooks/overview/

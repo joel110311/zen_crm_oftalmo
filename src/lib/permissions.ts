@@ -33,7 +33,7 @@ export const APP_PERMISSION_GROUPS = [
             {
                 key: "integrations.manage",
                 label: "Integraciones",
-                description: "Credenciales de Google Calendar, WhatsApp, YCloud, WuzAPI y APIs.",
+                description: "Credenciales de Google Calendar, WhatsApp API oficial, canal QR y otras APIs.",
             },
         ],
     },
@@ -86,6 +86,11 @@ export const APP_PERMISSION_GROUPS = [
                 key: "specialists.manage",
                 label: "Especialistas",
                 description: "Perfiles, agendas, bloqueos y asignacion de calendarios.",
+            },
+            {
+                key: "services.manage",
+                label: "Servicios",
+                description: "Catalogo, categorias, precios, duraciones y asignacion de especialistas.",
             },
             {
                 key: "portal.manage",
@@ -157,6 +162,7 @@ const BASE_ROLE_PERMISSIONS: Record<AppRole, PermissionKey[]> = {
     ADMINISTRADOR: APP_PERMISSION_KEYS,
     PROFESIONAL: [
         "dashboard.view",
+        "contacts.manage",
         "patients.manage",
         "clinical.manage",
         "calendar.manage",

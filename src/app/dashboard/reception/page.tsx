@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import {
     Banknote,
+    BellRing,
     CalendarClock,
     CheckCircle2,
     ClipboardCheck,
@@ -12,7 +13,7 @@ import {
     LockKeyhole,
     Loader2,
     RefreshCw,
-    Send,
+    TriangleAlert,
     UserCheck,
     Video,
     XCircle,
@@ -20,9 +21,9 @@ import {
 import { markAppointmentDebt, markAppointmentNoCharge, registerAppointmentPayment } from "@/app/actions/billing";
 import {
     getReceptionAppointments,
+    getAppointmentRemindersByDate,
     prepareAppointmentReminderDraft,
     retryAppointmentReminderSend,
-    sendDueAppointmentReminders,
     updateAppointmentStatus,
 } from "@/app/actions/calendar";
 import { WhatsAppIcon } from "@/components/icons/whatsapp-icon";
@@ -32,17 +33,21 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/use-toast";
 import { INBOX_DRAFT_STORAGE_KEY, type InboxDraftPayload } from "@/lib/inbox-drafts";
 import {
     formatOperationDayLabel,
     formatTimeInOperationZone,
+    getOperationDateKey,
     getOperationTodayKey,
 } from "@/lib/operation-dates";
 import { useRouter } from "next/navigation";
 
 type ReceptionAppointment = Awaited<ReturnType<typeof getReceptionAppointments>>[number];
+type AppointmentReminderRow = Awaited<ReturnType<typeof getAppointmentRemindersByDate>>[number];
+type ReminderFilter = "all" | "pending" | "sent" | "issues";
 
 const STATUS_LABELS: Record<string, string> = {
     scheduled: "Agendada",
@@ -80,10 +85,23 @@ function reminderStatusLabel(status: string) {
     if (status === "sent") return "enviado";
     if (status === "failed") return "fallo";
     if (status === "sending") return "enviando";
-    if (status === "queued") return "pendiente";
+    if (status === "queued") return "programado";
     if (status === "skipped") return "omitido";
     if (status === "cancelled") return "cancelado";
     return status;
+}
+
+function reminderClientName(reminder: AppointmentReminderRow) {
+    const patient = reminder.appointment.patient;
+    if (patient) {
+        return [patient.firstName, patient.lastName].filter(Boolean).join(" ").trim() || "Cliente";
+    }
+    const contact = reminder.appointment.contact;
+    return [contact?.name, contact?.lastName].filter(Boolean).join(" ").trim() || "Cliente";
+}
+
+function reminderClientPhone(reminder: AppointmentReminderRow) {
+    return reminder.appointment.patient?.phone || reminder.appointment.contact?.phone || "Sin teléfono";
 }
 
 export default function ReceptionPage() {
@@ -103,6 +121,11 @@ export default function ReceptionPage() {
     const [closingPaymentMethod, setClosingPaymentMethod] = useState("efectivo");
     const [closingPaidWith, setClosingPaidWith] = useState("");
     const [closingNotes, setClosingNotes] = useState("");
+    const [remindersOpen, setRemindersOpen] = useState(false);
+    const [reminderDate, setReminderDate] = useState(getOperationTodayKey());
+    const [reminderFilter, setReminderFilter] = useState<ReminderFilter>("all");
+    const [reminders, setReminders] = useState<AppointmentReminderRow[]>([]);
+    const [isLoadingReminders, setIsLoadingReminders] = useState(false);
 
     const formatMoney = useCallback(
         (amount?: number | null, currency = operationContext.defaultCurrency) =>
@@ -118,9 +141,30 @@ export default function ReceptionPage() {
         setAppointments(data);
     }, [selectedDate]);
 
+    const loadReminders = useCallback(async () => {
+        setIsLoadingReminders(true);
+        try {
+            const rows = await getAppointmentRemindersByDate(reminderDate);
+            setReminders(rows);
+        } catch {
+            toast({
+                title: "No se pudieron cargar los recordatorios",
+                description: "Intenta nuevamente en unos segundos.",
+                variant: "destructive",
+            });
+        } finally {
+            setIsLoadingReminders(false);
+        }
+    }, [reminderDate, toast]);
+
     useEffect(() => {
         void load();
     }, [load]);
+
+    useEffect(() => {
+        if (!remindersOpen) return;
+        void loadReminders();
+    }, [loadReminders, remindersOpen]);
 
     useEffect(() => {
         let active = true;
@@ -157,6 +201,19 @@ export default function ReceptionPage() {
         paid: appointments.filter((appointment) => appointment.paymentStatus === "paid").length,
         pendingPayment: appointments.filter((appointment) => appointment.paymentStatus === "pending").length,
     }), [appointments]);
+
+    const reminderStats = useMemo(() => ({
+        pending: reminders.filter((reminder) => ["queued", "sending"].includes(reminder.status)).length,
+        sent: reminders.filter((reminder) => reminder.status === "sent").length,
+        issues: reminders.filter((reminder) => ["failed", "skipped", "cancelled"].includes(reminder.status)).length,
+    }), [reminders]);
+
+    const visibleReminders = useMemo(() => reminders.filter((reminder) => {
+        if (reminderFilter === "pending") return ["queued", "sending"].includes(reminder.status);
+        if (reminderFilter === "sent") return reminder.status === "sent";
+        if (reminderFilter === "issues") return ["failed", "skipped", "cancelled"].includes(reminder.status);
+        return true;
+    }), [reminderFilter, reminders]);
 
     const runAction = (task: () => Promise<{ success: boolean; error?: string }>, successTitle: string) => {
         startTransition(async () => {
@@ -267,6 +324,18 @@ export default function ReceptionPage() {
         });
     };
 
+    const retryReminder = (reminderId: string, label: string) => {
+        startTransition(async () => {
+            const result = await retryAppointmentReminderSend(reminderId);
+            if (!result.success) {
+                toast({ title: "No se pudo reenviar", description: result.error, variant: "destructive" });
+                return;
+            }
+            toast({ title: `Recordatorio ${label} reenviado` });
+            await Promise.all([load(), loadReminders()]);
+        });
+    };
+
     return (
         <>
         <div className="space-y-4">
@@ -295,11 +364,14 @@ export default function ReceptionPage() {
                         Refrescar
                     </Button>
                     <Button
-                        onClick={() => runAction(sendDueAppointmentReminders, "Recordatorios procesados")}
-                        disabled={isPending}
+                        onClick={() => {
+                            setReminderDate(selectedDate);
+                            setReminderFilter("all");
+                            setRemindersOpen(true);
+                        }}
                     >
-                        <Send className="mr-2 h-4 w-4" />
-                        Procesar recordatorios
+                        <BellRing className="mr-2 h-4 w-4" />
+                        Ver recordatorios
                     </Button>
                 </div>
             </div>
@@ -472,6 +544,135 @@ export default function ReceptionPage() {
                 </div>
             </div>
         </div>
+        <Dialog open={remindersOpen} onOpenChange={setRemindersOpen}>
+            <DialogContent className="flex max-h-[calc(100vh-2rem)] w-[min(96vw,62rem)] max-w-[min(96vw,62rem)] flex-col overflow-hidden rounded-2xl p-0">
+                <DialogHeader className="shrink-0 border-b px-5 py-4 sm:px-6 sm:py-5">
+                    <DialogTitle className="flex items-center gap-2 text-xl">
+                        <BellRing className="h-5 w-5 text-primary" />
+                        Recordatorios programados
+                    </DialogTitle>
+                    <DialogDescription>
+                        Consulta qué mensajes se enviarán, cuáles ya salieron y cuáles requieren atención. El envío continúa funcionando automáticamente.
+                    </DialogDescription>
+                </DialogHeader>
+
+                <div className="grid min-w-0 shrink-0 gap-3 border-b bg-muted/15 px-5 py-4 sm:grid-cols-[minmax(0,180px)_minmax(0,1fr)] sm:px-6">
+                    <div className="min-w-0 space-y-1.5">
+                        <Label htmlFor="reminder-date">Fecha de envío</Label>
+                        <Input
+                            id="reminder-date"
+                            type="date"
+                            value={reminderDate}
+                            onChange={(event) => setReminderDate(event.target.value)}
+                            className="min-w-0 bg-background"
+                        />
+                    </div>
+                    <div className="min-w-0 space-y-1.5">
+                        <Label>Estado</Label>
+                        <Select value={reminderFilter} onValueChange={(value) => setReminderFilter(value as ReminderFilter)}>
+                            <SelectTrigger className="w-full min-w-0 bg-background">
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="all">Todos los recordatorios</SelectItem>
+                                <SelectItem value="pending">Por enviar</SelectItem>
+                                <SelectItem value="sent">Enviados</SelectItem>
+                                <SelectItem value="issues">Con problemas</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    <div className="flex min-w-0 items-end sm:col-span-2 sm:justify-end">
+                        <Button variant="outline" onClick={loadReminders} disabled={isLoadingReminders} className="w-full min-w-0 sm:w-auto">
+                            {isLoadingReminders ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+                            Actualizar
+                        </Button>
+                    </div>
+                </div>
+
+                <div className="grid shrink-0 grid-cols-3 gap-2 px-5 pt-4 sm:gap-3 sm:px-6">
+                    <button type="button" onClick={() => setReminderFilter("pending")} className="rounded-xl border bg-card p-3 text-left transition-colors hover:border-primary/40">
+                        <p className="text-xl font-bold text-foreground">{reminderStats.pending}</p>
+                        <p className="truncate text-[11px] text-muted-foreground">Por enviar</p>
+                    </button>
+                    <button type="button" onClick={() => setReminderFilter("sent")} className="rounded-xl border bg-card p-3 text-left transition-colors hover:border-primary/40">
+                        <p className="text-xl font-bold text-emerald-700">{reminderStats.sent}</p>
+                        <p className="truncate text-[11px] text-muted-foreground">Enviados</p>
+                    </button>
+                    <button type="button" onClick={() => setReminderFilter("issues")} className="rounded-xl border bg-card p-3 text-left transition-colors hover:border-primary/40">
+                        <p className="text-xl font-bold text-amber-700">{reminderStats.issues}</p>
+                        <p className="truncate text-[11px] text-muted-foreground">Con atención</p>
+                    </button>
+                </div>
+
+                <ScrollArea className="min-h-0 flex-1 px-5 py-4 sm:px-6">
+                    {isLoadingReminders && reminders.length === 0 ? (
+                        <div className="flex min-h-48 items-center justify-center text-sm text-muted-foreground">
+                            <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                            Cargando recordatorios…
+                        </div>
+                    ) : visibleReminders.length === 0 ? (
+                        <div className="flex min-h-48 flex-col items-center justify-center rounded-2xl border border-dashed px-6 text-center">
+                            <BellRing className="mb-3 h-8 w-8 text-muted-foreground/60" />
+                            <p className="font-semibold text-foreground">No hay recordatorios para este filtro</p>
+                            <p className="mt-1 max-w-md text-sm text-muted-foreground">
+                                Prueba otra fecha o revisa que las citas estén confirmadas y los recordatorios automáticos estén activos.
+                            </p>
+                        </div>
+                    ) : (
+                        <div className="space-y-3 pb-1">
+                            {visibleReminders.map((reminder) => {
+                                const specialistName = reminder.appointment.specialist?.displayName || reminder.appointment.specialist?.name || "Sin especialista";
+                                return (
+                                    <div key={reminder.id} className="rounded-2xl border bg-card p-4">
+                                        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                                            <div className="flex min-w-0 items-start gap-3">
+                                                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                                                    <BellRing className="h-5 w-5" />
+                                                </div>
+                                                <div className="min-w-0">
+                                                    <div className="flex flex-wrap items-center gap-2">
+                                                        <h3 className="truncate font-semibold text-foreground">{reminderClientName(reminder)}</h3>
+                                                        <Badge variant="outline" className={reminderTone(reminder.status)}>
+                                                            {reminderStatusLabel(reminder.status)}
+                                                        </Badge>
+                                                        <Badge variant="secondary">{reminder.label}</Badge>
+                                                    </div>
+                                                    <p className="mt-1 text-sm text-muted-foreground">
+                                                        Envío: {formatTimeInOperationZone(reminder.scheduledFor, operationContext.locale, operationContext.timeZone)} · WhatsApp {reminderClientPhone(reminder)}
+                                                    </p>
+                                                    <p className="mt-1 text-xs text-muted-foreground">
+                                                        Cita: {formatOperationDayLabel(getOperationDateKey(reminder.appointment.startTime, operationContext.timeZone), operationContext.locale, operationContext.timeZone)} a las {formatTimeInOperationZone(reminder.appointment.startTime, operationContext.locale, operationContext.timeZone)} · {specialistName}
+                                                    </p>
+                                                    {reminder.lastError ? (
+                                                        <p className="mt-2 flex items-start gap-1.5 rounded-lg bg-destructive/10 px-2.5 py-2 text-xs text-destructive">
+                                                            <TriangleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                                                            {reminder.lastError}
+                                                        </p>
+                                                    ) : null}
+                                                </div>
+                                            </div>
+                                            <div className="flex shrink-0 items-center gap-2 md:justify-end">
+                                                <span className="text-xs text-muted-foreground">{reminder.attempts} intento{reminder.attempts === 1 ? "" : "s"}</span>
+                                                {reminder.status === "failed" ? (
+                                                    <Button size="sm" variant="outline" onClick={() => retryReminder(reminder.id, reminder.label)} disabled={isPending}>
+                                                        <RefreshCw className="mr-2 h-4 w-4" />
+                                                        Reintentar
+                                                    </Button>
+                                                ) : null}
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+                </ScrollArea>
+
+                <DialogFooter className="shrink-0 border-t px-5 py-3 sm:px-6">
+                    <Button variant="outline" onClick={() => setRemindersOpen(false)}>Cerrar</Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
         <Dialog open={Boolean(closingAppointment)} onOpenChange={(open) => {
             if (!open) closeFinishDialog();
         }}>

@@ -1,9 +1,9 @@
-export const COLOR_THEME_STORAGE_KEY = "zen-color-theme";
+export const COLOR_THEME_STORAGE_KEY = "zen-color-theme-v2";
 
-export const COLOR_THEMES = ["black", "green"] as const;
+export const COLOR_THEMES = ["green", "black"] as const;
 export type ColorTheme = (typeof COLOR_THEMES)[number];
 
-export const DEFAULT_COLOR_THEME: ColorTheme = "black";
+export const DEFAULT_COLOR_THEME: ColorTheme = "green";
 
 export function isColorTheme(value: unknown): value is ColorTheme {
     return typeof value === "string" && COLOR_THEMES.includes(value as ColorTheme);

@@ -317,16 +317,6 @@ async function generatePatientNumber() {
     return `P-${Date.now().toString(36).toUpperCase()}`;
 }
 
-async function findMatchingContact(phone?: string) {
-    const normalizedPhone = cleanText(phone);
-    if (!normalizedPhone) return null;
-
-    return prisma.contact.findUnique({
-        where: { phone: normalizedPhone },
-        select: { id: true },
-    });
-}
-
 async function findMatchingContactByPhone(phone?: string | null) {
     const normalizedPhone = cleanText(phone);
     if (!normalizedPhone) return null;
@@ -554,19 +544,35 @@ export async function savePatient(input: PatientFormInput) {
     await requirePermission("patients.manage");
 
     const firstName = cleanText(input.firstName);
-    const lastName = cleanText(input.lastName);
+    const lastName = cleanText(input.lastName) || "";
+    const phone = cleanText(input.phone);
 
-    if (!firstName || !lastName) {
-        return { success: false, error: "Nombre y apellido son obligatorios." };
+    if (!firstName || !phone) {
+        return { success: false, error: "El nombre y el teléfono son obligatorios." };
     }
 
     try {
         const operationTimeZone = await getOperationTimeZone();
-        const contact = await findMatchingContact(input.phone);
+        const contact = await prisma.contact.upsert({
+            where: { phone },
+            create: {
+                phone,
+                name: firstName,
+                lastName: lastName || null,
+                status: "customer",
+                tags: ["Cliente"],
+            },
+            update: {
+                name: firstName,
+                lastName: lastName || null,
+                status: "customer",
+            },
+            select: { id: true },
+        });
         const data = {
             firstName,
             lastName,
-            phone: nullableText(input.phone),
+            phone,
             email: nullableText(input.email),
             address: nullableText(input.address),
             dob: parseOptionalDate(input.dob, operationTimeZone),

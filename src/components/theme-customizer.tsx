@@ -18,16 +18,16 @@ const COLOR_THEME_OPTIONS: Array<{
     gradient: string;
 }> = [
     {
-        id: "black",
-        name: "Black",
-        description: "Tema principal con sidebar negra y acentos azules",
-        gradient: "from-[#1F93FF] to-[#05070d]",
-    },
-    {
         id: "green",
         name: "Green",
-        description: "Tema secundario en tonos verdes",
-        gradient: "from-[#2f8f53] to-[#0f2c1e]",
+        description: "Tema principal en verdes naturales",
+        gradient: "from-[#6f843d] to-[#263116]",
+    },
+    {
+        id: "black",
+        name: "Black",
+        description: "Tema secundario con sidebar negra y azul clínico",
+        gradient: "from-[#3A88A8] to-[#080b10]",
     },
 ];
 
@@ -66,13 +66,13 @@ export function ThemeCustomizer() {
                                 : "border-border hover:border-primary/40"
                         )}
                     >
-                        <div className="flex items-center gap-3 rounded-lg bg-secondary p-3">
+                        <div className="flex min-w-0 items-center gap-3 rounded-lg bg-secondary p-3">
                             <div className={cn("h-10 w-10 rounded-full bg-gradient-to-br shadow-md", option.gradient)} />
-                            <div className="space-y-0.5">
+                            <div className="min-w-0 flex-1 space-y-0.5">
                                 <p className="text-sm font-semibold text-foreground">{option.name}</p>
-                                <p className="text-xs text-muted-foreground">{option.description}</p>
+                                <p className="text-xs leading-relaxed text-muted-foreground">{option.description}</p>
                             </div>
-                            {isActive ? <Check className="ml-auto h-4 w-4 text-primary" /> : null}
+                            {isActive ? <Check className="h-4 w-4 shrink-0 text-primary" /> : null}
                         </div>
                     </button>
                 );

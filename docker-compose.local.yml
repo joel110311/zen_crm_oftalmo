@@ -20,14 +20,23 @@ services:
       - INITIAL_ADMIN_PASSWORD=${INITIAL_ADMIN_PASSWORD:-super123}
       - INITIAL_ADMIN_NAME=${INITIAL_ADMIN_NAME:-Super Admin}
       - AUTH_SECRET=${AUTH_SECRET:-zencrm_local_auth_secret_2026}
-      - AUTH_URL=${AUTH_URL:-http://localhost:3006}
-      - APP_BASE_URL=${APP_BASE_URL:-http://localhost:3006}
-      - WHATSAPP_WEBHOOK_BASE_URL=${WHATSAPP_WEBHOOK_BASE_URL:-http://host.docker.internal:3006}
+      - AUTH_URL=${AUTH_URL:-http://localhost:3008}
+      - APP_BASE_URL=${APP_BASE_URL:-http://localhost:3008}
+      - WHATSAPP_WEBHOOK_BASE_URL=${WHATSAPP_WEBHOOK_BASE_URL:-http://host.docker.internal:3008}
+      - META_APP_ID=${META_APP_ID:-}
+      - META_APP_SECRET=${META_APP_SECRET:-}
+      - META_EMBEDDED_SIGNUP_CONFIG_ID=${META_EMBEDDED_SIGNUP_CONFIG_ID:-}
+      - META_TECH_PROVIDER_SOLUTION_ID=${META_TECH_PROVIDER_SOLUTION_ID:-}
+      - META_GRAPH_API_VERSION=${META_GRAPH_API_VERSION:-v26.0}
+      - META_WHATSAPP_REGISTRATION_PIN=${META_WHATSAPP_REGISTRATION_PIN:-}
+      - META_WEBHOOK_VERIFY_TOKEN=${META_WEBHOOK_VERIFY_TOKEN:-}
+      - META_WEBHOOK_BASE_URL=${META_WEBHOOK_BASE_URL:-http://localhost:3008}
       - PORT=3000
       - HOSTNAME=0.0.0.0
       - TZ=${TZ:-America/Mexico_City}
     ports:
-      - "3006:3000"
+      - "3008:3000"
+      - "8008:3000"
     volumes:
       - zen_crm_uploads:/app/public/uploads
     depends_on:

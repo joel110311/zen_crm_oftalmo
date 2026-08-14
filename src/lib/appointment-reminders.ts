@@ -1,7 +1,7 @@
 import crypto from "crypto";
 import { prisma } from "@/lib/db";
 import {
-    MESSAGE_SOURCE_YCLOUD,
+    MESSAGE_SOURCE_META,
     MESSAGE_SOURCE_WUZAPI,
     normalizeMessageSourceType,
     resolveMessageSourceId,
@@ -16,7 +16,7 @@ import {
     findOrCreateActiveConversationForContact,
     sendOutboundConversationMessage,
 } from "@/lib/outbound-messages";
-import { sendYCloudTemplateMessage } from "@/lib/ycloud";
+import { sendMetaTemplateMessage } from "@/lib/meta-whatsapp";
 
 const DEFAULT_REMINDER_OFFSETS_MINUTES = [1440, 240];
 const MAX_REMINDER_ATTEMPTS = 3;
@@ -97,12 +97,12 @@ export function getAppointmentReminderSettings(settings: AppSystemSettings) {
         enabled: Boolean(settings.appointmentRemindersEnabled && settings.reminderWhatsAppEnabled),
         offsets: normalizeOffsets(settings.appointmentReminderOffsets),
         provider,
-        messageKind: provider === MESSAGE_SOURCE_YCLOUD ? "template" : "text",
+        messageKind: provider === MESSAGE_SOURCE_META ? "template" : "text",
         sendOnlyConfirmed: Boolean(settings.appointmentReminderSendOnlyConfirmed),
         wuzapiTemplate: settings.appointmentReminderWuzapiTemplate || "",
-        ycloudTemplate24h: settings.appointmentReminderYcloudTemplate24h || "",
-        ycloudTemplate4h: settings.appointmentReminderYcloudTemplate4h || "",
-        ycloudLanguage: settings.appointmentReminderYcloudLanguage || "es",
+        metaTemplate24h: settings.appointmentReminderMetaTemplate24h || "",
+        metaTemplate4h: settings.appointmentReminderMetaTemplate4h || "",
+        metaLanguage: settings.appointmentReminderMetaLanguage || "es",
     };
 }
 
@@ -266,7 +266,7 @@ export function renderAppointmentReminderText(
         .trim();
 }
 
-function buildYCloudReminderComponents(
+function buildMetaReminderComponents(
     appointment: NonNullable<ReminderAppointment>,
     settings: AppSystemSettings,
     offsetMinutes: number,
@@ -307,7 +307,7 @@ async function sendWuzapiReminder(params: {
     });
 }
 
-async function sendYCloudReminder(params: {
+async function sendMetaReminder(params: {
     appointment: NonNullable<ReminderAppointment>;
     contactId: string;
     phone: string;
@@ -317,17 +317,17 @@ async function sendYCloudReminder(params: {
 }) {
     const reminderSettings = getAppointmentReminderSettings(params.settings);
     const templateName = params.offsetMinutes >= 1440
-        ? reminderSettings.ycloudTemplate24h
-        : reminderSettings.ycloudTemplate4h;
+        ? reminderSettings.metaTemplate24h
+        : reminderSettings.metaTemplate4h;
 
     if (!templateName.trim()) {
-        throw new Error(`Falta configurar la plantilla YCloud para ${reminderLabel(params.offsetMinutes)}.`);
+        throw new Error(`Falta configurar la plantilla de WhatsApp API para ${reminderLabel(params.offsetMinutes)}.`);
     }
 
-    const sourceId = resolveMessageSourceId(MESSAGE_SOURCE_YCLOUD, params.settings);
+    const sourceId = resolveMessageSourceId(MESSAGE_SOURCE_META, params.settings);
     const conversation = await findOrCreateActiveConversationForContactSource({
         contactId: params.contactId,
-        sourceType: MESSAGE_SOURCE_YCLOUD,
+        sourceType: MESSAGE_SOURCE_META,
         sourceId,
         defaults: {
             botActive: false,
@@ -342,17 +342,17 @@ async function sendYCloudReminder(params: {
             status: "sending",
             type: "template",
             senderType: "system",
-            sourceType: MESSAGE_SOURCE_YCLOUD,
+            sourceType: MESSAGE_SOURCE_META,
             sourceId,
         },
     });
 
     try {
-        const result = await sendYCloudTemplateMessage({
+        const result = await sendMetaTemplateMessage({
             to: params.phone,
             templateName,
-            languageCode: reminderSettings.ycloudLanguage,
-            components: buildYCloudReminderComponents(params.appointment, params.settings, params.offsetMinutes),
+            languageCode: reminderSettings.metaLanguage,
+            components: buildMetaReminderComponents(params.appointment, params.settings, params.offsetMinutes),
         });
         const updatedMessage = await prisma.message.update({
             where: { id: message.id },
@@ -405,8 +405,8 @@ async function sendPreparedReminder(params: {
     const content = renderAppointmentReminderText(appointmentWithToken, params.settings, params.offsetMinutes);
     const provider = getAppointmentReminderSettings(params.settings).provider;
 
-    return provider === MESSAGE_SOURCE_YCLOUD
-        ? sendYCloudReminder({
+    return provider === MESSAGE_SOURCE_META
+        ? sendMetaReminder({
             appointment: appointmentWithToken,
             contactId: contact.id,
             phone: contact.phone,

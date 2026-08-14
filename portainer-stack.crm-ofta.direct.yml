@@ -21,6 +21,14 @@ services:
       - AUTH_URL=https://crm-ofta.synapselogik.com
       - APP_BASE_URL=https://crm-ofta.synapselogik.com
       - WHATSAPP_WEBHOOK_BASE_URL=https://crm-ofta.synapselogik.com
+      - META_APP_ID=CAMBIAR_META_APP_ID
+      - META_APP_SECRET=CAMBIAR_META_APP_SECRET
+      - META_EMBEDDED_SIGNUP_CONFIG_ID=CAMBIAR_META_CONFIG_ID_V4
+      - META_TECH_PROVIDER_SOLUTION_ID=CAMBIAR_META_SOLUTION_ID
+      - META_GRAPH_API_VERSION=v26.0
+      - META_WHATSAPP_REGISTRATION_PIN=CAMBIAR_PIN_6_DIGITOS
+      - META_WEBHOOK_VERIFY_TOKEN=CAMBIAR_TOKEN_VERIFICACION
+      - META_WEBHOOK_BASE_URL=https://crm-ofta.synapselogik.com
       - TZ=America/Mexico_City
       - PORT=3000
       - HOSTNAME=0.0.0.0

@@ -77,7 +77,6 @@ export async function GET() {
                     firstName: true,
                     lastName: true,
                     phone: true,
-                    patientNumber: true,
                 },
             },
             contact: {
@@ -125,7 +124,6 @@ export async function GET() {
                     firstName: true,
                     lastName: true,
                     phone: true,
-                    patientNumber: true,
                 },
             },
             contact: {
@@ -155,7 +153,6 @@ export async function GET() {
                 id: appointment.id,
                 title: appointment.title,
                 patientId: appointment.patientId || appointment.patient?.id || null,
-                patientNumber: appointment.patient?.patientNumber || null,
                 patientName: patientDisplayName(appointment),
                 phone: appointment.patient?.phone || appointment.contact?.phone || null,
                 specialistName: appointment.specialist?.displayName || appointment.specialist?.name || appointment.specialistName || null,
@@ -169,7 +166,6 @@ export async function GET() {
                 id: appointment.id,
                 title: appointment.title,
                 patientId: appointment.patientId || appointment.patient?.id || null,
-                patientNumber: appointment.patient?.patientNumber || null,
                 patientName: patientDisplayName(appointment),
                 phone: appointment.patient?.phone || appointment.contact?.phone || null,
                 specialistName: appointment.specialist?.displayName || appointment.specialist?.name || appointment.specialistName || null,

@@ -2,9 +2,10 @@
 
 import type { ChangeEvent } from "react";
 import { useEffect, useMemo, useState, useTransition } from "react";
-import { CalendarOff, ImageIcon, Loader2, RefreshCw, Save, Upload, UserRound, X } from "lucide-react";
+import { CalendarOff, ImageIcon, Loader2, RefreshCw, Save, Trash2, Upload, UserRound, X } from "lucide-react";
 import {
     deactivateSpecialist,
+    deleteSpecialist,
     deleteSpecialistAvailabilityBlock,
     getSpecialistAssignableUsers,
     getSpecialists,
@@ -17,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
@@ -81,6 +83,7 @@ export function SpecialistManagerPanel() {
     const [form, setForm] = useState(EMPTY_FORM);
     const [blockForm, setBlockForm] = useState(() => getDefaultBlockForm(operationContext.timeZone));
     const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+    const [specialistToDelete, setSpecialistToDelete] = useState<SpecialistRow | null>(null);
 
     const activeCount = useMemo(
         () => specialists.filter((specialist) => specialist.isActive).length,
@@ -218,6 +221,23 @@ export function SpecialistManagerPanel() {
         });
     };
 
+    const handleDelete = () => {
+        if (!specialistToDelete) return;
+
+        startTransition(async () => {
+            const result = await deleteSpecialist(specialistToDelete.id);
+            if (!result.success) {
+                toast({ title: "No se puede eliminar", description: result.error, variant: "destructive" });
+                setSpecialistToDelete(null);
+                return;
+            }
+            toast({ title: "Especialista eliminado definitivamente" });
+            if (form.id === specialistToDelete.id) setForm(EMPTY_FORM);
+            setSpecialistToDelete(null);
+            await load();
+        });
+    };
+
     const handleSaveBlock = () => {
         startTransition(async () => {
             const result = await saveSpecialistAvailabilityBlock({
@@ -315,7 +335,17 @@ export function SpecialistManagerPanel() {
                                             <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive" onClick={() => handleDeactivate(specialist.id)}>
                                                 Desactivar
                                             </Button>
-                                        ) : null}
+                                        ) : (
+                                            <Button
+                                                size="sm"
+                                                variant="ghost"
+                                                className="text-destructive hover:text-destructive"
+                                                onClick={() => setSpecialistToDelete(specialist)}
+                                            >
+                                                <Trash2 className="mr-1.5 h-4 w-4" />
+                                                Eliminar
+                                            </Button>
+                                        )}
                                     </div>
                                 </div>
 
@@ -582,6 +612,26 @@ export function SpecialistManagerPanel() {
                     </Card>
                 </div>
             </div>
+
+            <Dialog open={Boolean(specialistToDelete)} onOpenChange={(open) => !open && setSpecialistToDelete(null)}>
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Eliminar especialista definitivamente</DialogTitle>
+                        <DialogDescription>
+                            Vas a eliminar a {specialistToDelete?.displayName || specialistToDelete?.name}. Esta acción no se puede deshacer. Si tiene citas, atenciones o cobros, el sistema conservará el perfil inactivo para proteger el historial.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter className="gap-2 sm:gap-0">
+                        <Button type="button" variant="outline" onClick={() => setSpecialistToDelete(null)} disabled={isPending}>
+                            Cancelar
+                        </Button>
+                        <Button type="button" variant="destructive" onClick={handleDelete} disabled={isPending}>
+                            {isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
+                            Eliminar definitivamente
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }

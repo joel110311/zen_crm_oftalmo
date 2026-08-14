@@ -43,7 +43,7 @@ export function ContactTags({ contactId, contactTags, dealTags }: ContactTagsPro
             {/* Contact Tags Group */}
             <div>
                 <label className="text-xs font-semibold text-muted-foreground uppercase mb-2 block">
-                    Etiquetas del Contacto
+                    Etiquetas del cliente
                 </label>
                 <div className="flex flex-wrap gap-2">
                     {contactTags.map((tag) => (

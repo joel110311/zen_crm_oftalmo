@@ -34,7 +34,7 @@ import { writeUnreadCounts } from "@/lib/inbox-browser-badge";
 import { parseInboundAdPreviewMessageContent } from "@/lib/inbound-ad-preview";
 import { hasPermission } from "@/lib/permissions";
 import { shiftDateKey } from "@/lib/calendar/business-hours";
-import { YCloudTemplateSendModal } from "@/components/inbox/ycloud-template-send-modal";
+import { MetaTemplateSendModal } from "@/components/inbox/ycloud-template-send-modal";
 import { type GeneratedQuoteAsset, QuoteBuilderPanel } from "@/components/quotes/quote-builder-panel";
 import { useOperationContext } from "@/components/shared/use-operation-context";
 import { buildOperationContext, formatPhoneForDisplay } from "@/lib/operation-context";
@@ -77,7 +77,7 @@ export type Message = {
     createdAt: Date;
     type: string;
     status?: string | null;
-    sourceType: "wuzapi" | "ycloud";
+    sourceType: "wuzapi" | "meta";
     sourceId?: string | null;
     senderType?: string | null;
     mediaUrl?: string | null;
@@ -94,7 +94,7 @@ type RawMessageRecord = {
     createdAt: string | Date;
     type: string;
     status?: string | null;
-    sourceType?: "wuzapi" | "ycloud";
+    sourceType?: "wuzapi" | "meta";
     sourceId?: string | null;
     senderType?: string | null;
     mediaUrl?: string | null;
@@ -112,7 +112,7 @@ function normalizeMessageRecord(raw: RawMessageRecord): Message {
         createdAt: raw.createdAt instanceof Date ? raw.createdAt : new Date(raw.createdAt),
         type: raw.type,
         status: raw.status ?? null,
-        sourceType: raw.sourceType === "ycloud" ? "ycloud" : "wuzapi",
+        sourceType: raw.sourceType === "meta" ? "meta" : "wuzapi",
         sourceId: raw.sourceId ?? null,
         senderType: raw.senderType ?? null,
         mediaUrl: raw.mediaUrl ?? null,
@@ -273,7 +273,7 @@ export type Conversation = {
     isMuted: boolean;
     isFavorite: boolean;
     isGroup: boolean;
-    sourceType: "wuzapi" | "ycloud";
+    sourceType: "wuzapi" | "meta";
     sourceId?: string | null;
     botActive: boolean;
     assignedUserId?: string | null;
@@ -300,8 +300,9 @@ type WhatsAppSessionStatus = {
     loggedIn?: boolean;
     jid?: string | null;
     qrCode?: string | null;
-    ycloudConfigured?: boolean;
-    ycloudPhoneId?: string | null;
+    metaConfigured?: boolean;
+    metaConnected?: boolean;
+    phoneNumberId?: string | null;
     error?: string;
 };
 
@@ -415,9 +416,9 @@ type ConversationRecord = {
     lastMessageDirection?: string | null;
     lastMessageType?: string | null;
     lastMessageSenderType?: string | null;
-    sourceType?: "wuzapi" | "ycloud" | null;
+    sourceType?: "wuzapi" | "meta" | null;
     sourceId?: string | null;
-    lastMessageSourceType?: "wuzapi" | "ycloud" | null;
+    lastMessageSourceType?: "wuzapi" | "meta" | null;
     lastMessageSourceId?: string | null;
     status?: string | null;
     isMuted?: boolean;
@@ -452,7 +453,7 @@ function transformConversation(conv: ConversationRecord): Conversation {
             senderId: null,
             direction: conv.lastMessageDirection || "inbound",
             type: conv.lastMessageType || "text",
-            sourceType: conv.lastMessageSourceType === "ycloud" ? "ycloud" : "wuzapi",
+            sourceType: conv.lastMessageSourceType === "meta" ? "meta" : "wuzapi",
             sourceId: conv.lastMessageSourceId || null,
             senderType: conv.lastMessageSenderType || null,
         }] : [],
@@ -462,7 +463,7 @@ function transformConversation(conv: ConversationRecord): Conversation {
         isMuted: conv.isMuted || false,
         isFavorite: conv.isFavorite || false,
         isGroup: conv.isGroup || false,
-        sourceType: conv.sourceType === "ycloud" ? "ycloud" : "wuzapi",
+        sourceType: conv.sourceType === "meta" ? "meta" : "wuzapi",
         sourceId: conv.sourceId || null,
         botActive: conv.botActive ?? true,
         assignedUserId: conv.assignedUserId ?? null,
@@ -631,15 +632,15 @@ function ConversationSourceIcon({
     sourceType: Conversation["sourceType"];
     className?: string;
 }) {
-    const isYCloud = sourceType === "ycloud";
-    const Icon = isYCloud ? CheckCircle2 : MessageSquare;
+    const isMeta = sourceType === "meta";
+    const Icon = isMeta ? CheckCircle2 : MessageSquare;
 
     return (
         <span
-            title={isYCloud ? "YCloud API oficial" : "WhatsApp por QR"}
+            title={isMeta ? "WhatsApp API oficial" : "WhatsApp por QR"}
             className={cn(
                 "inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border shadow-sm ring-2 ring-background",
-                isYCloud
+                isMeta
                     ? "border-emerald-500/25 bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300"
                     : "border-green-500/25 bg-green-50 text-green-700 dark:bg-green-500/15 dark:text-green-300",
                 className,
@@ -963,7 +964,7 @@ function MicPermissionBanner({ onAllow, onDeny }: { onAllow: () => void; onDeny:
 }
 
 // ──────────── Contact Info Panel ────────────
-function ContactInfoPanel({ conversation, onClose }: { conversation: Conversation; onClose: () => void }) {
+function ContactInfoPanel({ conversation, onClose, showClose = true }: { conversation: Conversation; onClose: () => void; showClose?: boolean }) {
     const operationContext = useOperationContext();
     const formatDisplayPhone = useCallback(
         (phone: string | null | undefined) => formatPhone(phone, operationContext.phoneDefaultCountry),
@@ -974,63 +975,66 @@ function ContactInfoPanel({ conversation, onClose }: { conversation: Conversatio
     const leadStatusLabel = intelligence ? (LEAD_STATUS_LABELS[intelligence.interestStatus] || intelligence.interestStatus) : null;
     const leadStepLabel = intelligence ? (LEAD_STEP_LABELS[intelligence.currentStep] || intelligence.currentStep) : null;
     return (
-        <div className="w-[22rem] border-l border-border/50 flex flex-col bg-card/90 backdrop-blur-2xl animate-in slide-in-from-right duration-200">
-            <div className="flex h-20 items-center justify-between border-b border-border/50 px-5">
-                <h3 className="text-base font-semibold tracking-tight">Info. del contacto</h3>
-                <Button variant="ghost" size="icon" onClick={onClose}>
+        <div className="flex h-full w-[19rem] flex-col border-l border-border bg-card animate-in slide-in-from-right duration-200 2xl:w-[21rem]">
+            <div className="flex h-[4.5rem] shrink-0 items-center justify-between border-b border-border px-4">
+                <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-gold">Ficha rápida</p>
+                    <h3 className="mt-0.5 text-sm font-semibold tracking-tight">Detalles del cliente</h3>
+                </div>
+                {showClose && <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg" onClick={onClose}>
                     <X className="h-4 w-4" />
-                </Button>
+                </Button>}
             </div>
             <ScrollArea className="flex-1">
-                <div className="p-6 flex flex-col gap-6">
+                <div className="flex flex-col gap-4 p-4">
                     {/* Avatar */}
-                    <div className="rounded-[1.75rem] border border-border/50 bg-background/70 px-5 py-6 text-center shadow-[0_24px_60px_-36px_rgba(15,23,42,0.35)] dark:bg-background/40">
-                    <Avatar className="mx-auto h-24 w-24 ring-4 ring-background shadow-lg">
+                    <div className="flex items-center gap-3 rounded-2xl border border-border bg-background/55 p-3.5">
+                    <Avatar className="h-12 w-12 shrink-0 ring-2 ring-card shadow-sm">
                         <AvatarImage
                             src={contact?.avatarUrl || undefined}
                             alt={contact?.name || "Contacto"}
                         />
-                        <AvatarFallback className="bg-primary/10 text-3xl text-primary">
+                        <AvatarFallback className="bg-primary/10 text-base font-semibold text-primary">
                             {contact?.name?.charAt(0) || "?"}
                         </AvatarFallback>
                     </Avatar>
-                    <div className="mt-4 text-center">
-                        <h4 className="text-lg font-semibold">{contact?.name || "Desconocido"}</h4>
-                        <p className="text-sm text-muted-foreground">{formatDisplayPhone(contact?.phone)}</p>
-                    </div>
+                    <div className="min-w-0 flex-1">
+                        <h4 className="truncate text-sm font-semibold">{contact?.name || "Desconocido"}</h4>
+                        <p className="truncate text-xs text-muted-foreground">{formatDisplayPhone(contact?.phone)}</p>
 
                     {/* Status badge */}
                     {contact?.status && (
-                        <Badge variant="outline" className="mt-4 rounded-full border-border/60 bg-card/80 px-3 py-1 capitalize">
+                        <Badge variant="outline" className="mt-2 rounded-full border-primary/15 bg-primary/8 px-2.5 py-0.5 text-[10px] capitalize text-primary">
                             {contact.status === "lead" ? "Lead" : contact.status === "qualified" ? "Calificado" : contact.status === "customer" ? "Cliente" : contact.status}
                         </Badge>
                     )}
                     </div>
+                    </div>
 
                     {/* Details */}
-                    <div className="w-full space-y-3 rounded-[1.5rem] border border-border/50 bg-background/70 p-4 shadow-[0_18px_40px_-34px_rgba(15,23,42,0.4)] dark:bg-background/35">
-                        <div className="flex items-center gap-3 rounded-2xl bg-card/70 px-3 py-3 dark:bg-card/55">
+                    <div className="w-full space-y-1 rounded-2xl border border-border bg-background/45 p-2">
+                        <div className="flex items-center gap-3 rounded-xl px-2.5 py-2.5 hover:bg-card">
                             <Phone className="h-4 w-4 text-muted-foreground shrink-0" />
                             <div>
                                 <p className="text-xs text-muted-foreground">Teléfono</p>
                                 <p className="text-sm font-medium">{formatDisplayPhone(contact?.phone) || "—"}</p>
                             </div>
                         </div>
-                        <div className="flex items-center gap-3 rounded-2xl bg-card/70 px-3 py-3 dark:bg-card/55">
+                        <div className="flex items-center gap-3 rounded-xl px-2.5 py-2.5 hover:bg-card">
                             <Mail className="h-4 w-4 text-muted-foreground shrink-0" />
                             <div>
                                 <p className="text-xs text-muted-foreground">Email</p>
                                 <p className="text-sm font-medium">{contact?.email || "—"}</p>
                             </div>
                         </div>
-                        <div className="flex items-center gap-3 rounded-2xl bg-card/70 px-3 py-3 dark:bg-card/55">
+                        <div className="flex items-center gap-3 rounded-xl px-2.5 py-2.5 hover:bg-card">
                             <Tag className="h-4 w-4 text-muted-foreground shrink-0" />
                             <div>
                                 <p className="text-xs text-muted-foreground">Estado</p>
                                 <p className="text-sm font-medium capitalize">{contact?.status || "—"}</p>
                             </div>
                         </div>
-                        <div className="flex items-center gap-3 rounded-2xl bg-card/70 px-3 py-3 dark:bg-card/55">
+                        <div className="flex items-center gap-3 rounded-xl px-2.5 py-2.5 hover:bg-card">
                             <Clock className="h-4 w-4 text-muted-foreground shrink-0" />
                             <div>
                                 <p className="text-xs text-muted-foreground">Última actividad</p>
@@ -1047,8 +1051,8 @@ function ContactInfoPanel({ conversation, onClose }: { conversation: Conversatio
 
 
                     {intelligence && (
-                        <div className="w-full space-y-3 rounded-[1.5rem] border border-border/50 bg-background/70 p-4 shadow-[0_18px_40px_-34px_rgba(15,23,42,0.4)] dark:bg-background/35">
-                            <p className="text-xs text-muted-foreground font-medium uppercase tracking-[0.18em]">Lead intelligence</p>
+                        <div className="w-full space-y-3 rounded-2xl border border-border bg-background/45 p-3.5">
+                            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-gold">Inteligencia del lead</p>
 
                             <div className="grid gap-3 sm:grid-cols-2">
                                 <div className="rounded-2xl bg-card/70 px-3 py-3 dark:bg-card/55">
@@ -1114,7 +1118,7 @@ function ContactInfoPanel({ conversation, onClose }: { conversation: Conversatio
                     )}
 
                     {/* Conversation info */}
-                    <div className="w-full space-y-3 rounded-[1.5rem] border border-border/50 bg-background/70 p-4 shadow-[0_18px_40px_-34px_rgba(15,23,42,0.4)] dark:bg-background/35">
+                    <div className="w-full space-y-2 rounded-2xl border border-border bg-background/45 p-3.5">
                         <p className="text-xs text-muted-foreground font-medium uppercase">Conversación</p>
                         <div className="flex items-center justify-between rounded-2xl bg-card/70 px-3 py-3 text-sm dark:bg-card/55">
                             <span className="text-muted-foreground">Estado</span>
@@ -1272,26 +1276,26 @@ export default function InboxPage() {
         whatsAppSession?.connected &&
         whatsAppSession?.loggedIn !== false,
     );
-    const isYCloudTransportReady = Boolean(whatsAppSession?.ycloudConfigured);
-    const isWhatsAppTransportReady = outboundSourceType === "ycloud"
-        ? isYCloudTransportReady
+    const isMetaTransportReady = Boolean(whatsAppSession?.metaConnected);
+    const isWhatsAppTransportReady = outboundSourceType === "meta"
+        ? isMetaTransportReady
         : isWuzapiTransportReady;
     const isConversationTransportReady = useCallback((conversation: Conversation) => (
-        conversation.sourceType === "ycloud" ? isYCloudTransportReady : isWuzapiTransportReady
-    ), [isWuzapiTransportReady, isYCloudTransportReady]);
+        conversation.sourceType === "meta" ? isMetaTransportReady : isWuzapiTransportReady
+    ), [isWuzapiTransportReady, isMetaTransportReady]);
     const shouldShowWhatsAppWarning = whatsAppSession !== null && !isWhatsAppTransportReady;
-    const isYCloudReplyWindowExpired = outboundSourceType === "ycloud" && (
+    const isMetaReplyWindowExpired = outboundSourceType === "meta" && (
         !selectedChat?.sessionExpiresAt ||
         !isWindowOpen ||
         (selectedChat?.sessionExpiresAt ? new Date(selectedChat.sessionExpiresAt).getTime() <= Date.now() : false)
     );
     const whatsAppWarningText = useMemo(() => {
-        if (outboundSourceType === "ycloud") {
-            if (!whatsAppSession?.ycloudConfigured) {
-                return "Configura YCloud API Key y Phone Number ID en Configuración para responder desde este chat.";
+        if (outboundSourceType === "meta") {
+            if (!whatsAppSession?.metaConnected) {
+                return "Conecta WhatsApp API oficial mediante Embedded Signup en Configuracion para responder desde este chat.";
             }
 
-            return "YCloud está configurado, pero no se pudo validar el estado del canal en este momento.";
+            return "WhatsApp API esta configurado, pero no se pudo validar el estado del canal en este momento.";
         }
 
         if (whatsAppSession?.error) {
@@ -1627,14 +1631,16 @@ export default function InboxPage() {
                     loggedIn: readOptionalBoolean(payload, ["loggedIn", "LoggedIn", "logged_in", "isLoggedIn"]),
                     jid: readOptionalString(payload, ["jid", "JID", "Jid", "userJid", "UserJID"]),
                     qrCode: readOptionalString(payload, ["qrCode", "QRCode", "qrcode"]) || null,
-                    ycloudConfigured: Boolean(payload?.ycloudConfigured),
-                    ycloudPhoneId: readOptionalString(payload, ["ycloudPhoneId"]) || null,
+                    metaConfigured: Boolean(payload?.metaConfigured),
+                    metaConnected: Boolean(payload?.metaConnected),
+                    phoneNumberId: readOptionalString(payload, ["phoneNumberId"]) || null,
                     error: payload?.error || undefined,
                 });
             } catch (error) {
                 setWhatsAppSession({
                     configured: false,
-                    ycloudConfigured: false,
+                    metaConfigured: false,
+                    metaConnected: false,
                     error: error instanceof Error ? error.message : "No se pudo consultar el canal de WhatsApp.",
                 });
             }
@@ -1760,7 +1766,7 @@ export default function InboxPage() {
                     const contactIdParam = ignoreDeepLinkSelectionRef.current ? null : searchParams.get("contactId");
                     const phoneParam = ignoreDeepLinkSelectionRef.current ? null : searchParams.get("phone");
                     const sourceParam = ignoreDeepLinkSelectionRef.current ? null : searchParams.get("sourceType") || searchParams.get("source");
-                    const requestedSource = sourceParam === "ycloud" || sourceParam === "wuzapi" ? sourceParam : null;
+                    const requestedSource = sourceParam === "meta" || sourceParam === "wuzapi" ? sourceParam : null;
                     if ((contactIdParam || phoneParam) && transformed.length > 0) {
                         const contactMatches = transformed.filter((conversation) => {
                             if (contactIdParam && conversation.contact?.id === contactIdParam) return true;
@@ -2807,25 +2813,32 @@ export default function InboxPage() {
             )}
 
             <div
-                className="fixed inset-x-4 bottom-5 top-[4.375rem] z-10 flex overflow-hidden overscroll-none rounded-[1.75rem] border border-border/60 bg-[linear-gradient(180deg,rgba(255,255,255,0.82),rgba(248,250,252,0.98))] shadow-[0_28px_70px_-44px_rgba(15,23,42,0.45)] backdrop-blur-xl dark:bg-[linear-gradient(180deg,rgba(15,23,42,0.88),rgba(2,6,23,0.98))] md:static md:inset-auto md:z-auto md:m-0 md:h-full md:min-h-0 md:rounded-[2rem] md:border md:shadow-[0_28px_80px_-48px_rgba(15,23,42,0.55)]"
+                className="fixed inset-x-2 bottom-2 top-16 z-10 flex overflow-hidden overscroll-none rounded-2xl border border-border bg-card shadow-soft md:relative md:inset-auto md:z-auto md:h-full md:min-h-0 md:rounded-none md:border-0 md:shadow-none"
             >
                 {/* ──── Sidebar ──── */}
-                <div className={cn("min-h-0 w-full md:w-[20.5rem] 2xl:w-[21.75rem] border-r border-border/50 flex flex-col bg-card/55 backdrop-blur-2xl", selectedChat ? "hidden md:flex" : "flex")}>
-                    <div className="border-b border-border/50 bg-background/35 p-4 space-y-3.5">
-                        <div>
-                            <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">Inbox</p>
-                            <h2 className="mt-1 text-[1.35rem] font-semibold tracking-tight">Chats</h2>
+                <div className={cn("min-h-0 w-full border-r border-border bg-card md:w-[20.5rem] 2xl:w-[22rem] flex flex-col", selectedChat ? "hidden md:flex" : "flex")}>
+                    <div className="space-y-3 border-b border-border bg-card p-4">
+                        <div className="flex items-start justify-between gap-3">
+                            <div>
+                                <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-gold">
+                                    {isWuzapiTransportReady || isMetaTransportReady ? "WhatsApp conectado" : "Centro de mensajes"}
+                                </p>
+                                <h2 className="mt-1 text-xl font-semibold tracking-tight">Bandeja</h2>
+                            </div>
+                            <span className="mt-1 rounded-full bg-secondary px-2.5 py-1 text-[10px] font-semibold text-muted-foreground">
+                                {filteredConversations.length} chats
+                            </span>
                         </div>
                         <div className="relative">
                             <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                             <Input
                                 placeholder="Buscar chats..."
-                                className="h-11 rounded-[1.1rem] border-border/60 bg-background/80 pl-10 shadow-[0_12px_30px_-24px_rgba(15,23,42,0.4)] placeholder:text-muted-foreground/80"
+                                className="h-10 rounded-xl border-border bg-background/70 pl-10 shadow-none placeholder:text-muted-foreground/75 focus-visible:border-primary/35"
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
                             />
                         </div>
-                        <div className="inline-flex w-fit flex-wrap gap-1.5 rounded-[0.95rem] border border-border/50 bg-background/75 p-1 shadow-[0_14px_30px_-26px_rgba(15,23,42,0.45)]">
+                        <div className="inline-flex w-full flex-wrap gap-1 rounded-xl bg-secondary/60 p-1">
                             {[
                                 { id: "all", label: "Todos" },
                                 { id: "mine", label: "Mios" },
@@ -2836,9 +2849,9 @@ export default function InboxPage() {
                                     type="button"
                                     onClick={() => setViewFilter(filter.id as "all" | "mine" | "unassigned")}
                                     className={cn(
-                                        "rounded-[0.8rem] border px-3 py-1.5 text-[11px] font-medium transition-all",
+                                        "flex-1 rounded-lg border px-2.5 py-1.5 text-[11px] font-medium transition-all",
                                         viewFilter === filter.id
-                                            ? "border-border/70 bg-card text-foreground shadow-[0_10px_22px_-18px_rgba(15,23,42,0.45)]"
+                                            ? "border-border bg-card text-foreground shadow-sm"
                                             : "border-transparent bg-transparent text-muted-foreground hover:bg-card/70 hover:text-foreground",
                                     )}
                                 >
@@ -2850,11 +2863,11 @@ export default function InboxPage() {
 
                     <ScrollArea
                         type="always"
-                        className="min-h-0 flex-1 px-2 py-2.5"
+                        className="min-h-0 flex-1 px-2 py-2"
                         viewportRef={conversationsViewportRef}
                         onViewportScroll={handleConversationsScroll}
                     >
-                        <div className="flex flex-col gap-1.5">
+                        <div className="flex flex-col gap-1">
                             {filteredConversations.length === 0 && (
                                 <div className="rounded-[1.6rem] border border-dashed border-border/60 bg-background/50 p-10 text-center text-sm text-muted-foreground">
                                     {searchQuery ? "No se encontraron chats" : "Sin conversaciones"}
@@ -2870,15 +2883,15 @@ export default function InboxPage() {
                                         handleSelectConversation(chat);
                                     }}
                                     className={cn(
-                                        "grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-2 rounded-[1.05rem] border px-2.5 py-2 text-left transition-all",
+                                        "relative grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-2.5 rounded-xl border px-2.5 py-2.5 text-left transition-all",
                                         selectedChat?.id === chat.id
-                                            ? "border-border/70 bg-background/90 shadow-[0_20px_45px_-32px_rgba(15,23,42,0.45)]"
-                                            : "border-transparent bg-transparent hover:border-border/50 hover:bg-background/65 hover:shadow-[0_18px_40px_-34px_rgba(15,23,42,0.35)]",
-                                        !chatTransportReady && "border-amber-200/70 bg-amber-50/45 dark:border-amber-500/20 dark:bg-amber-500/8",
+                                            ? "border-primary/15 bg-accent/65 shadow-none before:absolute before:inset-y-2 before:left-0 before:w-0.5 before:rounded-full before:bg-primary"
+                                            : "border-transparent bg-transparent hover:border-border hover:bg-background/70",
+                                        !chatTransportReady && selectedChat?.id !== chat.id && "opacity-80",
                                     )}
                                 >
                                     <div className="relative shrink-0">
-                                        <Avatar className="h-9 w-9 ring-1 ring-black/5 dark:ring-white/10">
+                                        <Avatar className="h-10 w-10 ring-1 ring-black/5 dark:ring-white/10">
                                             <AvatarImage
                                                 src={chat.contact?.avatarUrl || undefined}
                                                 alt={chat.contact?.name || "Contacto"}
@@ -2955,11 +2968,11 @@ export default function InboxPage() {
                 </div>
 
                 {/* ──── Main Chat ──── */}
-                <div className={cn("flex min-h-0 flex-1 flex-col bg-transparent", selectedChat ? "flex" : "hidden md:flex")}>
+                <div className={cn("flex min-h-0 min-w-0 flex-1 flex-col bg-background", selectedChat ? "flex" : "hidden md:flex")}>
                     {selectedChat ? (
                         <>
                             {/* Header */}
-                            <div className="shrink-0 flex min-h-[5.4rem] flex-wrap items-center justify-between gap-3 border-b border-border/50 bg-card/70 px-4 py-4 backdrop-blur-2xl md:px-6">
+                            <div className="flex min-h-[4.5rem] shrink-0 flex-wrap items-center justify-between gap-2 border-b border-border bg-card px-3 py-2.5 md:px-4">
                                 <div className="flex items-center gap-1 overflow-hidden">
                                     {/* Back button on mobile */}
                                     <button className="md:hidden flex-shrink-0 rounded-full border border-border/60 bg-background/90 p-2 shadow-sm hover:bg-muted" onClick={handleCloseConversation}>
@@ -2967,7 +2980,7 @@ export default function InboxPage() {
                                     </button>
                                     <button className="ml-1 flex items-center gap-3 overflow-hidden text-left transition hover:opacity-80 md:ml-0" onClick={() => setShowContactInfo(true)}>
                                         <div className="relative shrink-0">
-                                            <Avatar className="h-11 w-11 flex-shrink-0 ring-1 ring-black/5 dark:ring-white/10">
+                                        <Avatar className="h-10 w-10 flex-shrink-0 ring-1 ring-black/5 dark:ring-white/10">
                                                 <AvatarImage
                                                     src={selectedChat.contact?.avatarUrl || undefined}
                                                     alt={selectedChat.contact?.name || "Contacto"}
@@ -2980,7 +2993,7 @@ export default function InboxPage() {
                                             />
                                         </div>
                                         <div className="overflow-hidden">
-                                            <div className="flex items-center gap-1.5 truncate text-[1.02rem] font-semibold tracking-tight">
+                                            <div className="flex items-center gap-1.5 truncate text-sm font-semibold tracking-tight">
                                                 <span className="truncate">{selectedChat.contact?.name || "Desconocido"}</span>
                                                 {selectedChat.status === "closed" && (
                                                     <Badge variant="secondary" className="shrink-0 rounded-full border border-border/50 bg-background/80 px-2 py-0.5 text-[10px]">Cerrada</Badge>
@@ -2998,19 +3011,19 @@ export default function InboxPage() {
                                 <div className="ml-auto flex items-center gap-2 flex-wrap justify-end">
                                     <Button
                                         variant="ghost"
-                                        className="hidden h-11 rounded-2xl border border-border/60 bg-background/90 px-3 text-sm font-semibold shadow-sm lg:inline-flex"
+                                        className="hidden h-9 rounded-xl border border-border bg-background px-3 text-xs font-semibold shadow-none lg:inline-flex"
                                         onClick={openQuoteBuilder}
                                         title="Crear cotizacion para este contacto"
                                     >
                                         <FileText className="h-4 w-4" />
                                         Cotizar
                                     </Button>
-                                    <div className="min-w-[180px]">
+                                    <div className="hidden min-w-[150px] lg:block">
                                         <Select
                                             value={selectedChat.assignedUserId || "__unassigned__"}
                                             onValueChange={(value) => handleAssignConversation(value === "__unassigned__" ? "" : value)}
                                         >
-                                            <SelectTrigger className="h-11 w-full rounded-2xl border-border/60 bg-background/90 shadow-sm">
+                                            <SelectTrigger className="h-9 w-full rounded-xl border-border bg-background text-xs shadow-none">
                                                 <SelectValue placeholder="Asignar chat" />
                                             </SelectTrigger>
                                             <SelectContent align="end">
@@ -3023,7 +3036,7 @@ export default function InboxPage() {
                                             </SelectContent>
                                         </Select>
                                     </div>
-                                    <div className="flex items-center gap-2 rounded-[1.2rem] border border-border/60 bg-background/90 px-3 py-2 shadow-sm">
+                                    <div className="flex h-9 items-center gap-2 rounded-xl border border-primary/15 bg-primary/5 px-2.5 shadow-none">
                                         {selectedChat.botActive ? (
                                             <Bot className="h-3.5 w-3.5 text-emerald-600" />
                                         ) : (
@@ -3043,14 +3056,14 @@ export default function InboxPage() {
                                             aria-label="Cambiar entre bot activo y modo humano"
                                         />
                                     </div>
-                                    <Button variant="ghost" size="icon" className="hidden rounded-full border border-border/60 bg-background/90 shadow-sm sm:inline-flex" onClick={() => setShowContactInfo(!showContactInfo)} title="Info del contacto">
+                                    <Button variant="ghost" size="icon" className="hidden h-9 w-9 rounded-xl border border-border bg-background shadow-none sm:inline-flex xl:hidden" onClick={() => setShowContactInfo(!showContactInfo)} title="Info del contacto">
                                         <Info className="h-4 w-4" />
                                     </Button>
                                     <Separator orientation="vertical" className="h-6 mx-1 hidden sm:block" />
                                     {/* Dropdown Menu */}
                                     <DropdownMenu>
                                         <DropdownMenuTrigger asChild>
-                                            <Button variant="ghost" size="icon" className="rounded-full border border-border/60 bg-background/90 shadow-sm">
+                                            <Button variant="ghost" size="icon" className="h-9 w-9 rounded-xl border border-border bg-background shadow-none">
                                                 <MoreVertical className="h-4 w-4" />
                                             </Button>
                                         </DropdownMenuTrigger>
@@ -3100,11 +3113,11 @@ export default function InboxPage() {
                                 <div
                                     ref={messagesContainerRef}
                                     onScroll={handleMessagesScroll}
-                                    className="h-full overflow-y-auto bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.06),transparent_28%),linear-gradient(180deg,rgba(255,255,255,0.76),rgba(248,250,252,0.98))] p-4 dark:bg-[radial-gradient(circle_at_top,_rgba(96,165,250,0.10),transparent_24%),linear-gradient(180deg,rgba(15,23,42,0.64),rgba(2,6,23,0.96))] sm:px-8"
+                                    className="h-full overflow-y-auto bg-[linear-gradient(180deg,hsl(42_31%_96%),hsl(45_35%_98%))] p-4 dark:bg-background sm:px-6"
                                     style={{ scrollBehavior: "auto" }}
                                 >
                                     {/* Padding at bottom for scroll space */}
-                                    <div className="mx-auto flex max-w-[54rem] flex-col gap-5 pb-4">
+                                    <div className="mx-auto flex max-w-[58rem] flex-col gap-3 pb-4">
                                         {isLoadingOlderMessages && (
                                             <div className="flex justify-center">
                                                 <Badge variant="outline" className="rounded-full border-border/60 bg-card/80 px-3.5 py-1 text-[11px] font-medium text-muted-foreground shadow-sm">
@@ -3230,7 +3243,7 @@ export default function InboxPage() {
                                                     )}
                                                     <div
                                                         className={cn(
-                                                            "flex gap-0.5 max-w-[85%] sm:max-w-[80%] 2xl:max-w-[70%] group/msg",
+                                                            "group/msg flex max-w-[88%] gap-0.5 sm:max-w-[82%] 2xl:max-w-[76%]",
                                                             msg.direction === "outbound" ? "self-end flex-row-reverse" : "self-start flex-row"
                                                         )}
                                                     >
@@ -3239,10 +3252,10 @@ export default function InboxPage() {
                                                             {responderLabel && <MessageResponderBadge label={responderLabel} />}
                                                             <div
                                                                 className={cn(
-                                                                    "relative overflow-visible rounded-[1.45rem] border px-4 py-3 text-sm break-words [overflow-wrap:anywhere] shadow-[0_18px_40px_-30px_rgba(15,23,42,0.28)] backdrop-blur-sm",
+                                                                    "relative overflow-visible rounded-2xl border px-3.5 py-2.5 text-sm break-words [overflow-wrap:anywhere] shadow-[0_6px_18px_-14px_rgba(53,59,35,0.35)]",
                                                                     msg.direction === "outbound"
                                                                         ? "text-foreground"
-                                                                        : "border-border/50 bg-card/90 text-foreground dark:bg-card/80",
+                                                                        : "border-border bg-card text-foreground",
                                                                         (idx === 0 || messages[idx - 1].direction !== msg.direction)
                                                                             ? msg.direction === "outbound"
                                                                                 ? "rounded-tr-sm"
@@ -3449,12 +3462,12 @@ export default function InboxPage() {
                             )}
 
                             {/* Window Timer */}
-                            {outboundSourceType === "ycloud" ? (
+                            {outboundSourceType === "meta" ? (
                                 <WindowTimer expiresAt={selectedChat.sessionExpiresAt} onWindowChange={handleWindowChange} />
                             ) : null}
 
                             {/* Input Area — Locked when 24h window is closed */}
-                            {isYCloudReplyWindowExpired ? (
+                            {isMetaReplyWindowExpired ? (
                                 /* ═══ LOCKED: 24h window expired ═══ */
                                 <div className="shrink-0 space-y-0">
                                     <p className="text-xs text-center text-muted-foreground px-6 py-3">
@@ -3470,14 +3483,14 @@ export default function InboxPage() {
                                             onClick={() => setTemplateModalOpen(true)}
                                         >
                                             <LayoutTemplate className="h-4 w-4" />
-                                            Mensaje de plantilla (YCloud)
+                                            Mensaje de plantilla (WhatsApp API)
                                         </Button>
                                     </div>
                                 </div>
                             ) : (
                                 /* ═══ UNLOCKED: Normal input area ═══ */
                                 <div
-                                    className="shrink-0 border-t border-border/50 bg-card/72 px-4 pt-4 backdrop-blur-2xl"
+                                    className="shrink-0 border-t border-border bg-card px-3 pt-3"
                                     style={{ paddingBottom: "max(0.25rem, env(safe-area-inset-bottom))" }}
                                 >
                                     {shouldShowWhatsAppWarning && (
@@ -3561,7 +3574,7 @@ export default function InboxPage() {
                                             </Button>
                                         </div>
                                     ) : (
-                                        <div className="mx-auto flex max-w-[54rem] items-end gap-2 rounded-[1.9rem] border border-border/60 bg-background/88 p-2 shadow-[0_24px_60px_-36px_rgba(15,23,42,0.45)] backdrop-blur-xl">
+                                        <div className="mx-auto flex max-w-[58rem] items-end gap-2 rounded-2xl border border-border bg-background p-1.5 shadow-sm">
                                             <input ref={fileInputRef} type="file" className="hidden"
                                                 accept="image/*,audio/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip,.rar"
                                                 onChange={handleFileSelect}
@@ -3598,11 +3611,11 @@ export default function InboxPage() {
                                             </div>
                                             <div className="pb-1 pr-1 shrink-0">
                                                 {(inputText.trim() || pendingFile) ? (
-                                                    <Button size="icon" className="h-12 w-12 rounded-full animate-in zoom-in-50 duration-200 bg-foreground text-background shadow-[0_20px_45px_-24px_rgba(15,23,42,0.65)] hover:bg-foreground/90" onClick={handleSendMessage} disabled={!isWhatsAppTransportReady}>
+                                                    <Button size="icon" className="h-11 w-11 rounded-xl animate-in zoom-in-50 duration-200 bg-primary text-primary-foreground shadow-none hover:bg-primary/90" onClick={handleSendMessage} disabled={!isWhatsAppTransportReady}>
                                                         <Send className="h-5 w-5 ml-0.5" />
                                                     </Button>
                                                 ) : (
-                                                    <Button size="icon" className="h-12 w-12 rounded-full shrink-0 bg-foreground text-background shadow-[0_20px_45px_-24px_rgba(15,23,42,0.65)] hover:bg-foreground/90" onClick={handleMicClick} title="Nota de voz" disabled={!isWhatsAppTransportReady}>
+                                                    <Button size="icon" className="h-11 w-11 shrink-0 rounded-xl bg-primary text-primary-foreground shadow-none hover:bg-primary/90" onClick={handleMicClick} title="Nota de voz" disabled={!isWhatsAppTransportReady}>
                                                         <Mic className="h-5 w-5" />
                                                     </Button>
                                                 )}
@@ -3613,15 +3626,26 @@ export default function InboxPage() {
                             )}
                         </>
                     ) : (
-                        <div className="flex flex-1 items-center justify-center bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.05),transparent_26%),linear-gradient(180deg,rgba(255,255,255,0.72),rgba(248,250,252,0.98))] dark:bg-[radial-gradient(circle_at_top,_rgba(96,165,250,0.09),transparent_22%),linear-gradient(180deg,rgba(15,23,42,0.64),rgba(2,6,23,0.96))]">
-                            Selecciona una conversación para comenzar
+                        <div className="flex flex-1 flex-col items-center justify-center bg-[linear-gradient(180deg,hsl(42_31%_96%),hsl(45_35%_98%))] px-6 text-center dark:bg-background">
+                            <span className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl border border-primary/10 bg-primary/5 text-primary">
+                                <MessageSquare className="h-5 w-5" />
+                            </span>
+                            <p className="text-sm font-semibold">Selecciona una conversación</p>
+                            <p className="mt-1 text-xs text-muted-foreground">Elige un chat de la bandeja para consultar su historial.</p>
                         </div>
                     )}
                 </div>
 
                 {/* ──── Contact Info Panel ──── */}
+                {selectedChat && (
+                    <div className="hidden h-full shrink-0 xl:flex">
+                        <ContactInfoPanel conversation={selectedChat} onClose={() => setShowContactInfo(false)} showClose={false} />
+                    </div>
+                )}
                 {showContactInfo && selectedChat && (
-                    <ContactInfoPanel conversation={selectedChat} onClose={() => setShowContactInfo(false)} />
+                    <div className="absolute inset-y-0 right-0 z-30 flex h-full shadow-2xl xl:hidden">
+                        <ContactInfoPanel conversation={selectedChat} onClose={() => setShowContactInfo(false)} />
+                    </div>
                 )}
             </div >
 
@@ -3637,7 +3661,7 @@ export default function InboxPage() {
                 )
             }
             {selectedChat && (
-                <YCloudTemplateSendModal
+                <MetaTemplateSendModal
                     open={templateModalOpen}
                     onOpenChange={setTemplateModalOpen}
                     conversationId={selectedChat.id}

@@ -134,6 +134,41 @@ async function ensureContactFromAppointment(appointmentId?: string) {
     return contact;
 }
 
+export async function getBillableServices() {
+    await requirePermission("billing.manage");
+
+    const services = await prisma.service.findMany({
+        where: {
+            isActive: true,
+            category: { isActive: true },
+        },
+        orderBy: [
+            { category: { sortOrder: "asc" } },
+            { sortOrder: "asc" },
+            { name: "asc" },
+        ],
+        select: {
+            id: true,
+            name: true,
+            description: true,
+            price: true,
+            currency: true,
+            durationMinutes: true,
+            category: { select: { name: true } },
+        },
+    });
+
+    return services.map((service) => ({
+        id: service.id,
+        name: service.name,
+        description: service.description,
+        category: service.category.name,
+        price: service.price,
+        currency: service.currency,
+        durationMinutes: service.durationMinutes,
+    }));
+}
+
 export async function getCashDesk(date?: string | Date) {
     await requirePermission("billing.manage");
 

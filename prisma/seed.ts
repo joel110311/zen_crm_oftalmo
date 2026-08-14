@@ -11,19 +11,9 @@ const prisma = new PrismaClient({ adapter });
 async function main() {
     console.log("Seeding database...");
 
-    // Create or update system settings with YCloud credentials
-    const settings = await prisma.systemSettings.upsert({
-        where: { id: "default" },
-        update: {
-            ycloudApiKey: "b5df62fc3757e5f7ab51166591c6645c",
-            ycloudPhoneId: "+524771075025",
-        },
-        create: {
-            id: "default",
-            ycloudApiKey: "b5df62fc3757e5f7ab51166591c6645c",
-            ycloudPhoneId: "+524771075025",
-        },
-    });
+    // Las credenciales de integraciones se configuran por entorno o desde el CRM; nunca se incluyen en seeds.
+    const settings = await prisma.systemSettings.findFirst()
+        || await prisma.systemSettings.create({ data: { id: "default" } });
     console.log("Created settings:", settings.id);
 
     // Create Pipeline Stages (Kommo-style)

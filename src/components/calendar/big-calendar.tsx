@@ -52,6 +52,7 @@ interface CalendarEvent {
         patient?: unknown;
         user?: unknown;
         status?: string;
+        confirmationStatus?: string;
         visitMode?: string;
         meetLink?: string;
         paymentStatus?: string;
@@ -64,6 +65,7 @@ interface CalendarEvent {
 
 interface BigCalendarProps {
     initialEvents: CalendarEvent[];
+    initialDate?: Date;
     businessHours: BusinessHoursConfig;
     onSelectSlot: (slot: { start: Date; end: Date }) => void;
     onSelectEvent: (event: CalendarEvent) => void;
@@ -81,6 +83,7 @@ function normalizeEvents(initialEvents: CalendarEvent[], timeZone: string) {
 
 export function BigCalendar({
     initialEvents,
+    initialDate,
     businessHours,
     onSelectSlot,
     onSelectEvent,
@@ -89,12 +92,16 @@ export function BigCalendar({
 }: BigCalendarProps) {
     const [events, setEvents] = useState<CalendarEvent[]>(() => normalizeEvents(initialEvents, businessHours.timeZone));
     const [view, setView] = useState<View>(Views.DAY);
-    const [date, setDate] = useState(new Date());
+    const [date, setDate] = useState(() => initialDate || new Date());
     const { toast } = useToast();
 
     React.useEffect(() => {
         setEvents(normalizeEvents(initialEvents, businessHours.timeZone));
     }, [businessHours.timeZone, initialEvents]);
+
+    React.useEffect(() => {
+        if (initialDate) setDate(initialDate);
+    }, [initialDate]);
 
     const visibleRange = useMemo(
         () => getCalendarVisibleRange(
@@ -190,7 +197,8 @@ export function BigCalendar({
     const CustomEvent = ({ event }: EventProps<CalendarEvent>) => {
         const isPast = localWallDateToOperationUtc(event.end, businessHours.timeZone).getTime() < Date.now();
         const isCompleted = event.resource?.status === "completed";
-        const calendarColor = event.resource?.googleCalendarColor || "#0EA5E9";
+        const isReserved = event.resource?.status === "scheduled" && event.resource?.confirmationStatus === "pending";
+        const calendarColor = isReserved ? "#B58A2A" : event.resource?.googleCalendarColor || "#0EA5E9";
         const baseClasses =
             "flex h-full w-full items-start gap-2 overflow-hidden rounded-r-md border-l-[6px] px-1.5 py-0.5 leading-tight shadow-sm transition-all";
         const backgroundColor = isCompleted || isPast ? `${calendarColor}14` : `${calendarColor}1F`;
@@ -214,7 +222,9 @@ export function BigCalendar({
                     }}
                 />
                 <div className="flex min-w-0 flex-col justify-start overflow-hidden">
-                    <div className="truncate text-xs font-semibold leading-snug">{event.title}</div>
+                    <div className="truncate text-xs font-semibold leading-snug">
+                        {isReserved ? `Apartado · ${event.title}` : event.title}
+                    </div>
                     <div className="truncate text-[10px] leading-tight opacity-85">
                         {format(event.start, "EEE d MMM h:mm a", { locale: es })}
                     </div>
@@ -235,8 +245,8 @@ export function BigCalendar({
                 : format(labelDate, "MMMM yyyy", { locale: es });
 
         return (
-            <div className="mb-4 flex items-center justify-between px-2">
-                <div className="flex items-center gap-2">
+            <div className="mb-3 flex flex-col gap-2 px-1 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center justify-between gap-2 sm:justify-start">
                     <span className="text-lg font-bold capitalize text-foreground">{label}</span>
                 </div>
 
@@ -276,7 +286,7 @@ export function BigCalendar({
                             onClick={() => toolbar.onView("day")}
                             className={`h-7 text-xs ${toolbar.view !== "day" ? "hover:bg-background" : ""}`}
                         >
-                            Dia
+                            Día
                         </Button>
                     </div>
                 </div>
@@ -329,7 +339,7 @@ export function BigCalendar({
                     today: "Hoy",
                     month: "Mes",
                     week: "Semana",
-                    day: "Dia",
+                    day: "Día",
                     noEventsInRange: "No hay citas en este rango",
                 }}
                 components={{

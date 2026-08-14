@@ -238,11 +238,11 @@ export function BulkCampaignMessageTab({
             setIsLoadingYCloudTemplates(true);
             setYCloudTemplatesError("");
 
-            void fetch("/api/templates/ycloud?limit=100", { cache: "no-store", signal: controller.signal })
+            void fetch("/api/templates/meta?limit=100", { cache: "no-store", signal: controller.signal })
                 .then(async (response) => {
                     const result = await response.json();
                     if (!response.ok) {
-                        throw new Error(result.error || "No se pudieron cargar las plantillas YCloud.");
+                        throw new Error(result.error || "No se pudieron cargar las plantillas de WhatsApp API.");
                     }
 
                     setYCloudTemplates(
@@ -253,7 +253,7 @@ export function BulkCampaignMessageTab({
                 })
                 .catch((error) => {
                     if (!controller.signal.aborted) {
-                        setYCloudTemplatesError(error instanceof Error ? error.message : "No se pudieron cargar las plantillas YCloud.");
+                        setYCloudTemplatesError(error instanceof Error ? error.message : "No se pudieron cargar las plantillas de WhatsApp API.");
                     }
                 })
                 .finally(() => {
@@ -284,7 +284,7 @@ export function BulkCampaignMessageTab({
         onActiveVariantIndexChange(0);
         onFormChange((current) => ({
             ...current,
-            sourceType: "ycloud",
+            sourceType: "meta",
             type: "template",
             mediaUrl: null,
             mediaType: null,
@@ -333,9 +333,9 @@ export function BulkCampaignMessageTab({
                 <div className="rounded-xl border bg-muted/15 p-4">
                     <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                         <div className="space-y-1">
-                            <p className="text-sm font-semibold">Plantilla Meta/YCloud</p>
+                            <p className="text-sm font-semibold">Plantilla Meta</p>
                             <p className="text-sm leading-6 text-muted-foreground">
-                                Usa una plantilla aprobada por Meta para contactos sin ventana abierta. El envio se hara siempre por YCloud.
+                                Usa una plantilla aprobada por Meta para contactos sin ventana abierta. El envio se hara por WhatsApp Cloud API.
                             </p>
                         </div>
                         <Button
@@ -379,7 +379,7 @@ export function BulkCampaignMessageTab({
                                 ) : null}
                                 {!isLoadingYCloudTemplates && approvedYCloudTemplates.length === 0 ? (
                                     <p className="text-sm text-muted-foreground">
-                                        No hay plantillas aprobadas disponibles desde YCloud con la configuracion actual.
+                                        No hay plantillas aprobadas disponibles en el WABA conectado.
                                     </p>
                                 ) : null}
                             </div>
@@ -395,7 +395,7 @@ export function BulkCampaignMessageTab({
                                             </p>
                                         </div>
                                         <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
-                                            Meta/YCloud
+                                            WhatsApp API
                                         </span>
                                     </div>
 
@@ -456,7 +456,7 @@ export function BulkCampaignMessageTab({
                                 </p>
                                 <div className="mt-4">
                                     <WhatsAppTemplatePreview
-                                        title={form.ycloudTemplateName || form.name || "Plantilla YCloud"}
+                                        title={form.ycloudTemplateName || form.name || "Plantilla WhatsApp"}
                                         subtitle={form.ycloudTemplateLanguage || "Meta template"}
                                         type="text"
                                         content={ycloudPreviewContent || "Selecciona una plantilla para ver el contenido."}
@@ -470,7 +470,7 @@ export function BulkCampaignMessageTab({
                                     Esta modalidad no filtra por ventana abierta: sirve para reactivar o iniciar conversaciones con una plantilla aprobada.
                                 </p>
                                 <p className="mt-2">
-                                    Si quieres mandar texto libre por YCloud, cambia el tipo a texto y la audiencia solo incluira ventanas abiertas.
+                                    Para mandar texto libre por WhatsApp API, cambia el tipo a texto; la audiencia solo incluira ventanas abiertas.
                                 </p>
                             </div>
                         </div>

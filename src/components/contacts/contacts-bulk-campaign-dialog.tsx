@@ -82,7 +82,7 @@ type QuickCampaignFormState = {
     followUpDelayDays: number;
     selectedTemplateId: string | null;
     selectedTemplateName: string;
-    sourceType: "wuzapi" | "ycloud";
+    sourceType: "wuzapi" | "meta";
 };
 
 const YCloudTemplateValueDefaults = ["{{nombre}}", "{{empresa}}", "{{agente}}", "{{telefono}}"];
@@ -244,7 +244,7 @@ function buildQuickCampaignName(count: number, locale?: string, timeZone?: strin
         year: "2-digit",
     });
 
-    return `Envio rapido ${count} contactos - ${stamp}`;
+    return `Envío rápido ${count} clientes - ${stamp}`;
 }
 
 export function ContactsBulkCampaignDialog({
@@ -373,11 +373,11 @@ export function ContactsBulkCampaignDialog({
         setIsLoadingYCloudTemplates(true);
         setYCloudTemplatesError("");
 
-        void fetch("/api/templates/ycloud?limit=100", { cache: "no-store" })
+        void fetch("/api/templates/meta?limit=100", { cache: "no-store" })
             .then(async (response) => {
                 const result = await response.json();
                 if (!response.ok) {
-                    throw new Error(result.error || "No se pudieron cargar las plantillas YCloud.");
+                    throw new Error(result.error || "No se pudieron cargar las plantillas de WhatsApp API.");
                 }
 
                 setYCloudTemplates(
@@ -387,7 +387,7 @@ export function ContactsBulkCampaignDialog({
                 );
             })
             .catch((error) => {
-                setYCloudTemplatesError(error instanceof Error ? error.message : "No se pudieron cargar las plantillas YCloud.");
+                setYCloudTemplatesError(error instanceof Error ? error.message : "No se pudieron cargar las plantillas de WhatsApp API.");
             })
             .finally(() => setIsLoadingYCloudTemplates(false));
     }, [form.type, isLoadingYCloudTemplates, open, ycloudTemplates.length]);
@@ -460,7 +460,7 @@ export function ContactsBulkCampaignDialog({
 
         setForm((current) => ({
             ...current,
-            sourceType: "ycloud",
+            sourceType: "meta",
             type: "template",
             content,
             mediaUrl: null,
@@ -508,7 +508,7 @@ export function ContactsBulkCampaignDialog({
         if (form.type === "template") {
             if (!form.ycloudTemplateName || !form.ycloudTemplateLanguage) {
                 toast({
-                    title: "Selecciona una plantilla YCloud",
+                    title: "Selecciona una plantilla aprobada por Meta",
                     description: "Para enviar fuera de ventana necesitamos una plantilla aprobada por Meta.",
                     variant: "destructive",
                 });
@@ -558,7 +558,7 @@ export function ContactsBulkCampaignDialog({
         try {
             const payload = {
                 name: form.name.trim(),
-                description: `Envio rapido desde Contactos para ${contacts.length} destinatario(s).`,
+                description: `Envío rápido desde Clientes para ${contacts.length} destinatario(s).`,
                 sourceType: form.sourceType,
                 sourceId: null,
                 type: form.type,
@@ -576,7 +576,7 @@ export function ContactsBulkCampaignDialog({
                 scheduledStartAt: form.scheduledStartAt ? operationInputValueToUtc(form.scheduledStartAt, operationContext.timeZone)?.toISOString() || null : null,
                 respectBusinessHours: form.respectBusinessHours,
                 stopOnReply: form.stopOnReply,
-                followUpCount: form.type === "template" || form.sourceType === "ycloud" ? 0 : form.followUpCount,
+                followUpCount: form.type === "template" || form.sourceType === "meta" ? 0 : form.followUpCount,
                 followUpDelayDays: form.followUpDelayDays,
                 audienceFilters: {
                     mode: "selected",
@@ -584,9 +584,9 @@ export function ContactsBulkCampaignDialog({
                     tags: [],
                     query: "",
                     limit: null,
-                    sourceType: form.sourceType === "ycloud" && form.type !== "template" ? "ycloud" : "any",
+                    sourceType: form.sourceType === "meta" && form.type !== "template" ? "meta" : "any",
                     sourceId: "",
-                    onlyOpenYCloudWindow: form.sourceType === "ycloud" && form.type !== "template",
+                    onlyOpenYCloudWindow: form.sourceType === "meta" && form.type !== "template",
                     lastInboundFrom: "",
                     lastInboundTo: "",
                     selectedContactIds: contacts.map((contact) => contact.id),
@@ -638,7 +638,7 @@ export function ContactsBulkCampaignDialog({
 
             toast({
                 title: submitLabel === "Programar envio" ? "Envio programado" : "Envio iniciado",
-                description: `${recipientCount} contacto${recipientCount === 1 ? "" : "s"} quedaron dentro de la campaña.`,
+                description: `${recipientCount} cliente${recipientCount === 1 ? "" : "s"} quedaron dentro de la campaña.`,
             });
 
             handleOpenChange(false);
@@ -675,7 +675,7 @@ export function ContactsBulkCampaignDialog({
                             Envio masivo rapido
                         </DialogTitle>
                         <DialogDescription>
-                            Crea una campaña sobre la seleccion actual sin salir de Contactos.
+                            Crea una campaña sobre la selección actual sin salir de Clientes.
                         </DialogDescription>
                     </DialogHeader>
                 </div>
@@ -695,7 +695,7 @@ export function ContactsBulkCampaignDialog({
                                 <div className="flex flex-wrap items-center justify-between gap-3">
                                     <div>
                                         <p className="text-sm font-semibold text-foreground">
-                                            {contacts.length} contacto{contacts.length === 1 ? "" : "s"} seleccionado{contacts.length === 1 ? "" : "s"}
+                                            {contacts.length} cliente{contacts.length === 1 ? "" : "s"} seleccionado{contacts.length === 1 ? "" : "s"}
                                         </p>
                                         <p className="mt-1 text-sm text-muted-foreground">
                                             Ejemplo: {firstSelectedName}
@@ -739,7 +739,7 @@ export function ContactsBulkCampaignDialog({
                                     <Label>Canal de salida</Label>
                                     <Select
                                         value={form.sourceType}
-                                        onValueChange={(value: "wuzapi" | "ycloud") =>
+                                        onValueChange={(value: "wuzapi" | "meta") =>
                                             setForm((current) => ({
                                                 ...current,
                                                 sourceType: value,
@@ -752,7 +752,7 @@ export function ContactsBulkCampaignDialog({
                                                 ycloudTemplateLanguage: value === "wuzapi" ? "" : current.ycloudTemplateLanguage,
                                                 ycloudTemplateComponents: value === "wuzapi" ? [] : current.ycloudTemplateComponents,
                                                 ycloudTemplateVariableValues: value === "wuzapi" ? {} : current.ycloudTemplateVariableValues,
-                                                followUpCount: value === "ycloud" ? 0 : current.followUpCount,
+                                                followUpCount: value === "meta" ? 0 : current.followUpCount,
                                             }))
                                         }
                                     >
@@ -761,14 +761,14 @@ export function ContactsBulkCampaignDialog({
                                         </SelectTrigger>
                                         <SelectContent>
                                             <SelectItem value="wuzapi">WhatsApp por QR</SelectItem>
-                                            <SelectItem value="ycloud">WhatsApp API YCloud</SelectItem>
+                                            <SelectItem value="meta">WhatsApp API oficial</SelectItem>
                                         </SelectContent>
                                     </Select>
                                     <p className="text-xs text-muted-foreground">
-                                        {form.sourceType === "ycloud"
+                                        {form.sourceType === "meta"
                                             ? form.type === "template"
-                                                ? "La plantilla puede enviarse aunque el contacto no tenga ventana abierta."
-                                                : "El mensaje libre solo incluira contactos seleccionados con ventana YCloud abierta."
+                                                ? "La plantilla puede enviarse aunque el cliente no tenga ventana abierta."
+                                                : "El mensaje libre solo incluira clientes seleccionados con ventana de WhatsApp API abierta."
                                             : "Usa el envio masivo actual por WhatsApp QR."}
                                     </p>
                                 </div>
@@ -786,9 +786,9 @@ export function ContactsBulkCampaignDialog({
                                     />
                                 </div>
 
-                                {form.sourceType === "ycloud" ? (
+                                {form.sourceType === "meta" ? (
                                     <div className="space-y-2">
-                                        <Label>Modo YCloud</Label>
+                                        <Label>Modo WhatsApp API</Label>
                                         <Select
                                             value={form.type === "template" ? "template" : "open-window"}
                                             onValueChange={(value: "open-window" | "template") =>
@@ -812,7 +812,7 @@ export function ContactsBulkCampaignDialog({
                                             </SelectTrigger>
                                             <SelectContent>
                                                 <SelectItem value="open-window">Mensaje libre (ventana abierta)</SelectItem>
-                                                <SelectItem value="template">Plantilla Meta/YCloud</SelectItem>
+                                                <SelectItem value="template">Plantilla Meta</SelectItem>
                                             </SelectContent>
                                         </Select>
                                     </div>
@@ -822,7 +822,7 @@ export function ContactsBulkCampaignDialog({
                             {form.type === "template" ? (
                                 <div className="space-y-4 rounded-2xl border bg-muted/20 p-4">
                                     <div className="flex flex-col gap-1">
-                                        <p className="text-sm font-semibold text-foreground">Plantilla Meta/YCloud</p>
+                                        <p className="text-sm font-semibold text-foreground">Plantilla Meta</p>
                                         <p className="text-sm leading-6 text-muted-foreground">
                                             Selecciona una plantilla aprobada y completa sus variables antes de iniciar el envio.
                                         </p>
@@ -851,7 +851,7 @@ export function ContactsBulkCampaignDialog({
                                         ) : null}
                                         {!isLoadingYCloudTemplates && approvedYCloudTemplates.length === 0 ? (
                                             <p className="text-sm text-muted-foreground">
-                                                No hay plantillas aprobadas disponibles con la configuracion actual de YCloud.
+                                                No hay plantillas aprobadas disponibles en el WABA conectado.
                                             </p>
                                         ) : null}
                                     </div>
@@ -1054,7 +1054,7 @@ export function ContactsBulkCampaignDialog({
                             <div>
                                 <p className="text-sm font-semibold text-foreground">Vista previa</p>
                                 <p className="mt-1 text-sm text-muted-foreground">
-                                    Render de ejemplo con el primer contacto seleccionado.
+                                    Ejemplo con el primer cliente seleccionado.
                                 </p>
                             </div>
 
@@ -1081,7 +1081,7 @@ export function ContactsBulkCampaignDialog({
                                 </p>
                                 <p className="mt-2">
                                     {form.followUpCount > 0
-                                        ? `Habra hasta ${form.followUpCount} seguimiento(s) extra por contacto.`
+                                        ? `Habrá hasta ${form.followUpCount} seguimiento(s) extra por cliente.`
                                         : "No se enviaran seguimientos extra."}
                                 </p>
                             </div>

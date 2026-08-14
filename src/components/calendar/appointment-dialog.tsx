@@ -16,6 +16,7 @@ import { Bell, CalendarIcon, Check, ChevronsUpDown, Clock, CreditCard, Loader2, 
 import { createAppointment, deleteAppointment, updateAppointment } from "@/app/actions/calendar";
 import { getPatientsForPicker, savePatient } from "@/app/actions/patients";
 import { getSpecialists } from "@/app/actions/specialists";
+import { getActiveServicesForBooking } from "@/app/actions/services";
 import { useToast } from "@/components/ui/use-toast";
 import { PhonePrefixInput } from "@/components/shared/phone-prefix-input";
 import type { GoogleCalendarSourceSummary } from "@/lib/google-calendar";
@@ -44,6 +45,7 @@ type GoogleCalendarStatusPayload = {
 
 type PatientPickerItem = Awaited<ReturnType<typeof getPatientsForPicker>>[number];
 type SpecialistPickerItem = Awaited<ReturnType<typeof getSpecialists>>[number];
+type BookingService = Awaited<ReturnType<typeof getActiveServicesForBooking>>[number];
 
 type SelectedAppointmentEvent = {
     id: string;
@@ -55,6 +57,7 @@ type SelectedAppointmentEvent = {
         patient?: { id?: string | null } | null;
         specialist?: { id?: string | null } | null;
         specialistId?: string | null;
+        serviceId?: string | null;
         appointmentType?: string | null;
         isFirstVisit?: boolean | null;
         isOverbook?: boolean | null;
@@ -82,7 +85,7 @@ interface AppointmentDialogProps {
 }
 
 function patientName(patient?: PatientPickerItem | null) {
-    return [patient?.firstName, patient?.lastName].filter(Boolean).join(" ") || "Paciente";
+    return [patient?.firstName, patient?.lastName].filter(Boolean).join(" ") || "Cliente";
 }
 
 function localTimeInputValue(date: Date) {
@@ -120,8 +123,10 @@ export function AppointmentDialog({
     const [calendarSources, setCalendarSources] = useState<GoogleCalendarSourceSummary[]>([]);
     const [selectedCalendarId, setSelectedCalendarId] = useState<string>("general");
     const [specialists, setSpecialists] = useState<SpecialistPickerItem[]>([]);
+    const [services, setServices] = useState<BookingService[]>([]);
+    const [selectedServiceId, setSelectedServiceId] = useState("none");
     const [selectedSpecialistId, setSelectedSpecialistId] = useState<string>("none");
-    const [appointmentType, setAppointmentType] = useState("Consulta");
+    const [appointmentType, setAppointmentType] = useState("Servicio");
     const [isFirstVisit, setIsFirstVisit] = useState(false);
     const [isOverbook, setIsOverbook] = useState(false);
     const [visitMode, setVisitMode] = useState("presencial");
@@ -145,8 +150,7 @@ export function AppointmentDialog({
     const initialPatientId = defaultPatient?.id || defaultPatientId || "";
 
     const [isCreatingPatient, setIsCreatingPatient] = useState(false);
-    const [newPatientFirstName, setNewPatientFirstName] = useState("");
-    const [newPatientLastName, setNewPatientLastName] = useState("");
+    const [newPatientName, setNewPatientName] = useState("");
     const [newPatientPhone, setNewPatientPhone] = useState("");
     const [isSubmittingPatient, setIsSubmittingPatient] = useState(false);
 
@@ -222,7 +226,8 @@ export function AppointmentDialog({
             setDuration(diffMins.toString());
             setNotes(selectedEvent.notes || "");
             setSelectedSpecialistId(selectedEvent.resource?.specialistId || selectedEvent.resource?.specialist?.id || "none");
-            setAppointmentType(selectedEvent.resource?.appointmentType || "Consulta");
+            setSelectedServiceId(selectedEvent.resource?.serviceId || "none");
+            setAppointmentType(selectedEvent.resource?.appointmentType || "Servicio");
             setIsFirstVisit(Boolean(selectedEvent.resource?.isFirstVisit));
             setIsOverbook(Boolean(selectedEvent.resource?.isOverbook));
             setVisitMode(selectedEvent.resource?.visitMode || "presencial");
@@ -245,14 +250,15 @@ export function AppointmentDialog({
             const nextDate = isBusinessDayOpen(referenceDate, businessHours)
                 ? selectedLocalDate
                 : dateKeyToLocalNoonDate(getOperationDateKey(getNextOpenDate(referenceDate, businessHours), businessHours.timeZone));
-            setTitle(defaultPatient ? `Consulta con ${patientName(defaultPatient)}` : "");
+            setTitle(defaultPatient ? `Servicio para ${patientName(defaultPatient)}` : "");
             setPatientId(initialPatientId);
             setDate(nextDate);
             setTime(clampTimeToSchedule(localTimeInputValue(selectedSlot.start), nextDate));
             setDuration(String(businessHours.defaultDurationMinutes));
             setNotes("");
             setSelectedSpecialistId(defaultSpecialistId || "none");
-            setAppointmentType("Consulta");
+            setSelectedServiceId("none");
+            setAppointmentType("Servicio");
             setIsFirstVisit(false);
             setIsOverbook(false);
             setVisitMode("presencial");
@@ -265,14 +271,15 @@ export function AppointmentDialog({
         }
 
         const nextOpenDate = dateKeyToLocalNoonDate(getOperationDateKey(getNextOpenDate(new Date(), businessHours), businessHours.timeZone));
-        setTitle(defaultPatient ? `Consulta con ${patientName(defaultPatient)}` : "");
+        setTitle(defaultPatient ? `Servicio para ${patientName(defaultPatient)}` : "");
         setPatientId(initialPatientId);
         setDate(nextOpenDate);
         setTime(clampTimeToSchedule(businessHours.start, nextOpenDate));
         setDuration(String(businessHours.defaultDurationMinutes));
         setNotes("");
         setSelectedSpecialistId(defaultSpecialistId || "none");
-        setAppointmentType("Consulta");
+        setSelectedServiceId("none");
+        setAppointmentType("Servicio");
         setIsFirstVisit(false);
         setIsOverbook(false);
         setVisitMode("presencial");
@@ -282,6 +289,14 @@ export function AppointmentDialog({
         setPaymentCurrency(operationContext.defaultCurrency);
         setSendReminders(remindersGloballyEnabled);
     }, [businessHours, clampTimeToSchedule, defaultPatient, defaultSpecialistId, initialPatientId, open, operationContext.defaultCurrency, remindersGloballyEnabled, selectedEvent, selectedSlot]);
+
+    useEffect(() => {
+        if (!open) return;
+
+        void getActiveServicesForBooking()
+            .then(setServices)
+            .catch((error) => console.error("Failed to load services:", error));
+    }, [open]);
 
     useEffect(() => {
         if (!open) return;
@@ -396,13 +411,18 @@ export function AppointmentDialog({
         null;
     const selectedPatient = patients.find((patient) => patient.id === patientId) || (defaultPatient?.id === patientId ? defaultPatient : undefined);
     const selectedSpecialist = specialists.find((specialist) => specialist.id === selectedSpecialistId);
+    const selectedService = services.find((service) => service.id === selectedServiceId);
+    const eligibleSpecialistIds = selectedService?.specialists.map((entry) => entry.specialistId) || [];
+    const availableSpecialists = eligibleSpecialistIds.length > 0
+        ? specialists.filter((specialist) => eligibleSpecialistIds.includes(specialist.id))
+        : specialists;
     const specialistCalendar = selectedSpecialist?.googleCalendarSource || null;
 
     const handleSubmit = () => {
         if (!patientId) {
             toast({
-                title: "Paciente requerido",
-                description: "Selecciona o registra un paciente antes de agendar la cita.",
+                title: "Cliente requerido",
+                description: "Selecciona o registra un cliente antes de apartar el horario.",
                 variant: "destructive",
             });
             return;
@@ -457,6 +477,7 @@ export function AppointmentDialog({
                     notes,
                     patientId,
                     specialistId: selectedSpecialistId !== "none" ? selectedSpecialistId : undefined,
+                    serviceId: selectedServiceId !== "none" ? selectedServiceId : undefined,
                     appointmentType,
                     isFirstVisit,
                     isOverbook,
@@ -482,7 +503,10 @@ export function AppointmentDialog({
                     throw new Error(result.error || "No se pudo guardar la cita.");
                 }
 
-                toast({ title: selectedEvent ? "Cita actualizada" : "Cita agendada" });
+                toast({
+                    title: selectedEvent ? "Cita actualizada" : "Horario apartado",
+                    description: selectedEvent ? undefined : "La reserva bloqueará el horario hasta que sea confirmada.",
+                });
                 onSuccess();
                 onOpenChange(false);
             } catch (error) {
@@ -509,16 +533,16 @@ export function AppointmentDialog({
     };
 
     const handleCreatePatient = async () => {
-        if (!newPatientFirstName.trim() || !newPatientLastName.trim()) {
-            toast({ title: "Error", description: "Nombre y apellido son obligatorios.", variant: "destructive" });
+        if (!newPatientName.trim() || !newPatientPhone.trim()) {
+            toast({ title: "Error", description: "El nombre y el teléfono son obligatorios.", variant: "destructive" });
             return;
         }
 
         setIsSubmittingPatient(true);
         try {
             const result = await savePatient({
-                firstName: newPatientFirstName,
-                lastName: newPatientLastName,
+                firstName: newPatientName,
+                lastName: "",
                 phone: newPatientPhone,
             });
 
@@ -534,13 +558,12 @@ export function AppointmentDialog({
                 };
                 setPatients((prev) => [pickerPatient, ...prev]);
                 setPatientId(result.patient.id);
-                if (!title) setTitle(`Consulta con ${patientName(pickerPatient)}`);
+                if (!title) setTitle(`Servicio para ${patientName(pickerPatient)}`);
                 setIsCreatingPatient(false);
-                setNewPatientFirstName("");
-                setNewPatientLastName("");
+                setNewPatientName("");
                 setNewPatientPhone("");
                 setOpenCombobox(false);
-                toast({ title: "Paciente creado" });
+                toast({ title: "Cliente creado" });
                 return;
             }
 
@@ -563,7 +586,7 @@ export function AppointmentDialog({
 
                 <div className="grid gap-6 py-4">
                     <div className="space-y-2">
-                        <Label>Paciente *</Label>
+                        <Label>Cliente *</Label>
                         <Popover open={openCombobox} onOpenChange={setOpenCombobox}>
                             <PopoverTrigger asChild>
                                 <Button
@@ -574,15 +597,15 @@ export function AppointmentDialog({
                                 >
                                     {patientId && selectedPatient
                                         ? patientName(selectedPatient)
-                                        : "Buscar paciente requerido..."}
+                                        : "Buscar cliente..."}
                                     <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                                 </Button>
                             </PopoverTrigger>
                             <PopoverContent className="w-[400px] p-0">
                                 <Command shouldFilter={false}>
-                                    <CommandInput placeholder="Buscar paciente..." onValueChange={setQuery} />
+                                    <CommandInput placeholder="Buscar cliente..." onValueChange={setQuery} />
                                     <CommandList>
-                                        <CommandEmpty>No se encontraron pacientes.</CommandEmpty>
+                                        <CommandEmpty>No se encontraron clientes.</CommandEmpty>
                                         <CommandGroup>
                                             {patients.map((patient) => (
                                                 <CommandItem
@@ -591,7 +614,7 @@ export function AppointmentDialog({
                                                     onSelect={(currentValue) => {
                                                         setPatientId(currentValue);
                                                         setOpenCombobox(false);
-                                                        if (!title) setTitle(`Consulta con ${patientName(patient)}`);
+                                                        if (!title) setTitle(`Servicio para ${patientName(patient)}`);
                                                     }}
                                                 >
                                                     <Check
@@ -603,7 +626,7 @@ export function AppointmentDialog({
                                                     <div className="flex flex-col">
                                                         <span className="font-medium">{patientName(patient)}</span>
                                                         <span className="text-xs text-secondary-foreground">
-                                                            {patient.phone || patient.email || patient.patientNumber}
+                                                            {patient.phone || "Sin teléfono"}
                                                         </span>
                                                     </div>
                                                 </CommandItem>
@@ -620,7 +643,7 @@ export function AppointmentDialog({
                                                 setOpenCombobox(false);
                                             }}
                                         >
-                                            + Registrar nuevo paciente
+                                            + Registrar nuevo cliente
                                         </Button>
                                     </div>
                                 </Command>
@@ -633,23 +656,19 @@ export function AppointmentDialog({
                             <div className="flex items-center justify-between border-b pb-2">
                                 <h4 className="flex items-center text-sm font-medium text-foreground">
                                     <User className="mr-2 h-4 w-4 text-primary" />
-                                    Registrar Paciente Rapido
+                                    Registrar cliente
                                 </h4>
                                 <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => setIsCreatingPatient(false)}>
                                     Cancelar
                                 </Button>
                             </div>
-                            <div className="grid grid-cols-2 gap-3">
+                            <div className="grid gap-3 sm:grid-cols-2">
                                 <div className="space-y-1">
                                     <Label className="text-xs">Nombre *</Label>
-                                    <Input value={newPatientFirstName} onChange={(event) => setNewPatientFirstName(event.target.value)} className="h-8 text-sm" />
+                                    <Input value={newPatientName} onChange={(event) => setNewPatientName(event.target.value)} className="h-8 text-sm" />
                                 </div>
                                 <div className="space-y-1">
-                                    <Label className="text-xs">Apellido *</Label>
-                                    <Input value={newPatientLastName} onChange={(event) => setNewPatientLastName(event.target.value)} className="h-8 text-sm" />
-                                </div>
-                                <div className="col-span-2 space-y-1">
-                                    <Label className="text-xs">Telefono</Label>
+                                    <Label className="text-xs">Teléfono *</Label>
                                     <PhonePrefixInput
                                         value={newPatientPhone}
                                         onChange={setNewPatientPhone}
@@ -664,7 +683,7 @@ export function AppointmentDialog({
                                 size="sm"
                                 className="h-8 w-full"
                                 onClick={handleCreatePatient}
-                                disabled={isSubmittingPatient || !newPatientFirstName || !newPatientLastName}
+                                disabled={isSubmittingPatient || !newPatientName || !newPatientPhone}
                             >
                                 {isSubmittingPatient ? <Loader2 className="mr-2 h-3 w-3 animate-spin" /> : null}
                                 Guardar y Seleccionar
@@ -673,12 +692,43 @@ export function AppointmentDialog({
                     ) : null}
 
                     <div className="space-y-2">
+                        <Label>Servicio</Label>
+                        <Select value={selectedServiceId} onValueChange={(value) => {
+                            setSelectedServiceId(value);
+                            const service = services.find((entry) => entry.id === value);
+                            if (!service) return;
+                            setTitle(service.name);
+                            setAppointmentType(service.name);
+                            setDuration(String(service.durationMinutes));
+                            setPaymentAmount(service.price > 0 ? String(service.price) : "");
+                            setPaymentCurrency(service.currency || operationContext.defaultCurrency);
+                            const assignedIds = service.specialists.map((entry) => entry.specialistId);
+                            if (assignedIds.length > 0 && !assignedIds.includes(selectedSpecialistId)) {
+                                setSelectedSpecialistId(assignedIds[0]);
+                                const row = specialists.find((entry) => entry.id === assignedIds[0]);
+                                if (row?.googleCalendarSource?.calendarId) setSelectedCalendarId(row.googleCalendarSource.calendarId);
+                            }
+                        }}>
+                            <SelectTrigger className="h-11 bg-background"><SelectValue placeholder="Selecciona un servicio" /></SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="none">Servicio personalizado</SelectItem>
+                                {services.map((service) => (
+                                    <SelectItem key={service.id} value={service.id}>
+                                        {service.name} · {service.durationMinutes} min · {new Intl.NumberFormat("es-MX", { style: "currency", currency: service.currency, maximumFractionDigits: 0 }).format(service.price)}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                        {selectedService && eligibleSpecialistIds.length > 0 ? <p className="text-xs text-muted-foreground">Solo se muestran los profesionales asignados a este servicio.</p> : null}
+                    </div>
+
+                    <div className="space-y-2">
                         <Label>Titulo / Motivo</Label>
                         <Input
                             value={title}
                             onChange={(event) => setTitle(event.target.value)}
                             className="h-11 bg-background"
-                            placeholder="Ej. Consulta oftalmologica"
+                            placeholder="Ej. Corte, color, tratamiento..."
                         />
                     </div>
 
@@ -707,9 +757,9 @@ export function AppointmentDialog({
                         </div>
                     ) : null}
 
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-[minmax(18rem,1fr)_140px_170px]">
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-[minmax(18rem,1fr)_170px]">
                         <div className="space-y-2">
-                            <Label>Especialista clinico</Label>
+                            <Label>Profesional</Label>
                             <Select value={selectedSpecialistId} onValueChange={(value) => {
                                 setSelectedSpecialistId(value);
                                 const row = specialists.find((entry) => entry.id === value);
@@ -725,27 +775,11 @@ export function AppointmentDialog({
                                 </SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value="none">Sin especialista</SelectItem>
-                                    {specialists.map((specialist) => (
+                                    {availableSpecialists.map((specialist) => (
                                         <SelectItem key={specialist.id} value={specialist.id}>
                                             {specialist.displayName || specialist.name}
                                         </SelectItem>
                                     ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
-
-                        <div className="space-y-2">
-                            <Label>Tipo de cita</Label>
-                            <Select value={appointmentType} onValueChange={setAppointmentType}>
-                                <SelectTrigger className="h-11 bg-background">
-                                    <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="Consulta">Consulta</SelectItem>
-                                    <SelectItem value="Control">Control</SelectItem>
-                                    <SelectItem value="Estudio">Estudio</SelectItem>
-                                    <SelectItem value="Cirugia">Cirugia</SelectItem>
-                                    <SelectItem value="Urgencia">Urgencia</SelectItem>
                                 </SelectContent>
                             </Select>
                         </div>
@@ -765,14 +799,7 @@ export function AppointmentDialog({
                         </div>
                     </div>
 
-                    <div className="grid gap-3 sm:grid-cols-2">
-                        <div className="flex min-h-[76px] items-center justify-between rounded-lg border bg-muted/20 px-3 py-3">
-                            <div>
-                                <p className="text-sm font-medium">Primera vez</p>
-                                <p className="text-xs text-muted-foreground">Marca si requiere expediente inicial.</p>
-                            </div>
-                            <Switch checked={isFirstVisit} onCheckedChange={setIsFirstVisit} />
-                        </div>
+                    <div className="grid gap-3">
                         <div className="flex min-h-[76px] items-center justify-between rounded-lg border bg-muted/20 px-3 py-3">
                             <div>
                                 <p className="text-sm font-medium">Sobreturno</p>

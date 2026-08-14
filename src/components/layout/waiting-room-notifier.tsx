@@ -16,7 +16,6 @@ type WaitingRoomNotification = {
     id: string;
     title: string;
     patientId: string | null;
-    patientNumber: string | null;
     patientName: string;
     phone: string | null;
     specialistName: string | null;
@@ -121,9 +120,7 @@ export function WaitingRoomNotifier() {
                 const appointmentLabel = formatTimeInOperationZone(item.startTime, locale, timeZone, { hour12: true });
                 const primaryHref = isAppointmentRequest
                     ? "/dashboard/reception"
-                    : item.patientId
-                        ? `/dashboard/patients?patientId=${encodeURIComponent(item.patientId)}`
-                        : "/dashboard/patients";
+                    : "/dashboard/contacts";
 
                 return (
                     <div
@@ -141,7 +138,7 @@ export function WaitingRoomNotifier() {
                                 <div className="flex items-start justify-between gap-2">
                                     <div>
                                         <p className="text-sm font-semibold text-foreground">
-                                            {isAppointmentRequest ? "Nueva solicitud de cita" : "Paciente listo en sala"}
+                                            {isAppointmentRequest ? "Nueva solicitud de cita" : "Cliente listo para atención"}
                                         </p>
                                         <p className="mt-0.5 truncate text-base font-bold text-foreground">{item.patientName}</p>
                                     </div>

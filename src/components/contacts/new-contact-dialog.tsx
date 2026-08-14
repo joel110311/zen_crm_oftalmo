@@ -23,7 +23,7 @@ function SubmitButton() {
     const { pending } = useFormStatus();
     return (
         <Button type="submit" disabled={pending}>
-            {pending ? "Saving..." : "Save Contact"}
+            {pending ? "Guardando..." : "Guardar cliente"}
         </Button>
     );
 }
@@ -37,12 +37,12 @@ export function NewContactDialog() {
     async function handleSubmit(formData: FormData) {
         const result = await createContact(formData);
         if (result && result.success) {
-            toast({ title: "Success", description: "Contact created successfully." });
+            toast({ title: "Cliente creado", description: "Ya puedes usarlo en chats, campañas y agenda." });
             setOpen(false);
             setPhone("");
         } else {
             // @ts-ignore
-            toast({ title: "Error", description: result?.error || "Failed to create contact.", variant: "destructive" });
+            toast({ title: "Error", description: result?.error || "No se pudo crear el cliente.", variant: "destructive" });
         }
     }
 
@@ -50,33 +50,27 @@ export function NewContactDialog() {
         <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
                 <Button>
-                    <Plus className="mr-2 h-4 w-4" /> Add Contact
+                    <Plus className="mr-2 h-4 w-4" /> Nuevo cliente
                 </Button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-[425px]">
                 <DialogHeader>
-                    <DialogTitle>Add New Contact</DialogTitle>
+                    <DialogTitle>Nuevo cliente</DialogTitle>
                     <DialogDescription>
-                        Create a new contact in your CRM.
+                        Captura únicamente los datos necesarios para atenderlo.
                     </DialogDescription>
                 </DialogHeader>
                 <form action={handleSubmit}>
                     <div className="grid gap-4 py-4">
                         <div className="grid grid-cols-4 items-center gap-4">
                             <Label htmlFor="name" className="text-right">
-                                Name
+                                Nombre
                             </Label>
-                            <Input id="name" name="name" placeholder="John Doe" className="col-span-3" required />
-                        </div>
-                        <div className="grid grid-cols-4 items-center gap-4">
-                            <Label htmlFor="email" className="text-right">
-                                Email
-                            </Label>
-                            <Input id="email" name="email" type="email" placeholder="john@example.com" className="col-span-3" />
+                            <Input id="name" name="name" placeholder="Nombre completo" className="col-span-3" required />
                         </div>
                         <div className="grid grid-cols-4 items-center gap-4">
                             <Label htmlFor="phone" className="text-right">
-                                Phone
+                                Teléfono
                             </Label>
                             <div className="col-span-3">
                                 <input type="hidden" name="phone" value={phone} />

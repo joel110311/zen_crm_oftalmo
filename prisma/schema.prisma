@@ -130,6 +130,7 @@ model Appointment {
   paymentStatus        String        @default("unpaid")
   paymentAmount        Float         @default(0)
   paymentCurrency      String        @default("MXN")
+  paymentMethod        String?       @default("efectivo")
   paymentLinkUrl       String?
   publicToken          String?       @unique
   visitMode            String        @default("presencial") // presencial, virtual, hibrida
@@ -156,6 +157,9 @@ model Appointment {
   specialistId String?
   specialist   Specialist? @relation(fields: [specialistId], references: [id], onDelete: SetNull)
 
+  serviceId String?
+  service   Service? @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+
   userId String?
   user   User?   @relation(fields: [userId], references: [id])
 
@@ -173,6 +177,7 @@ model Appointment {
   @@index([patientId])
   @@index([googleCalendarId])
   @@index([specialistId, startTime])
+  @@index([serviceId])
   @@index([status, startTime])
   @@index([source])
   @@index([paymentStatus, startTime])
@@ -232,11 +237,59 @@ model Specialist {
   availabilityBlocks     SpecialistAvailabilityBlock[]
   cashMovements          CashMovement[]
   paymentLinks           PaymentLink[]
+  services               SpecialistService[]
   createdAt              DateTime                      @default(now())
   updatedAt              DateTime                      @updatedAt
 
   @@index([isActive, sortOrder])
   @@index([userId])
+}
+
+model ServiceCategory {
+  id          String    @id @default(cuid())
+  name        String    @unique
+  description String?
+  color       String?   @default("#B7923A")
+  isActive    Boolean   @default(true)
+  sortOrder   Int       @default(0)
+  services    Service[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([isActive, sortOrder])
+}
+
+model Service {
+  id              String              @id @default(cuid())
+  name            String              @unique
+  description     String?
+  categoryId      String
+  category        ServiceCategory     @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  price           Float               @default(0)
+  currency        String              @default("MXN")
+  durationMinutes Int                 @default(30)
+  imageUrl        String?
+  showPrice       Boolean             @default(true)
+  isFeatured      Boolean             @default(false)
+  isActive        Boolean             @default(true)
+  sortOrder       Int                 @default(0)
+  specialists     SpecialistService[]
+  appointments    Appointment[]
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  @@index([categoryId, isActive, sortOrder])
+}
+
+model SpecialistService {
+  specialistId String
+  serviceId    String
+  specialist   Specialist @relation(fields: [specialistId], references: [id], onDelete: Cascade)
+  service      Service    @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  createdAt    DateTime   @default(now())
+
+  @@id([specialistId, serviceId])
+  @@index([serviceId])
 }
 
 model SpecialistAvailabilityBlock {
@@ -810,8 +863,20 @@ model SystemSettings {
   openaiApiKey                         String?
   openaiModel                          String?                @default("gpt-4o-mini")
   geminiApiKey                         String?
-  ycloudApiKey                         String?
-  ycloudPhoneId                        String?
+  whatsappWabaId                       String?
+  whatsappPhoneNumberId                String?
+  whatsappDisplayPhoneNumber           String?
+  whatsappAccessToken                  String?
+  whatsappBusinessId                   String?
+  whatsappConnectedAt                  DateTime?
+  whatsappMetaAppId                    String?
+  whatsappMetaAppSecret                String?
+  whatsappEmbeddedSignupConfigId       String?
+  whatsappTechProviderSolutionId       String?
+  whatsappGraphApiVersion              String?                @default("v26.0")
+  whatsappRegistrationPin              String?
+  whatsappWebhookVerifyToken           String?
+  whatsappWebhookBaseUrl               String?
   whatsappBaseUrl                      String?
   whatsappAdminToken                   String?
   whatsappUserToken                    String?
@@ -861,7 +926,7 @@ model SystemSettings {
   portalSlug                           String?                @default("oftalmo")
   portalClinicName                     String?                @default("Zen CRM Oftalmo")
   portalIntro                          String?
-  portalPrimaryColor                   String?                @default("#2563EB")
+  portalPrimaryColor                   String?                @default("#4B5F25")
   portalPaymentInstructions            String?
   paymentDefaultCurrency               String?                @default("MXN")
   paymentEnabledCurrencies             Json                   @default("[\"MXN\"]")
@@ -883,9 +948,9 @@ model SystemSettings {
   appointmentReminderProvider          String                 @default("wuzapi")
   appointmentReminderSendOnlyConfirmed Boolean                @default(true)
   appointmentReminderWuzapiTemplate    String?
-  appointmentReminderYcloudTemplate24h String?
-  appointmentReminderYcloudTemplate4h  String?
-  appointmentReminderYcloudLanguage    String?                @default("es")
+  appointmentReminderMetaTemplate24h   String?
+  appointmentReminderMetaTemplate4h    String?
+  appointmentReminderMetaLanguage      String?                @default("es")
   confirmationLinkEnabled              Boolean                @default(true)
   waitingRoomEnabled                   Boolean                @default(true)
   leadScoringEnabled                   Boolean                @default(true)
